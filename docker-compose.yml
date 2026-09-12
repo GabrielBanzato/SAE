@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-  # O seu banco de dados (intacto)
   mysql:
     image: mysql:8.0
     container_name: sae_mysql
@@ -24,25 +23,38 @@ services:
     networks:
       - sae_net
 
-  # O seu sistema (Código)
-  app:
+  api:
     build:
-      context: .
+      context: ./api
       dockerfile: Dockerfile
-    container_name: sae_app
+    container_name: sae_api
     restart: unless-stopped
     environment:
-      # O app vai conectar no host "mysql" usando as mesmas variáveis
       - DB_HOST=mysql
       - DB_USER=${MYSQL_USER}
       - DB_PASSWORD=${MYSQL_PASSWORD}
       - DB_NAME=${MYSQL_DATABASE}
-      - PORT=3001 # Usando 3001 para não dar conflito com o Pitica ou o Bar
+      # URL do Prisma para conectar no MySQL interno do Docker
+      - DATABASE_URL=mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
+      - PORT=3001
     ports:
       - "3001:3001"
     depends_on:
       mysql:
-        condition: service_healthy # O app só sobe depois que o healthcheck do MySQL der "OK"
+        condition: service_healthy
+    networks:
+      - sae_net
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: sae_web
+    restart: unless-stopped
+    ports:
+      - "8081:80" # Porta 8081 para não conflitar com outros sistemas
+    depends_on:
+      - api
     networks:
       - sae_net
 
