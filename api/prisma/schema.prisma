@@ -1,0 +1,336 @@
+// Schema do SAE (Sistema de Apoio Empresarial) - multi-tenant.
+//
+// Convencao de nomes: campos em camelCase no Prisma Client (idiomatico em
+// JS), mapeados via @map/@@map para as colunas/tabelas em snake_case no
+// MySQL (convencao já usada no restante do projeto).
+//
+// IDs: INT UNSIGNED AUTO_INCREMENT (nao BIGINT UNSIGNED). O Prisma mapeia
+// BIGINT para o tipo BigInt do JS, que nao serializa em JSON por padrao e
+// exigiria conversoes manuais em toda rota. INT UNSIGNED suporta ~4.29
+// bilhoes de linhas por tabela - de sobra para um SaaS de pequenos
+// negocios - e mapeia para "number" comum, evitando esse atrito.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+  // "prisma migrate dev" precisa criar/derrubar um banco temporario para
+  // calcular o diff de schema. O usuario da aplicacao (sae_app) so tem
+  // grants no banco "sae" (concedidos automaticamente pelo docker-compose
+  // via MYSQL_USER/MYSQL_DATABASE), sem permissao de CREATE DATABASE - por
+  // isso o shadow database usa as credenciais de root, so em dev.
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+enum RoleUsuario {
+  admin
+  gerente
+  vendedor
+}
+
+/// Nivel de assinatura da empresa. Nao e um flag "ativo/inativo" - o valor
+/// EM SI e o plano atual (gratuito e um estado normal, nao "inativo").
+enum PlanoEmpresa {
+  gratuito
+  apoiador
+}
+
+/// Tipo de documento fiscal da empresa - decide se `Empresa.documento` e um
+/// CPF (11 digitos, pessoa fisica/MEI) ou um CNPJ (14 digitos, pessoa
+/// juridica). Modelado como enum (nao String solto) pelo mesmo motivo de
+/// RoleUsuario/PlanoEmpresa acima: valida na propria coluna do MySQL, sem
+/// depender so da validacao da aplicacao.
+enum TipoPessoa {
+  PF
+  PJ
+}
+
+/// Categoria do evento na Agenda (hub que unifica vendas, contas a pagar/
+/// receber e lembretes soltos num so calendario). Enum (nao String solto)
+/// pelo mesmo motivo de RoleUsuario/PlanoEmpresa/TipoPessoa acima.
+enum TipoTarefa {
+  pagamento
+  recebimento
+  venda
+  lembrete
+}
+
+/// Direcao do Lancamento no caixa da empresa. Em MAIUSCULO (diferente dos
+/// enums acima, todos lowercase) porque foi o valor pedido explicitamente
+/// nesta tarefa - inconsistencia de convencao sinalizada aqui de proposito,
+/// nao um esquecimento.
+enum TipoLancamento {
+  ENTRADA
+  SAIDA
+}
+
+/// Situacao de pagamento/recebimento do Lancamento - mesmo motivo do
+/// MAIUSCULO acima (valor pedido explicitamente).
+enum StatusLancamento {
+  PENDENTE
+  PAGO
+}
+
+/// Tabela "raiz" do modelo multi-tenant: Empresa.id E o tenant_id
+/// referenciado por Usuario, Produto e Venda.
+model Empresa {
+  id           Int          @id @default(autoincrement()) @db.UnsignedInt
+  razaoSocial  String       @map("razao_social") @db.VarChar(150)
+  tipoPessoa   TipoPessoa   @default(PJ) @map("tipo_pessoa")
+  // CPF (11 digitos) ou CNPJ (14 digitos), so numeros, dependendo de
+  // `tipoPessoa` - por isso VarChar(14) (tamanho maximo dos dois), nao
+  // Char(14) como era so pro CNPJ: Char faz padding com espaco ate o
+  // tamanho fixo, o que corromperia um CPF de 11 digitos.
+  documento    String       @unique @db.VarChar(14)
+  // Opcionais: nem toda empresa cadastrada vai ter preenchido de imediato.
+  endereco     String?      @db.VarChar(255)
+  telefone     String?      @db.VarChar(20)
+  // Nome do campo no Prisma e "plano" (mais claro que carrega o nivel do
+  // plano, nao um booleano) - mapeado pra coluna "plano_ativo" no MySQL.
+  plano        PlanoEmpresa @default(gratuito) @map("plano_ativo")
+  // Valor mensal que um Apoiador contribui (a "mensalidade caridosa") -
+  // Decimal (nao Float) pelo mesmo motivo de Produto.custo/precoVenda
+  // abaixo: dinheiro nunca deve usar ponto flutuante binario.
+  valorContribuicao Decimal @default(0.00) @map("valor_contribuicao") @db.Decimal(10, 2)
+  // Ramo de atuacao da empresa - decide funcionalidades extras (hoje: so
+  // "alimentos" desbloqueia Ficha Tecnica de ingredientes em Produto, ver
+  // FichaTecnica abaixo). String solto (nao enum), pedido explicitamente
+  // assim nesta tarefa - foge da convencao de enum ja usada pra outros
+  // campos de vocabulario controlado (RoleUsuario/PlanoEmpresa/TipoPessoa
+  // acima), entao a validacao de valores aceitos (`NICHOS_VALIDOS`) fica
+  // so na camada de aplicacao (empresa.service.js), nao no banco.
+  nicho        String       @default("geral") @db.VarChar(30)
+  criadoEm     DateTime     @default(now()) @map("criado_em")
+  atualizadoEm DateTime     @default(now()) @updatedAt @map("atualizado_em")
+
+  usuarios     Usuario[]
+  produtos     Produto[]
+  vendas       Venda[]
+  tarefas      Tarefa[]
+  clientes     Cliente[]
+  lancamentos  Lancamento[]
+  ingredientes Ingrediente[]
+
+  @@map("empresas")
+}
+
+model Usuario {
+  id           Int         @id @default(autoincrement()) @db.UnsignedInt
+  empresaId    Int         @map("empresa_id") @db.UnsignedInt
+  nome         String      @db.VarChar(120)
+  email        String      @db.VarChar(150)
+  senhaHash    String      @map("senha_hash") @db.VarChar(255)
+  role         RoleUsuario @default(vendedor)
+  criadoEm     DateTime    @default(now()) @map("criado_em")
+  atualizadoEm DateTime    @default(now()) @updatedAt @map("atualizado_em")
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  vendas  Venda[]
+
+  // Email e unico apenas DENTRO da mesma empresa, nao globalmente - dois
+  // tenants diferentes podem ter usuarios com o mesmo e-mail.
+  @@unique([empresaId, email], map: "uq_usuarios_empresa_email")
+  @@index([empresaId], map: "idx_usuarios_empresa_id")
+  @@map("usuarios")
+}
+
+model Produto {
+  id            Int      @id @default(autoincrement()) @db.UnsignedInt
+  empresaId     Int      @map("empresa_id") @db.UnsignedInt
+  nome          String   @db.VarChar(150)
+  custo         Decimal  @default(0.00) @db.Decimal(12, 2)
+  precoVenda    Decimal  @default(0.00) @map("preco_venda") @db.Decimal(12, 2)
+  estoqueAtual  Int      @default(0) @map("estoque_atual")
+  estoqueMinimo Int      @default(0) @map("estoque_minimo")
+  // Produto "sob encomenda" (feito na hora, sem controle de estoque
+  // tradicional) - por enquanto so um campo informativo, nenhuma regra de
+  // negocio (ex.: pular checagem de estoque em vendas.service.js) foi
+  // implementada ainda em cima dele.
+  sobDemanda    Boolean  @default(false) @map("sob_demanda")
+  criadoEm      DateTime @default(now()) @map("criado_em")
+  atualizadoEm  DateTime @default(now()) @updatedAt @map("atualizado_em")
+
+  empresa      Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  vendas       Venda[]
+  // So populado (via API) quando a empresa e do nicho "alimentos" - ver
+  // FichaTecnica abaixo e a validacao em produtos.service.js.
+  fichaTecnica FichaTecnica[]
+
+  @@index([empresaId], map: "idx_produtos_empresa_id")
+  @@index([empresaId, nome], map: "idx_produtos_empresa_nome")
+  @@index([empresaId, estoqueAtual], map: "idx_produtos_empresa_estoque")
+  @@map("produtos")
+}
+
+model Venda {
+  id            Int      @id @default(autoincrement()) @db.UnsignedInt
+  empresaId     Int      @map("empresa_id") @db.UnsignedInt
+  usuarioId     Int      @map("usuario_id") @db.UnsignedInt
+  produtoId     Int      @map("produto_id") @db.UnsignedInt
+  // Opcional: nem toda venda tem um cliente identificado (venda avulsa de
+  // balcao, por exemplo).
+  clienteId     Int?     @map("cliente_id") @db.UnsignedInt
+  quantidade    Int      @default(1)
+  precoUnitario Decimal  @default(0.00) @map("preco_unitario") @db.Decimal(12, 2)
+  total         Decimal  @default(0.00) @db.Decimal(12, 2)
+  data          DateTime @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  // Nao permite apagar um usuario que ja registrou vendas (preserva historico financeiro).
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  // Restrict (nao SetNull) pelo mesmo motivo de usuario/produto acima -
+  // preserva o vinculo financeiro entre venda e cliente; apagar um cliente
+  // com vendas registradas nao e permitido.
+  cliente Cliente? @relation(fields: [clienteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([empresaId], map: "idx_vendas_empresa_id")
+  @@index([empresaId, data], map: "idx_vendas_empresa_data")
+  @@index([usuarioId], map: "idx_vendas_usuario_id")
+  @@index([empresaId, produtoId], map: "idx_vendas_empresa_produto")
+  @@index([clienteId], map: "idx_vendas_cliente_id")
+  @@map("vendas")
+}
+
+/// Cadastro simples de clientes, usado pra atrelar vendas a uma pessoa
+/// identificada (opcional - ver Venda.clienteId). CRUD "basico" por
+/// enquanto: so criar e listar (clientes.controller.js) - editar/excluir
+/// ficam pra uma proxima tarefa.
+model Cliente {
+  id           Int      @id @default(autoincrement()) @db.UnsignedInt
+  empresaId    Int      @map("empresa_id") @db.UnsignedInt
+  nome         String   @db.VarChar(120)
+  telefone     String?  @db.VarChar(20)
+  email        String?  @db.VarChar(150)
+  dataCadastro DateTime @default(now()) @map("data_cadastro")
+  atualizadoEm DateTime @default(now()) @updatedAt @map("atualizado_em")
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  vendas  Venda[]
+
+  @@index([empresaId], map: "idx_clientes_empresa_id")
+  @@map("clientes")
+}
+
+/// Motor da Agenda (hub que unifica vendas, contas a pagar/receber e
+/// lembretes soltos num unico calendario). Por enquanto so o schema existe
+/// - a rota GET /agenda/:mes_ano ainda devolve dados MOCKADOS (ver
+/// agenda.controller.js), nao consulta esta tabela; nenhuma rota de
+/// escrita (criar/editar/concluir Tarefa) foi criada ainda.
+model Tarefa {
+  id             Int        @id @default(autoincrement()) @db.UnsignedInt
+  empresaId      Int        @map("empresa_id") @db.UnsignedInt
+  titulo         String     @db.VarChar(150)
+  // Opcional: nem todo evento (ex.: uma venda) precisa de detalhamento extra.
+  descricao      String?    @db.VarChar(500)
+  dataVencimento DateTime   @map("data_vencimento")
+  tipo           TipoTarefa
+  statusConcluida Boolean   @default(false) @map("status_concluida")
+  criadoEm       DateTime   @default(now()) @map("criado_em")
+  atualizadoEm   DateTime   @default(now()) @updatedAt @map("atualizado_em")
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([empresaId], map: "idx_tarefas_empresa_id")
+  // Consulta real de toda tela de Agenda: "tarefas desta empresa neste mes"
+  // (WHERE empresa_id = ? AND data_vencimento BETWEEN ? AND ?).
+  @@index([empresaId, dataVencimento], map: "idx_tarefas_empresa_data")
+  @@map("tarefas")
+}
+
+/// Motor de Lancamentos: receitas e despesas avulsas da loja (contas a
+/// pagar/receber que nao vem de uma Venda) - base do modulo financeiro.
+/// CRUD completo desde o inicio (diferente de Cliente/Tarefa acima, que
+/// nasceram so com create/list) porque foi isso que a tarefa pediu.
+model Lancamento {
+  id             Int              @id @default(autoincrement()) @db.UnsignedInt
+  empresaId      Int              @map("empresa_id") @db.UnsignedInt
+  descricao      String           @db.VarChar(200)
+  // Decimal (nao Float) - mesmo motivo de Produto.custo/precoVenda e
+  // Empresa.valorContribuicao: dinheiro nunca usa ponto flutuante binario.
+  valor          Decimal          @db.Decimal(12, 2)
+  tipo           TipoLancamento
+  dataVencimento DateTime         @map("data_vencimento")
+  // Opcional: so preenchido quando o lancamento e efetivamente baixado
+  // (status muda pra PAGO nesse momento).
+  dataPagamento  DateTime?        @map("data_pagamento")
+  status         StatusLancamento @default(PENDENTE)
+  criadoEm       DateTime         @default(now()) @map("criado_em")
+  atualizadoEm   DateTime         @default(now()) @updatedAt @map("atualizado_em")
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([empresaId], map: "idx_lancamentos_empresa_id")
+  // Consulta provavel da tela de Lancamentos: "contas desta empresa por
+  // vencimento" (fluxo de caixa/lista ordenada por data).
+  @@index([empresaId, dataVencimento], map: "idx_lancamentos_empresa_vencimento")
+  // Consulta provavel: "pendencias desta empresa" (filtro por status).
+  @@index([empresaId, status], map: "idx_lancamentos_empresa_status")
+  @@map("lancamentos")
+}
+
+/// Materia-prima de empresas do nicho "alimentos" (ver Empresa.nicho) -
+/// insumos usados na producao dos produtos, com controle de estoque
+/// proprio, separado do estoque de Produto (que conta unidades PRONTAS
+/// pra vender, nao os ingredientes que as compoem).
+model Ingrediente {
+  id        Int @id @default(autoincrement()) @db.UnsignedInt
+  empresaId Int @map("empresa_id") @db.UnsignedInt
+  nome      String @db.VarChar(120)
+  // "kg", "g", "l", "ml", "un" etc - String solto (nao enum), mesmo motivo
+  // de Empresa.nicho acima (pedido explicito da tarefa); validado na
+  // aplicacao via `UNIDADES_MEDIDA_VALIDAS` (ingredientes.service.js).
+  unidadeMedida String  @map("unidade_medida") @db.VarChar(10)
+  // Decimal (nao Float) - mesmo motivo de Produto.custo/precoVenda: dinheiro
+  // nunca usa ponto flutuante binario.
+  custoUnitario Decimal @default(0.00) @map("custo_unitario") @db.Decimal(12, 2)
+  // Decimal (nao Int, diferente de Produto.estoqueAtual) - ingrediente e
+  // medido em unidade de massa/volume/unidade (kg, l, un), entao o estoque
+  // pode ser fracionario (ex.: "2.500 kg de farinha restantes"). 3 casas
+  // decimais cobre precisao de grama dentro de um total em kg.
+  estoqueAtual  Decimal @default(0.000) @map("estoque_atual") @db.Decimal(12, 3)
+  criadoEm      DateTime @default(now()) @map("criado_em")
+  atualizadoEm  DateTime @default(now()) @updatedAt @map("atualizado_em")
+
+  empresa      Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  fichaTecnica FichaTecnica[]
+
+  @@index([empresaId], map: "idx_ingredientes_empresa_id")
+  @@index([empresaId, nome], map: "idx_ingredientes_empresa_nome")
+  @@map("ingredientes")
+}
+
+/// Tabela relacional: define quais ingredientes (e em que quantidade) compoem
+/// um Produto - a "receita"/ficha tecnica usada por empresas do nicho
+/// "alimentos". Sem `empresa_id` proprio (o pedido especificou so
+/// id/produto_id/ingrediente_id/quantidade_usada) - o isolamento de tenant
+/// e garantido indiretamente, exigindo que tanto `produtoId` quanto
+/// `ingredienteId` pertencam ao `tenantId` do request antes de gravar
+/// (ver produtos.service.js).
+model FichaTecnica {
+  id             Int     @id @default(autoincrement()) @db.UnsignedInt
+  produtoId      Int     @map("produto_id") @db.UnsignedInt
+  ingredienteId  Int     @map("ingrediente_id") @db.UnsignedInt
+  // Quantidade do ingrediente consumida por 1 unidade do produto (mesma
+  // unidade de medida do Ingrediente - ex.: 0.150 kg de farinha por pao).
+  quantidadeUsada Decimal @map("quantidade_usada") @db.Decimal(12, 3)
+
+  // Cascade: a ficha tecnica nao tem sentido sem o produto - apagar o
+  // produto apaga sua receita junto.
+  produto     Produto     @relation(fields: [produtoId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  // Restrict (nao Cascade) - mesma logica ja usada em Venda.produtoId/
+  // usuarioId: nao permite apagar um ingrediente que ja esta em uso numa
+  // receita, pra nao quebrar a ficha tecnica de um produto silenciosamente.
+  ingrediente Ingrediente @relation(fields: [ingredienteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  // Um ingrediente so pode aparecer 1 vez na receita de um mesmo produto -
+  // pra ajustar a quantidade de um ingrediente ja vinculado, atualiza a
+  // linha existente em vez de duplicar.
+  @@unique([produtoId, ingredienteId], map: "uq_ficha_tecnica_produto_ingrediente")
+  @@index([produtoId], map: "idx_ficha_tecnica_produto_id")
+  @@index([ingredienteId], map: "idx_ficha_tecnica_ingrediente_id")
+  @@map("ficha_tecnica")
+}

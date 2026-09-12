@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SAE — Painel</title>
+    <script>
+      // Aplica o tema salvo ANTES do React montar, pra nao piscar
+      // claro->escuro (ou vice-versa) no primeiro carregamento da pagina.
+      (function () {
+        try {
+          var salvo = localStorage.getItem('sae_theme');
+          var prefereEscuro = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (salvo === 'dark' || (!salvo && prefereEscuro)) {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (erro) {
+          // localStorage pode estar bloqueado (modo privado restrito) - ignora e segue no claro.
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

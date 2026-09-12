@@ -1,0 +1,308 @@
+
+> sae-api@1.0.0 dev
+> nodemon src/server.js
+
+[33m[nodemon] 3.1.14[39m
+[33m[nodemon] to restart at any time, enter `rs`[39m
+[33m[nodemon] watching path(s): *.*[39m
+[33m[nodemon] watching extensions: js,mjs,cjs,json[39m
+[32m[nodemon] starting `node src/server.js`[39m
+{"level":30,"time":1788828609808,"pid":22816,"hostname":"Encoding-M","msg":"Conexao com o MySQL (Prisma) estabelecida."}
+{"level":30,"time":1788828609836,"pid":22816,"hostname":"Encoding-M","msg":"Server listening at http://127.0.0.1:3000"}
+{"level":30,"time":1788828609836,"pid":22816,"hostname":"Encoding-M","msg":"Server listening at http://26.45.220.254:3000"}
+{"level":30,"time":1788828609836,"pid":22816,"hostname":"Encoding-M","msg":"Server listening at http://172.21.64.1:3000"}
+{"level":30,"time":1788828609836,"pid":22816,"hostname":"Encoding-M","msg":"Server listening at http://192.168.1.9:3000"}
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `node src/server.js`[39m
+{"level":30,"time":1788828624753,"pid":35524,"hostname":"Encoding-M","msg":"Conexao com o MySQL (Prisma) estabelecida."}
+{"level":30,"time":1788828624781,"pid":35524,"hostname":"Encoding-M","msg":"Server listening at http://127.0.0.1:3000"}
+{"level":30,"time":1788828624781,"pid":35524,"hostname":"Encoding-M","msg":"Server listening at http://26.45.220.254:3000"}
+{"level":30,"time":1788828624781,"pid":35524,"hostname":"Encoding-M","msg":"Server listening at http://172.21.64.1:3000"}
+{"level":30,"time":1788828624781,"pid":35524,"hostname":"Encoding-M","msg":"Server listening at http://192.168.1.9:3000"}
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `node src/server.js`[39m
+{"level":30,"time":1788828632600,"pid":23916,"hostname":"Encoding-M","msg":"Conexao com o MySQL (Prisma) estabelecida."}
+{"level":30,"time":1788828632628,"pid":23916,"hostname":"Encoding-M","msg":"Server listening at http://127.0.0.1:3000"}
+{"level":30,"time":1788828632628,"pid":23916,"hostname":"Encoding-M","msg":"Server listening at http://26.45.220.254:3000"}
+{"level":30,"time":1788828632628,"pid":23916,"hostname":"Encoding-M","msg":"Server listening at http://172.21.64.1:3000"}
+{"level":30,"time":1788828632628,"pid":23916,"hostname":"Encoding-M","msg":"Server listening at http://192.168.1.9:3000"}
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `node src/server.js`[39m
+{"level":30,"time":1788828638267,"pid":47008,"hostname":"Encoding-M","msg":"Conexao com o MySQL (Prisma) estabelecida."}
+{"level":30,"time":1788828638295,"pid":47008,"hostname":"Encoding-M","msg":"Server listening at http://127.0.0.1:3000"}
+{"level":30,"time":1788828638295,"pid":47008,"hostname":"Encoding-M","msg":"Server listening at http://26.45.220.254:3000"}
+{"level":30,"time":1788828638295,"pid":47008,"hostname":"Encoding-M","msg":"Server listening at http://172.21.64.1:3000"}
+{"level":30,"time":1788828638295,"pid":47008,"hostname":"Encoding-M","msg":"Server listening at http://192.168.1.9:3000"}
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `node src/server.js`[39m
+{"level":30,"time":1788828646607,"pid":12156,"hostname":"Encoding-M","msg":"Conexao com o MySQL (Prisma) estabelecida."}
+{"level":30,"time":1788828646634,"pid":12156,"hostname":"Encoding-M","msg":"Server listening at http://127.0.0.1:3000"}
+{"level":30,"time":1788828646634,"pid":12156,"hostname":"Encoding-M","msg":"Server listening at http://26.45.220.254:3000"}
+{"level":30,"time":1788828646634,"pid":12156,"hostname":"Encoding-M","msg":"Server listening at http://172.21.64.1:3000"}
+{"level":30,"time":1788828646634,"pid":12156,"hostname":"Encoding-M","msg":"Server listening at http://192.168.1.9:3000"}
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `node src/server.js`[39m
+{"level":30,"time":1788828652695,"pid":18360,"hostname":"Encoding-M","msg":"Conexao com o MySQL (Prisma) estabelecida."}
+{"level":30,"time":1788828652722,"pid":18360,"hostname":"Encoding-M","msg":"Server listening at http://127.0.0.1:3000"}
+{"level":30,"time":1788828652722,"pid":18360,"hostname":"Encoding-M","msg":"Server listening at http://26.45.220.254:3000"}
+{"level":30,"time":1788828652722,"pid":18360,"hostname":"Encoding-M","msg":"Server listening at http://172.21.64.1:3000"}
+{"level":30,"time":1788828652722,"pid":18360,"hostname":"Encoding-M","msg":"Server listening at http://192.168.1.9:3000"}
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `node src/server.js`[39m
+{"level":30,"time":1788828657741,"pid":41612,"hostname":"Encoding-M","msg":"Conexao com o MySQL (Prisma) estabelecida."}
+{"level":30,"time":1788828657771,"pid":41612,"hostname":"Encoding-M","msg":"Server listening at http://127.0.0.1:3000"}
+{"level":30,"time":1788828657771,"pid":41612,"hostname":"Encoding-M","msg":"Server listening at http://26.45.220.254:3000"}
+{"level":30,"time":1788828657771,"pid":41612,"hostname":"Encoding-M","msg":"Server listening at http://172.21.64.1:3000"}
+{"level":30,"time":1788828657771,"pid":41612,"hostname":"Encoding-M","msg":"Server listening at http://192.168.1.9:3000"}
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `node src/server.js`[39m
+{"level":30,"time":1788828667917,"pid":26592,"hostname":"Encoding-M","msg":"Conexao com o MySQL (Prisma) estabelecida."}
+{"level":30,"time":1788828667948,"pid":26592,"hostname":"Encoding-M","msg":"Server listening at http://127.0.0.1:3000"}
+{"level":30,"time":1788828667948,"pid":26592,"hostname":"Encoding-M","msg":"Server listening at http://26.45.220.254:3000"}
+{"level":30,"time":1788828667948,"pid":26592,"hostname":"Encoding-M","msg":"Server listening at http://172.21.64.1:3000"}
+{"level":30,"time":1788828667948,"pid":26592,"hostname":"Encoding-M","msg":"Server listening at http://192.168.1.9:3000"}
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `node src/server.js`[39m
+{"level":30,"time":1788828692311,"pid":46316,"hostname":"Encoding-M","msg":"Conexao com o MySQL (Prisma) estabelecida."}
+{"level":30,"time":1788828692339,"pid":46316,"hostname":"Encoding-M","msg":"Server listening at http://127.0.0.1:3000"}
+{"level":30,"time":1788828692339,"pid":46316,"hostname":"Encoding-M","msg":"Server listening at http://26.45.220.254:3000"}
+{"level":30,"time":1788828692339,"pid":46316,"hostname":"Encoding-M","msg":"Server listening at http://172.21.64.1:3000"}
+{"level":30,"time":1788828692339,"pid":46316,"hostname":"Encoding-M","msg":"Server listening at http://192.168.1.9:3000"}
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `node src/server.js`[39m
+{"level":30,"time":1788828701226,"pid":14004,"hostname":"Encoding-M","msg":"Conexao com o MySQL (Prisma) estabelecida."}
+{"level":30,"time":1788828701255,"pid":14004,"hostname":"Encoding-M","msg":"Server listening at http://127.0.0.1:3000"}
+{"level":30,"time":1788828701255,"pid":14004,"hostname":"Encoding-M","msg":"Server listening at http://26.45.220.254:3000"}
+{"level":30,"time":1788828701255,"pid":14004,"hostname":"Encoding-M","msg":"Server listening at http://172.21.64.1:3000"}
+{"level":30,"time":1788828701255,"pid":14004,"hostname":"Encoding-M","msg":"Server listening at http://192.168.1.9:3000"}
+{"level":30,"time":1788828719999,"pid":14004,"hostname":"Encoding-M","reqId":"req-1","req":{"method":"GET","url":"/health","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":58005},"msg":"incoming request"}
+{"level":30,"time":1788828720003,"pid":14004,"hostname":"Encoding-M","reqId":"req-1","res":{"statusCode":200},"responseTime":3.2546000000002095,"msg":"request completed"}
+{"level":30,"time":1788828755828,"pid":14004,"hostname":"Encoding-M","reqId":"req-2","req":{"method":"POST","url":"/auth/register","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":49696},"msg":"incoming request"}
+{"level":30,"time":1788828755915,"pid":14004,"hostname":"Encoding-M","reqId":"req-2","res":{"statusCode":201},"responseTime":87.55870000000141,"msg":"request completed"}
+{"level":30,"time":1788828755923,"pid":14004,"hostname":"Encoding-M","reqId":"req-3","req":{"method":"POST","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":49699},"msg":"incoming request"}
+{"level":30,"time":1788828755934,"pid":14004,"hostname":"Encoding-M","reqId":"req-3","res":{"statusCode":201},"responseTime":10.624300000003132,"msg":"request completed"}
+{"level":30,"time":1788828755935,"pid":14004,"hostname":"Encoding-M","reqId":"req-4","req":{"method":"POST","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":49696},"msg":"incoming request"}
+{"level":30,"time":1788828755943,"pid":14004,"hostname":"Encoding-M","reqId":"req-4","res":{"statusCode":201},"responseTime":7.340500000005704,"msg":"request completed"}
+{"level":30,"time":1788828755945,"pid":14004,"hostname":"Encoding-M","reqId":"req-5","req":{"method":"PUT","url":"/produtos/9","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":49699},"msg":"incoming request"}
+{"level":30,"time":1788828755956,"pid":14004,"hostname":"Encoding-M","reqId":"req-5","res":{"statusCode":200},"responseTime":11.373099999997066,"msg":"request completed"}
+{"level":30,"time":1788828755957,"pid":14004,"hostname":"Encoding-M","reqId":"req-6","req":{"method":"GET","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":49696},"msg":"incoming request"}
+{"level":30,"time":1788828755958,"pid":14004,"hostname":"Encoding-M","reqId":"req-6","res":{"statusCode":401},"responseTime":0.5398999999961234,"msg":"request completed"}
+{"level":30,"time":1788828755959,"pid":14004,"hostname":"Encoding-M","reqId":"req-7","req":{"method":"POST","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":49699},"msg":"incoming request"}
+{"level":30,"time":1788828755960,"pid":14004,"hostname":"Encoding-M","reqId":"req-7","res":{"statusCode":401},"responseTime":0.47470000000612345,"msg":"request completed"}
+{"level":30,"time":1788828755961,"pid":14004,"hostname":"Encoding-M","reqId":"req-8","req":{"method":"POST","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":49696},"msg":"incoming request"}
+{"level":30,"time":1788828755972,"pid":14004,"hostname":"Encoding-M","reqId":"req-8","res":{"statusCode":201},"responseTime":11.278700000002573,"msg":"request completed"}
+{"level":30,"time":1788828755974,"pid":14004,"hostname":"Encoding-M","reqId":"req-9","req":{"method":"POST","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":49699},"msg":"incoming request"}
+{"level":30,"time":1788828755984,"pid":14004,"hostname":"Encoding-M","reqId":"req-9","res":{"statusCode":201},"responseTime":10.201900000000023,"msg":"request completed"}
+{"level":30,"time":1788828755987,"pid":14004,"hostname":"Encoding-M","reqId":"req-a","req":{"method":"POST","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":49696},"msg":"incoming request"}
+{"level":30,"time":1788828755988,"pid":14004,"hostname":"Encoding-M","reqId":"req-a","res":{"statusCode":400},"responseTime":1.4205000000001746,"msg":"request completed"}
+{"level":30,"time":1788828755989,"pid":14004,"hostname":"Encoding-M","reqId":"req-b","req":{"method":"GET","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":49699},"msg":"incoming request"}
+{"level":30,"time":1788828755993,"pid":14004,"hostname":"Encoding-M","reqId":"req-b","res":{"statusCode":200},"responseTime":3.705199999996694,"msg":"request completed"}
+{"level":30,"time":1788828755994,"pid":14004,"hostname":"Encoding-M","reqId":"req-c","req":{"method":"POST","url":"/auth/register","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":49696},"msg":"incoming request"}
+{"level":30,"time":1788828756063,"pid":14004,"hostname":"Encoding-M","reqId":"req-c","res":{"statusCode":201},"responseTime":68.76039999999921,"msg":"request completed"}
+{"level":30,"time":1788828756064,"pid":14004,"hostname":"Encoding-M","reqId":"req-d","req":{"method":"GET","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":49699},"msg":"incoming request"}
+{"level":30,"time":1788828756066,"pid":14004,"hostname":"Encoding-M","reqId":"req-d","res":{"statusCode":200},"responseTime":1.7344999999986612,"msg":"request completed"}
+{"level":30,"time":1788828756067,"pid":14004,"hostname":"Encoding-M","reqId":"req-e","req":{"method":"POST","url":"/vendas","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":49696},"msg":"incoming request"}
+{"level":30,"time":1788828756090,"pid":14004,"hostname":"Encoding-M","reqId":"req-e","res":{"statusCode":201},"responseTime":22.84389999999985,"msg":"request completed"}
+{"level":30,"time":1788828756093,"pid":14004,"hostname":"Encoding-M","reqId":"req-f","req":{"method":"POST","url":"/vendas","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":49699},"msg":"incoming request"}
+{"level":30,"time":1788828756107,"pid":14004,"hostname":"Encoding-M","reqId":"req-f","res":{"statusCode":201},"responseTime":14.078099999998813,"msg":"request completed"}
+{"level":30,"time":1788828756108,"pid":14004,"hostname":"Encoding-M","reqId":"req-g","req":{"method":"POST","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":49696},"msg":"incoming request"}
+{"level":30,"time":1788828756114,"pid":14004,"hostname":"Encoding-M","reqId":"req-g","res":{"statusCode":201},"responseTime":6.124000000003434,"msg":"request completed"}
+{"level":30,"time":1788828756115,"pid":14004,"hostname":"Encoding-M","reqId":"req-h","req":{"method":"POST","url":"/vendas","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":49699},"msg":"incoming request"}
+{"level":40,"time":1788828756122,"pid":14004,"hostname":"Encoding-M","reqId":"req-h","err":{"type":"AppError","message":"Cliente nao encontrado.","stack":"AppError: Cliente nao encontrado.\n    at D:\\Sistema de Apoio Empresarial (SAE)\\api\\src\\services\\vendas.service.js:50:15\n    at async Proxy._transactionWithCallback (D:\\Sistema de Apoio Empresarial (SAE)\\api\\node_modules\\@prisma\\client\\runtime\\library.js:130:8120)\n    at async Object.create (D:\\Sistema de Apoio Empresarial (SAE)\\api\\src\\controllers\\vendas.controller.js:10:21)","name":"AppError","statusCode":404},"msg":"Cliente nao encontrado."}
+{"level":30,"time":1788828756123,"pid":14004,"hostname":"Encoding-M","reqId":"req-h","res":{"statusCode":404},"responseTime":8.27100000000064,"msg":"request completed"}
+{"level":30,"time":1788828756124,"pid":14004,"hostname":"Encoding-M","reqId":"req-i","req":{"method":"POST","url":"/vendas","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":49696},"msg":"incoming request"}
+{"level":40,"time":1788828756130,"pid":14004,"hostname":"Encoding-M","reqId":"req-i","err":{"type":"AppError","message":"Cliente nao encontrado.","stack":"AppError: Cliente nao encontrado.\n    at D:\\Sistema de Apoio Empresarial (SAE)\\api\\src\\services\\vendas.service.js:50:15\n    at async Proxy._transactionWithCallback (D:\\Sistema de Apoio Empresarial (SAE)\\api\\node_modules\\@prisma\\client\\runtime\\library.js:130:8120)\n    at async Object.create (D:\\Sistema de Apoio Empresarial (SAE)\\api\\src\\controllers\\vendas.controller.js:10:21)","name":"AppError","statusCode":404},"msg":"Cliente nao encontrado."}
+{"level":30,"time":1788828756130,"pid":14004,"hostname":"Encoding-M","reqId":"req-i","res":{"statusCode":404},"responseTime":5.909800000001269,"msg":"request completed"}
+{"level":30,"time":1788828768963,"pid":14004,"hostname":"Encoding-M","reqId":"req-j","req":{"method":"GET","url":"/health","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":57220},"msg":"incoming request"}
+{"level":30,"time":1788828768964,"pid":14004,"hostname":"Encoding-M","reqId":"req-j","res":{"statusCode":200},"responseTime":0.5124999999970896,"msg":"request completed"}
+{"level":30,"time":1788828842743,"pid":14004,"hostname":"Encoding-M","reqId":"req-k","req":{"method":"OPTIONS","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60749},"msg":"incoming request"}
+{"level":30,"time":1788828842743,"pid":14004,"hostname":"Encoding-M","reqId":"req-k","res":{"statusCode":204},"responseTime":0.4803000000247266,"msg":"request completed"}
+{"level":30,"time":1788828842743,"pid":14004,"hostname":"Encoding-M","reqId":"req-l","req":{"method":"OPTIONS","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":63372},"msg":"incoming request"}
+{"level":30,"time":1788828842744,"pid":14004,"hostname":"Encoding-M","reqId":"req-l","res":{"statusCode":204},"responseTime":0.12100000001373701,"msg":"request completed"}
+{"level":30,"time":1788828842747,"pid":14004,"hostname":"Encoding-M","reqId":"req-m","req":{"method":"GET","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":63372},"msg":"incoming request"}
+{"level":30,"time":1788828842751,"pid":14004,"hostname":"Encoding-M","reqId":"req-m","res":{"statusCode":200},"responseTime":4.249599999981001,"msg":"request completed"}
+{"level":30,"time":1788828842754,"pid":14004,"hostname":"Encoding-M","reqId":"req-n","req":{"method":"GET","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60749},"msg":"incoming request"}
+{"level":30,"time":1788828842757,"pid":14004,"hostname":"Encoding-M","reqId":"req-n","res":{"statusCode":200},"responseTime":2.181299999996554,"msg":"request completed"}
+{"level":30,"time":1788828844271,"pid":14004,"hostname":"Encoding-M","reqId":"req-o","req":{"method":"OPTIONS","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60749},"msg":"incoming request"}
+{"level":30,"time":1788828844271,"pid":14004,"hostname":"Encoding-M","reqId":"req-o","res":{"statusCode":204},"responseTime":0.2943999999843072,"msg":"request completed"}
+{"level":30,"time":1788828844271,"pid":14004,"hostname":"Encoding-M","reqId":"req-p","req":{"method":"OPTIONS","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":63372},"msg":"incoming request"}
+{"level":30,"time":1788828844272,"pid":14004,"hostname":"Encoding-M","reqId":"req-p","res":{"statusCode":204},"responseTime":0.1489000000001397,"msg":"request completed"}
+{"level":30,"time":1788828844284,"pid":14004,"hostname":"Encoding-M","reqId":"req-q","req":{"method":"GET","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":63372},"msg":"incoming request"}
+{"level":30,"time":1788828844288,"pid":14004,"hostname":"Encoding-M","reqId":"req-q","res":{"statusCode":200},"responseTime":3.92949999999837,"msg":"request completed"}
+{"level":30,"time":1788828844295,"pid":14004,"hostname":"Encoding-M","reqId":"req-r","req":{"method":"GET","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60749},"msg":"incoming request"}
+{"level":30,"time":1788828844298,"pid":14004,"hostname":"Encoding-M","reqId":"req-r","res":{"statusCode":200},"responseTime":2.6367999999783933,"msg":"request completed"}
+{"level":30,"time":1788828848564,"pid":14004,"hostname":"Encoding-M","reqId":"req-s","req":{"method":"OPTIONS","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60749},"msg":"incoming request"}
+{"level":30,"time":1788828848564,"pid":14004,"hostname":"Encoding-M","reqId":"req-s","res":{"statusCode":204},"responseTime":0.3655000000144355,"msg":"request completed"}
+{"level":30,"time":1788828848564,"pid":14004,"hostname":"Encoding-M","reqId":"req-t","req":{"method":"OPTIONS","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":63372},"msg":"incoming request"}
+{"level":30,"time":1788828848565,"pid":14004,"hostname":"Encoding-M","reqId":"req-t","res":{"statusCode":204},"responseTime":0.20050000000628643,"msg":"request completed"}
+{"level":30,"time":1788828848573,"pid":14004,"hostname":"Encoding-M","reqId":"req-u","req":{"method":"GET","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":63372},"msg":"incoming request"}
+{"level":30,"time":1788828848576,"pid":14004,"hostname":"Encoding-M","reqId":"req-u","res":{"statusCode":200},"responseTime":2.8066999999864493,"msg":"request completed"}
+{"level":30,"time":1788828848579,"pid":14004,"hostname":"Encoding-M","reqId":"req-v","req":{"method":"GET","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60749},"msg":"incoming request"}
+{"level":30,"time":1788828848582,"pid":14004,"hostname":"Encoding-M","reqId":"req-v","res":{"statusCode":200},"responseTime":3.1739999999990687,"msg":"request completed"}
+{"level":30,"time":1788828849366,"pid":14004,"hostname":"Encoding-M","reqId":"req-w","req":{"method":"OPTIONS","url":"/agenda/09-2026","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60749},"msg":"incoming request"}
+{"level":30,"time":1788828849367,"pid":14004,"hostname":"Encoding-M","reqId":"req-w","res":{"statusCode":204},"responseTime":0.3642999999865424,"msg":"request completed"}
+{"level":30,"time":1788828849367,"pid":14004,"hostname":"Encoding-M","reqId":"req-x","req":{"method":"OPTIONS","url":"/agenda/09-2026","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":63372},"msg":"incoming request"}
+{"level":30,"time":1788828849367,"pid":14004,"hostname":"Encoding-M","reqId":"req-x","res":{"statusCode":204},"responseTime":0.21780000001308508,"msg":"request completed"}
+{"level":30,"time":1788828849379,"pid":14004,"hostname":"Encoding-M","reqId":"req-y","req":{"method":"GET","url":"/agenda/09-2026","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60749},"msg":"incoming request"}
+{"level":30,"time":1788828849381,"pid":14004,"hostname":"Encoding-M","reqId":"req-y","res":{"statusCode":200},"responseTime":1.0879999999888241,"msg":"request completed"}
+{"level":30,"time":1788828849384,"pid":14004,"hostname":"Encoding-M","reqId":"req-z","req":{"method":"GET","url":"/agenda/09-2026","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":63372},"msg":"incoming request"}
+{"level":30,"time":1788828849385,"pid":14004,"hostname":"Encoding-M","reqId":"req-z","res":{"statusCode":200},"responseTime":0.7019000000145752,"msg":"request completed"}
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `node src/server.js`[39m
+{"level":30,"time":1788828995102,"pid":3884,"hostname":"Encoding-M","msg":"Conexao com o MySQL (Prisma) estabelecida."}
+{"level":30,"time":1788828995133,"pid":3884,"hostname":"Encoding-M","msg":"Server listening at http://127.0.0.1:3000"}
+{"level":30,"time":1788828995133,"pid":3884,"hostname":"Encoding-M","msg":"Server listening at http://26.45.220.254:3000"}
+{"level":30,"time":1788828995133,"pid":3884,"hostname":"Encoding-M","msg":"Server listening at http://172.21.64.1:3000"}
+{"level":30,"time":1788828995133,"pid":3884,"hostname":"Encoding-M","msg":"Server listening at http://192.168.1.9:3000"}
+{"level":30,"time":1788829134785,"pid":3884,"hostname":"Encoding-M","reqId":"req-1","req":{"method":"GET","url":"/health","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":61398},"msg":"incoming request"}
+{"level":30,"time":1788829134788,"pid":3884,"hostname":"Encoding-M","reqId":"req-1","res":{"statusCode":200},"responseTime":3.2207000000053085,"msg":"request completed"}
+{"level":30,"time":1788829185322,"pid":3884,"hostname":"Encoding-M","reqId":"req-2","req":{"method":"OPTIONS","url":"/auth/register","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60782},"msg":"incoming request"}
+{"level":30,"time":1788829185322,"pid":3884,"hostname":"Encoding-M","reqId":"req-2","res":{"statusCode":204},"responseTime":0.45579999999608845,"msg":"request completed"}
+{"level":30,"time":1788829185323,"pid":3884,"hostname":"Encoding-M","reqId":"req-3","req":{"method":"POST","url":"/auth/register","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60782},"msg":"incoming request"}
+{"level":30,"time":1788829185405,"pid":3884,"hostname":"Encoding-M","reqId":"req-3","res":{"statusCode":201},"responseTime":82.22810000000754,"msg":"request completed"}
+{"level":30,"time":1788829185414,"pid":3884,"hostname":"Encoding-M","reqId":"req-4","req":{"method":"OPTIONS","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60782},"msg":"incoming request"}
+{"level":30,"time":1788829185414,"pid":3884,"hostname":"Encoding-M","reqId":"req-4","res":{"statusCode":204},"responseTime":0.27529999997932464,"msg":"request completed"}
+{"level":30,"time":1788829185415,"pid":3884,"hostname":"Encoding-M","reqId":"req-5","req":{"method":"GET","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60782},"msg":"incoming request"}
+{"level":30,"time":1788829185420,"pid":3884,"hostname":"Encoding-M","reqId":"req-5","res":{"statusCode":200},"responseTime":4.520099999994272,"msg":"request completed"}
+{"level":30,"time":1788829185480,"pid":3884,"hostname":"Encoding-M","reqId":"req-6","req":{"method":"OPTIONS","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60782},"msg":"incoming request"}
+{"level":30,"time":1788829185481,"pid":3884,"hostname":"Encoding-M","reqId":"req-6","res":{"statusCode":204},"responseTime":0.318200000008801,"msg":"request completed"}
+{"level":30,"time":1788829185481,"pid":3884,"hostname":"Encoding-M","reqId":"req-7","req":{"method":"GET","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":54486},"msg":"incoming request"}
+{"level":30,"time":1788829185482,"pid":3884,"hostname":"Encoding-M","reqId":"req-8","req":{"method":"OPTIONS","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60782},"msg":"incoming request"}
+{"level":30,"time":1788829185482,"pid":3884,"hostname":"Encoding-M","reqId":"req-8","res":{"statusCode":204},"responseTime":0.3969000000215601,"msg":"request completed"}
+{"level":30,"time":1788829185485,"pid":3884,"hostname":"Encoding-M","reqId":"req-7","res":{"statusCode":200},"responseTime":3.811199999996461,"msg":"request completed"}
+{"level":30,"time":1788829185486,"pid":3884,"hostname":"Encoding-M","reqId":"req-9","req":{"method":"GET","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60782},"msg":"incoming request"}
+{"level":30,"time":1788829185488,"pid":3884,"hostname":"Encoding-M","reqId":"req-9","res":{"statusCode":200},"responseTime":2.2543000000005122,"msg":"request completed"}
+{"level":30,"time":1788829186263,"pid":3884,"hostname":"Encoding-M","reqId":"req-a","req":{"method":"OPTIONS","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60782},"msg":"incoming request"}
+{"level":30,"time":1788829186264,"pid":3884,"hostname":"Encoding-M","reqId":"req-a","res":{"statusCode":204},"responseTime":0.36760000002686866,"msg":"request completed"}
+{"level":30,"time":1788829186264,"pid":3884,"hostname":"Encoding-M","reqId":"req-b","req":{"method":"POST","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60782},"msg":"incoming request"}
+{"level":30,"time":1788829186272,"pid":3884,"hostname":"Encoding-M","reqId":"req-b","res":{"statusCode":201},"responseTime":8.180899999977555,"msg":"request completed"}
+{"level":30,"time":1788829187479,"pid":3884,"hostname":"Encoding-M","reqId":"req-c","req":{"method":"POST","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60782},"msg":"incoming request"}
+{"level":30,"time":1788829187486,"pid":3884,"hostname":"Encoding-M","reqId":"req-c","res":{"statusCode":201},"responseTime":6.936799999995856,"msg":"request completed"}
+{"level":30,"time":1788829188199,"pid":3884,"hostname":"Encoding-M","reqId":"req-d","req":{"method":"GET","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60782},"msg":"incoming request"}
+{"level":30,"time":1788829188200,"pid":3884,"hostname":"Encoding-M","reqId":"req-e","req":{"method":"OPTIONS","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":54486},"msg":"incoming request"}
+{"level":30,"time":1788829188200,"pid":3884,"hostname":"Encoding-M","reqId":"req-e","res":{"statusCode":204},"responseTime":0.2191000000166241,"msg":"request completed"}
+{"level":30,"time":1788829188200,"pid":3884,"hostname":"Encoding-M","reqId":"req-f","req":{"method":"OPTIONS","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60888},"msg":"incoming request"}
+{"level":30,"time":1788829188200,"pid":3884,"hostname":"Encoding-M","reqId":"req-f","res":{"statusCode":204},"responseTime":0.14029999999911524,"msg":"request completed"}
+{"level":30,"time":1788829188201,"pid":3884,"hostname":"Encoding-M","reqId":"req-g","req":{"method":"GET","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":54486},"msg":"incoming request"}
+{"level":30,"time":1788829188202,"pid":3884,"hostname":"Encoding-M","reqId":"req-d","res":{"statusCode":200},"responseTime":2.6831999999994878,"msg":"request completed"}
+{"level":30,"time":1788829188202,"pid":3884,"hostname":"Encoding-M","reqId":"req-h","req":{"method":"GET","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60888},"msg":"incoming request"}
+{"level":30,"time":1788829188204,"pid":3884,"hostname":"Encoding-M","reqId":"req-g","res":{"statusCode":200},"responseTime":2.9090999999898486,"msg":"request completed"}
+{"level":30,"time":1788829188204,"pid":3884,"hostname":"Encoding-M","reqId":"req-i","req":{"method":"GET","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60782},"msg":"incoming request"}
+{"level":30,"time":1788829188206,"pid":3884,"hostname":"Encoding-M","reqId":"req-i","res":{"statusCode":200},"responseTime":1.5386999999755062,"msg":"request completed"}
+{"level":30,"time":1788829188207,"pid":3884,"hostname":"Encoding-M","reqId":"req-h","res":{"statusCode":200},"responseTime":4.995599999994738,"msg":"request completed"}
+{"level":30,"time":1788829191930,"pid":3884,"hostname":"Encoding-M","reqId":"req-j","req":{"method":"OPTIONS","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60888},"msg":"incoming request"}
+{"level":30,"time":1788829191930,"pid":3884,"hostname":"Encoding-M","reqId":"req-j","res":{"statusCode":204},"responseTime":0.18820000000414439,"msg":"request completed"}
+{"level":30,"time":1788829191931,"pid":3884,"hostname":"Encoding-M","reqId":"req-k","req":{"method":"POST","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60888},"msg":"incoming request"}
+{"level":30,"time":1788829191939,"pid":3884,"hostname":"Encoding-M","reqId":"req-k","res":{"statusCode":201},"responseTime":8.80669999998645,"msg":"request completed"}
+{"level":30,"time":1788829191995,"pid":3884,"hostname":"Encoding-M","reqId":"req-l","req":{"method":"OPTIONS","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60888},"msg":"incoming request"}
+{"level":30,"time":1788829191995,"pid":3884,"hostname":"Encoding-M","reqId":"req-l","res":{"statusCode":204},"responseTime":0.2603999999992084,"msg":"request completed"}
+{"level":30,"time":1788829191995,"pid":3884,"hostname":"Encoding-M","reqId":"req-m","req":{"method":"GET","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60782},"msg":"incoming request"}
+{"level":30,"time":1788829191996,"pid":3884,"hostname":"Encoding-M","reqId":"req-n","req":{"method":"OPTIONS","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":54486},"msg":"incoming request"}
+{"level":30,"time":1788829191996,"pid":3884,"hostname":"Encoding-M","reqId":"req-n","res":{"statusCode":204},"responseTime":0.16379999998025596,"msg":"request completed"}
+{"level":30,"time":1788829191998,"pid":3884,"hostname":"Encoding-M","reqId":"req-o","req":{"method":"OPTIONS","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60888},"msg":"incoming request"}
+{"level":30,"time":1788829191998,"pid":3884,"hostname":"Encoding-M","reqId":"req-o","res":{"statusCode":204},"responseTime":0.13810000001103617,"msg":"request completed"}
+{"level":30,"time":1788829191998,"pid":3884,"hostname":"Encoding-M","reqId":"req-p","req":{"method":"GET","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":62613},"msg":"incoming request"}
+{"level":30,"time":1788829191998,"pid":3884,"hostname":"Encoding-M","reqId":"req-q","req":{"method":"OPTIONS","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":54486},"msg":"incoming request"}
+{"level":30,"time":1788829191998,"pid":3884,"hostname":"Encoding-M","reqId":"req-q","res":{"statusCode":204},"responseTime":0.09959999998682179,"msg":"request completed"}
+{"level":30,"time":1788829191999,"pid":3884,"hostname":"Encoding-M","reqId":"req-r","req":{"method":"GET","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":61970},"msg":"incoming request"}
+{"level":30,"time":1788829191999,"pid":3884,"hostname":"Encoding-M","reqId":"req-m","res":{"statusCode":200},"responseTime":3.7543000000005122,"msg":"request completed"}
+{"level":30,"time":1788829191999,"pid":3884,"hostname":"Encoding-M","reqId":"req-s","req":{"method":"GET","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":54486},"msg":"incoming request"}
+{"level":30,"time":1788829192000,"pid":3884,"hostname":"Encoding-M","reqId":"req-p","res":{"statusCode":200},"responseTime":1.8674000000173692,"msg":"request completed"}
+{"level":30,"time":1788829192000,"pid":3884,"hostname":"Encoding-M","reqId":"req-t","req":{"method":"GET","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60782},"msg":"incoming request"}
+{"level":30,"time":1788829192001,"pid":3884,"hostname":"Encoding-M","reqId":"req-s","res":{"statusCode":200},"responseTime":1.614000000001397,"msg":"request completed"}
+{"level":30,"time":1788829192001,"pid":3884,"hostname":"Encoding-M","reqId":"req-r","res":{"statusCode":200},"responseTime":2.803299999999581,"msg":"request completed"}
+{"level":30,"time":1788829192002,"pid":3884,"hostname":"Encoding-M","reqId":"req-u","req":{"method":"GET","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":54486},"msg":"incoming request"}
+{"level":30,"time":1788829192003,"pid":3884,"hostname":"Encoding-M","reqId":"req-u","res":{"statusCode":200},"responseTime":1.581899999990128,"msg":"request completed"}
+{"level":30,"time":1788829192006,"pid":3884,"hostname":"Encoding-M","reqId":"req-t","res":{"statusCode":200},"responseTime":5.683599999989383,"msg":"request completed"}
+{"level":30,"time":1788829193781,"pid":3884,"hostname":"Encoding-M","reqId":"req-v","req":{"method":"OPTIONS","url":"/vendas","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60782},"msg":"incoming request"}
+{"level":30,"time":1788829193782,"pid":3884,"hostname":"Encoding-M","reqId":"req-v","res":{"statusCode":204},"responseTime":0.2014000000199303,"msg":"request completed"}
+{"level":30,"time":1788829193782,"pid":3884,"hostname":"Encoding-M","reqId":"req-w","req":{"method":"POST","url":"/vendas","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60782},"msg":"incoming request"}
+{"level":30,"time":1788829193803,"pid":3884,"hostname":"Encoding-M","reqId":"req-w","res":{"statusCode":201},"responseTime":21.38149999998859,"msg":"request completed"}
+{"level":30,"time":1788829193805,"pid":3884,"hostname":"Encoding-M","reqId":"req-x","req":{"method":"POST","url":"/vendas","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60782},"msg":"incoming request"}
+{"level":30,"time":1788829193814,"pid":3884,"hostname":"Encoding-M","reqId":"req-x","res":{"statusCode":201},"responseTime":9.303899999998976,"msg":"request completed"}
+{"level":30,"time":1788829195896,"pid":3884,"hostname":"Encoding-M","reqId":"req-y","req":{"method":"POST","url":"/vendas","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60782},"msg":"incoming request"}
+{"level":40,"time":1788829195904,"pid":3884,"hostname":"Encoding-M","tenantId":30,"produtoId":10,"produtoNome":"Pao Frances","estoqueAtual":0,"estoqueMinimo":5,"msg":"Alerta de estoque baixo: \"Pao Frances\" ficou com 0 unidade(s), abaixo do minimo de 5."}
+{"level":30,"time":1788829195908,"pid":3884,"hostname":"Encoding-M","reqId":"req-y","res":{"statusCode":201},"responseTime":12.08410000000731,"msg":"request completed"}
+{"level":30,"time":1788829197221,"pid":3884,"hostname":"Encoding-M","reqId":"req-z","req":{"method":"OPTIONS","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60782},"msg":"incoming request"}
+{"level":30,"time":1788829197221,"pid":3884,"hostname":"Encoding-M","reqId":"req-z","res":{"statusCode":204},"responseTime":0.2180999999982305,"msg":"request completed"}
+{"level":30,"time":1788829197221,"pid":3884,"hostname":"Encoding-M","reqId":"req-10","req":{"method":"OPTIONS","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":54486},"msg":"incoming request"}
+{"level":30,"time":1788829197221,"pid":3884,"hostname":"Encoding-M","reqId":"req-10","res":{"statusCode":204},"responseTime":0.11169999997946434,"msg":"request completed"}
+{"level":30,"time":1788829197221,"pid":3884,"hostname":"Encoding-M","reqId":"req-11","req":{"method":"OPTIONS","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":61970},"msg":"incoming request"}
+{"level":30,"time":1788829197222,"pid":3884,"hostname":"Encoding-M","reqId":"req-11","res":{"statusCode":204},"responseTime":0.16919999997480772,"msg":"request completed"}
+{"level":30,"time":1788829197222,"pid":3884,"hostname":"Encoding-M","reqId":"req-12","req":{"method":"OPTIONS","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":62613},"msg":"incoming request"}
+{"level":30,"time":1788829197222,"pid":3884,"hostname":"Encoding-M","reqId":"req-12","res":{"statusCode":204},"responseTime":0.08730000001378357,"msg":"request completed"}
+{"level":30,"time":1788829197222,"pid":3884,"hostname":"Encoding-M","reqId":"req-13","req":{"method":"OPTIONS","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60782},"msg":"incoming request"}
+{"level":30,"time":1788829197222,"pid":3884,"hostname":"Encoding-M","reqId":"req-13","res":{"statusCode":204},"responseTime":0.09419999999227002,"msg":"request completed"}
+{"level":30,"time":1788829197223,"pid":3884,"hostname":"Encoding-M","reqId":"req-14","req":{"method":"OPTIONS","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60888},"msg":"incoming request"}
+{"level":30,"time":1788829197223,"pid":3884,"hostname":"Encoding-M","reqId":"req-14","res":{"statusCode":204},"responseTime":0.08739999998942949,"msg":"request completed"}
+{"level":30,"time":1788829197223,"pid":3884,"hostname":"Encoding-M","reqId":"req-15","req":{"method":"GET","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":54486},"msg":"incoming request"}
+{"level":30,"time":1788829197223,"pid":3884,"hostname":"Encoding-M","reqId":"req-16","req":{"method":"GET","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":62613},"msg":"incoming request"}
+{"level":30,"time":1788829197223,"pid":3884,"hostname":"Encoding-M","reqId":"req-17","req":{"method":"GET","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":61970},"msg":"incoming request"}
+{"level":30,"time":1788829197225,"pid":3884,"hostname":"Encoding-M","reqId":"req-17","res":{"statusCode":200},"responseTime":1.9433999999891967,"msg":"request completed"}
+{"level":30,"time":1788829197226,"pid":3884,"hostname":"Encoding-M","reqId":"req-15","res":{"statusCode":200},"responseTime":3.0148999999801163,"msg":"request completed"}
+{"level":30,"time":1788829197226,"pid":3884,"hostname":"Encoding-M","reqId":"req-16","res":{"statusCode":200},"responseTime":2.9619999999995343,"msg":"request completed"}
+{"level":30,"time":1788829197226,"pid":3884,"hostname":"Encoding-M","reqId":"req-18","req":{"method":"GET","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":60888},"msg":"incoming request"}
+{"level":30,"time":1788829197227,"pid":3884,"hostname":"Encoding-M","reqId":"req-19","req":{"method":"GET","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":61970},"msg":"incoming request"}
+{"level":30,"time":1788829197227,"pid":3884,"hostname":"Encoding-M","reqId":"req-1a","req":{"method":"GET","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":54486},"msg":"incoming request"}
+{"level":30,"time":1788829197228,"pid":3884,"hostname":"Encoding-M","reqId":"req-19","res":{"statusCode":200},"responseTime":1.740799999999581,"msg":"request completed"}
+{"level":30,"time":1788829197229,"pid":3884,"hostname":"Encoding-M","reqId":"req-18","res":{"statusCode":200},"responseTime":2.5117000000027474,"msg":"request completed"}
+{"level":30,"time":1788829197229,"pid":3884,"hostname":"Encoding-M","reqId":"req-1a","res":{"statusCode":200},"responseTime":1.6085000000020955,"msg":"request completed"}
+{"level":30,"time":1788829234514,"pid":3884,"hostname":"Encoding-M","reqId":"req-1b","req":{"method":"GET","url":"/health","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":62665},"msg":"incoming request"}
+{"level":30,"time":1788829234514,"pid":3884,"hostname":"Encoding-M","reqId":"req-1b","res":{"statusCode":200},"responseTime":0.25280000001657754,"msg":"request completed"}
+{"level":30,"time":1788829296421,"pid":3884,"hostname":"Encoding-M","reqId":"req-1c","req":{"method":"OPTIONS","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":62234},"msg":"incoming request"}
+{"level":30,"time":1788829296422,"pid":3884,"hostname":"Encoding-M","reqId":"req-1c","res":{"statusCode":204},"responseTime":0.1785999999847263,"msg":"request completed"}
+{"level":30,"time":1788829296422,"pid":3884,"hostname":"Encoding-M","reqId":"req-1d","req":{"method":"OPTIONS","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":61412},"msg":"incoming request"}
+{"level":30,"time":1788829296422,"pid":3884,"hostname":"Encoding-M","reqId":"req-1d","res":{"statusCode":204},"responseTime":0.09399999998277053,"msg":"request completed"}
+{"level":30,"time":1788829296422,"pid":3884,"hostname":"Encoding-M","reqId":"req-1e","req":{"method":"OPTIONS","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":59796},"msg":"incoming request"}
+{"level":30,"time":1788829296422,"pid":3884,"hostname":"Encoding-M","reqId":"req-1e","res":{"statusCode":204},"responseTime":0.08109999995213002,"msg":"request completed"}
+{"level":30,"time":1788829296422,"pid":3884,"hostname":"Encoding-M","reqId":"req-1f","req":{"method":"OPTIONS","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":59224},"msg":"incoming request"}
+{"level":30,"time":1788829296422,"pid":3884,"hostname":"Encoding-M","reqId":"req-1f","res":{"statusCode":204},"responseTime":0.07790000003296882,"msg":"request completed"}
+{"level":30,"time":1788829296426,"pid":3884,"hostname":"Encoding-M","reqId":"req-1g","req":{"method":"GET","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":59796},"msg":"incoming request"}
+{"level":30,"time":1788829296427,"pid":3884,"hostname":"Encoding-M","reqId":"req-1h","req":{"method":"GET","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":61412},"msg":"incoming request"}
+{"level":30,"time":1788829296430,"pid":3884,"hostname":"Encoding-M","reqId":"req-1h","res":{"statusCode":200},"responseTime":2.7005999999819323,"msg":"request completed"}
+{"level":30,"time":1788829296433,"pid":3884,"hostname":"Encoding-M","reqId":"req-1g","res":{"statusCode":200},"responseTime":7.469000000040978,"msg":"request completed"}
+{"level":30,"time":1788829296437,"pid":3884,"hostname":"Encoding-M","reqId":"req-1i","req":{"method":"GET","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":59224},"msg":"incoming request"}
+{"level":30,"time":1788829296437,"pid":3884,"hostname":"Encoding-M","reqId":"req-1j","req":{"method":"GET","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":61412},"msg":"incoming request"}
+{"level":30,"time":1788829296439,"pid":3884,"hostname":"Encoding-M","reqId":"req-1j","res":{"statusCode":200},"responseTime":1.7748000000137836,"msg":"request completed"}
+{"level":30,"time":1788829296440,"pid":3884,"hostname":"Encoding-M","reqId":"req-1i","res":{"statusCode":200},"responseTime":3.159400000004098,"msg":"request completed"}
+{"level":30,"time":1788829297212,"pid":3884,"hostname":"Encoding-M","reqId":"req-1k","req":{"method":"GET","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":59224},"msg":"incoming request"}
+{"level":30,"time":1788829297213,"pid":3884,"hostname":"Encoding-M","reqId":"req-1l","req":{"method":"GET","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":61412},"msg":"incoming request"}
+{"level":30,"time":1788829297214,"pid":3884,"hostname":"Encoding-M","reqId":"req-1m","req":{"method":"OPTIONS","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":59796},"msg":"incoming request"}
+{"level":30,"time":1788829297214,"pid":3884,"hostname":"Encoding-M","reqId":"req-1m","res":{"statusCode":204},"responseTime":0.27389999997103587,"msg":"request completed"}
+{"level":30,"time":1788829297214,"pid":3884,"hostname":"Encoding-M","reqId":"req-1n","req":{"method":"OPTIONS","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":62234},"msg":"incoming request"}
+{"level":30,"time":1788829297215,"pid":3884,"hostname":"Encoding-M","reqId":"req-1n","res":{"statusCode":204},"responseTime":0.28370000002905726,"msg":"request completed"}
+{"level":30,"time":1788829297215,"pid":3884,"hostname":"Encoding-M","reqId":"req-1l","res":{"statusCode":200},"responseTime":1.9582999999984168,"msg":"request completed"}
+{"level":30,"time":1788829297216,"pid":3884,"hostname":"Encoding-M","reqId":"req-1k","res":{"statusCode":200},"responseTime":3.0398999999742955,"msg":"request completed"}
+{"level":30,"time":1788829297218,"pid":3884,"hostname":"Encoding-M","reqId":"req-1o","req":{"method":"GET","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":59796},"msg":"incoming request"}
+{"level":30,"time":1788829297219,"pid":3884,"hostname":"Encoding-M","reqId":"req-1p","req":{"method":"GET","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":59682},"msg":"incoming request"}
+{"level":30,"time":1788829297221,"pid":3884,"hostname":"Encoding-M","reqId":"req-1o","res":{"statusCode":200},"responseTime":2.439799999992829,"msg":"request completed"}
+{"level":30,"time":1788829297221,"pid":3884,"hostname":"Encoding-M","reqId":"req-1p","res":{"statusCode":200},"responseTime":2.0935000000172295,"msg":"request completed"}
+{"level":30,"time":1788829297222,"pid":3884,"hostname":"Encoding-M","reqId":"req-1q","req":{"method":"GET","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":59224},"msg":"incoming request"}
+{"level":30,"time":1788829297225,"pid":3884,"hostname":"Encoding-M","reqId":"req-1q","res":{"statusCode":200},"responseTime":2.95329999999376,"msg":"request completed"}
+{"level":30,"time":1788829297229,"pid":3884,"hostname":"Encoding-M","reqId":"req-1r","req":{"method":"GET","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":59796},"msg":"incoming request"}
+{"level":30,"time":1788829297231,"pid":3884,"hostname":"Encoding-M","reqId":"req-1r","res":{"statusCode":200},"responseTime":2.6411000000080094,"msg":"request completed"}
+{"level":30,"time":1788829298942,"pid":3884,"hostname":"Encoding-M","reqId":"req-1s","req":{"method":"GET","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":59796},"msg":"incoming request"}
+{"level":30,"time":1788829298943,"pid":3884,"hostname":"Encoding-M","reqId":"req-1t","req":{"method":"GET","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":59224},"msg":"incoming request"}
+{"level":30,"time":1788829298943,"pid":3884,"hostname":"Encoding-M","reqId":"req-1u","req":{"method":"GET","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":59682},"msg":"incoming request"}
+{"level":30,"time":1788829298945,"pid":3884,"hostname":"Encoding-M","reqId":"req-1s","res":{"statusCode":200},"responseTime":2.723900000040885,"msg":"request completed"}
+{"level":30,"time":1788829298946,"pid":3884,"hostname":"Encoding-M","reqId":"req-1t","res":{"statusCode":200},"responseTime":2.5696999999927357,"msg":"request completed"}
+{"level":30,"time":1788829298948,"pid":3884,"hostname":"Encoding-M","reqId":"req-1u","res":{"statusCode":200},"responseTime":4.214500000001863,"msg":"request completed"}
+{"level":30,"time":1788829298948,"pid":3884,"hostname":"Encoding-M","reqId":"req-1v","req":{"method":"GET","url":"/clientes","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":61412},"msg":"incoming request"}
+{"level":30,"time":1788829298949,"pid":3884,"hostname":"Encoding-M","reqId":"req-1w","req":{"method":"GET","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":62234},"msg":"incoming request"}
+{"level":30,"time":1788829298950,"pid":3884,"hostname":"Encoding-M","reqId":"req-1w","res":{"statusCode":200},"responseTime":1.7980000000097789,"msg":"request completed"}
+{"level":30,"time":1788829298951,"pid":3884,"hostname":"Encoding-M","reqId":"req-1x","req":{"method":"GET","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":59796},"msg":"incoming request"}
+{"level":30,"time":1788829298952,"pid":3884,"hostname":"Encoding-M","reqId":"req-1v","res":{"statusCode":200},"responseTime":3.3189000000129454,"msg":"request completed"}
+{"level":30,"time":1788829298953,"pid":3884,"hostname":"Encoding-M","reqId":"req-1x","res":{"statusCode":200},"responseTime":2.6226000000024214,"msg":"request completed"}
+{"level":30,"time":1788829300203,"pid":3884,"hostname":"Encoding-M","reqId":"req-1y","req":{"method":"GET","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":59796},"msg":"incoming request"}
+{"level":30,"time":1788829300206,"pid":3884,"hostname":"Encoding-M","reqId":"req-1y","res":{"statusCode":200},"responseTime":3.3597000000299886,"msg":"request completed"}
+{"level":30,"time":1788829300210,"pid":3884,"hostname":"Encoding-M","reqId":"req-1z","req":{"method":"GET","url":"/produtos","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":61412},"msg":"incoming request"}
+{"level":30,"time":1788829300212,"pid":3884,"hostname":"Encoding-M","reqId":"req-1z","res":{"statusCode":200},"responseTime":2.51579999999376,"msg":"request completed"}
+{"level":30,"time":1788829324341,"pid":3884,"hostname":"Encoding-M","reqId":"req-20","req":{"method":"OPTIONS","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":61412},"msg":"incoming request"}
+{"level":30,"time":1788829324341,"pid":3884,"hostname":"Encoding-M","reqId":"req-20","res":{"statusCode":204},"responseTime":0.21400000003632158,"msg":"request completed"}
+{"level":30,"time":1788829324345,"pid":3884,"hostname":"Encoding-M","reqId":"req-21","req":{"method":"OPTIONS","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":59796},"msg":"incoming request"}
+{"level":30,"time":1788829324345,"pid":3884,"hostname":"Encoding-M","reqId":"req-21","res":{"statusCode":204},"responseTime":0.3134999999892898,"msg":"request completed"}
+{"level":30,"time":1788829324352,"pid":3884,"hostname":"Encoding-M","reqId":"req-22","req":{"method":"GET","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":59796},"msg":"incoming request"}
+{"level":30,"time":1788829324355,"pid":3884,"hostname":"Encoding-M","reqId":"req-22","res":{"statusCode":200},"responseTime":3.5349999999743886,"msg":"request completed"}
+{"level":30,"time":1788829324359,"pid":3884,"hostname":"Encoding-M","reqId":"req-23","req":{"method":"GET","url":"/empresa/dados","host":"localhost:3000","remoteAddress":"127.0.0.1","remotePort":61412},"msg":"incoming request"}
+{"level":30,"time":1788829324361,"pid":3884,"hostname":"Encoding-M","reqId":"req-23","res":{"statusCode":200},"responseTime":2.223500000021886,"msg":"request completed"}
+[31m[nodemon] app crashed - waiting for file changes before starting...[39m

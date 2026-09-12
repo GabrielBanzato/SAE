@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+/*
+ * Tailwind v4 e CSS-first: nao existe tailwind.config.js neste projeto, e
+ * "darkMode: 'class'" (API do v3) virou esta diretiva. Isso faz o prefixo
+ * `dark:` responder a uma classe `.dark` em qualquer ancestral (colocamos
+ * em <html>, ver ThemeContext.jsx), em vez de seguir automaticamente o
+ * prefers-color-scheme do sistema.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Publico-alvo tem baixo letramento digital: aumentamos a base de fonte
+ * (16px -> 18px) para que todo o app fique mais legivel sem precisar
+ * lembrar de aplicar text-lg em toda parte.
+ */
+html {
+  font-size: 18px;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-900 dark:text-slate-100;
+}
+
+/* Area de clique minima confortavel para toque (recomendacao de acessibilidade). */
+button,
+a {
+  touch-action: manipulation;
+}
+
+/*
+ * Corrige o fundo branco que o Chrome/Edge/Safari forcam em campos com
+ * autofill (usuario/senha salvos pelo navegador) quando o app esta em
+ * Dark Mode - a especificacao CSS nao expõe um jeito direto de mudar o
+ * `background-color` que o navegador aplica ao autofill (a propriedade e
+ * simplesmente ignorada), entao o truque padrao da industria e forcar um
+ * `box-shadow inset` gigante (maior que o proprio campo) por cima do
+ * fundo, e `-webkit-text-fill-color` pra forcar a cor do texto (que
+ * tambem ignora `color` normal). So precisamos disso no modo escuro - no
+ * claro, o fundo padrao do autofill (amarelo claro/branco) ja e aceitavel
+ * contra o resto da UI clara.
+ *
+ * `transition: background-color 9999s` e outro truque classico: sem ele,
+ * alguns navegadores (Chrome) tentam reaplicar o fundo amarelo/branco
+ * assim que o input perde o foco, com uma pequena transicao visivel -
+ * atrasar a transicao pra "daqui a 9999s" na pratica cancela essa
+ * reaplicacao.
+ */
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover,
+.dark input:-webkit-autofill:focus,
+.dark input:-webkit-autofill:active,
+.dark select:-webkit-autofill,
+.dark textarea:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0px 1000px #1e293b inset;
+  box-shadow: 0 0 0px 1000px #1e293b inset;
+  -webkit-text-fill-color: white;
+  caret-color: white;
+  transition: background-color 9999s ease-in-out 0s;
+}
