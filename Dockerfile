@@ -1,9 +1,9 @@
-FROM node:20
+FROM node:20-slim
 WORKDIR /app
 COPY package*.json ./
 
-# Limpa o cache, ignora o lockfile do Windows e instala só o que importa
-RUN npm cache clean --force && npm install --no-package-lock --omit=dev
+# Instala só o necessário e ignora scripts que comem RAM
+RUN npm install --omit=dev --ignore-scripts
 
 COPY . .
 EXPOSE 3001
