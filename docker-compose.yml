@@ -1,4 +1,7 @@
+version: '3.8'
+
 services:
+  # O seu banco de dados (intacto)
   mysql:
     image: mysql:8.0
     container_name: sae_mysql
@@ -11,16 +14,41 @@ services:
     ports:
       - "${MYSQL_PORT:-3306}:3306"
     volumes:
-      # Dados persistem entre restarts do container.
       - sae_mysql_data:/var/lib/mysql
-      # Scripts executados em ordem alfabetica APENAS na primeira
-      # inicializacao (quando o volume de dados ainda esta vazio).
       - ./db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - sae_net
+
+  # O seu sistema (Código)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sae_app
+    restart: unless-stopped
+    environment:
+      # O app vai conectar no host "mysql" usando as mesmas variáveis
+      - DB_HOST=mysql
+      - DB_USER=${MYSQL_USER}
+      - DB_PASSWORD=${MYSQL_PASSWORD}
+      - DB_NAME=${MYSQL_DATABASE}
+      - PORT=3001 # Usando 3001 para não dar conflito com o Pitica ou o Bar
+    ports:
+      - "3001:3001"
+    depends_on:
+      mysql:
+        condition: service_healthy # O app só sobe depois que o healthcheck do MySQL der "OK"
+    networks:
+      - sae_net
 
 volumes:
   sae_mysql_data:
+
+networks:
+  sae_net:
+    driver: bridge
