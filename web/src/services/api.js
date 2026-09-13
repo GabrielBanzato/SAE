@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://2.25.115.184:3001';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api.sae.projeto1.com.br';
 
 export const TOKEN_KEY = 'sae_token';
 export const USER_KEY = 'sae_usuario';
