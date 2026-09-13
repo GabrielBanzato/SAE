@@ -3990,6 +3990,65 @@ raiz mais provável do `AssertionError`, e os 4 arquivos alterados
 
 ---
 
+## 404 no refresh (Nginx) + `ERR_CONNECTION_REFUSED` no fetch (2026-09-12, mesmo dia)
+
+### Nginx sem fallback de SPA
+
+`web/Dockerfile` (etapa `nginx:alpine`) nunca copiava um `nginx.conf`
+próprio - usava a config padrão da imagem, que só serve arquivo estático
+existente e devolve 404 pra qualquer rota que não seja um arquivo real
+(ex.: dar F5 em `/configuracoes`, que só existe como rota client-side do
+`react-router-dom`, sem `configuracoes/index.html` no disco). Criado
+`web/nginx.conf` com `location / { try_files $uri $uri/ /index.html; }` e
+o `Dockerfile` agora faz `COPY nginx.conf /etc/nginx/conf.d/default.conf`
+depois do `COPY --from=builder`.
+
+### `ERR_CONNECTION_REFUSED`: `VITE_API_URL` nunca existia no build, e a porta pedida estava errada
+
+Duas causas, achadas lendo o código antes de aplicar o pedido literal:
+
+1. **`web/.env` não existia** (só `.env.example`). Variáveis `VITE_*` do
+   Vite são resolvidas **em tempo de build** (ficam embutidas no JS
+   gerado por `npm run build`), não em runtime - então sem esse arquivo
+   o build caía no fallback hardcoded em `web/src/services/api.js`
+   (`|| 'http://localhost:3000'`). Rodando a partir de um navegador
+   externo, esse `localhost` aponta pra máquina de quem está acessando, não
+   pro servidor - daí o `ERR_CONNECTION_REFUSED`.
+2. **O pedido assumiu porta `3000`** pra API mapeada no compose, mas
+   `docker-compose.yml` mapeia `"3001:3001"` pro serviço `api` (confirmado
+   lendo o arquivo, não presumido) - usar `3000` teria só trocado um erro
+   de conexão recusada por outro. Usado `3001` em todo lugar.
+
+Corrigido:
+- `web/.env` criado com `VITE_API_URL=http://2.25.115.184:3001`.
+- `web/.env.example` e o fallback hardcoded em `api.js` também corrigidos
+  de `3000` pra `3001`, pra não repetir a mesma pegadinha se alguém
+  buildar sem `.env` de novo.
+- `web/.dockerignore` criado (`node_modules`, `dist`, `dist-ssr`,
+  `npm-debug.log`) - **sem** excluir `.env` (diferença proposital do
+  `api/.dockerignore` da tarefa anterior: lá o `.env` precisa ficar de
+  fora da imagem porque o Node lê segredo em runtime; aqui o `.env`
+  **precisa** estar presente durante `npm run build` pra o Vite embutir
+  `VITE_API_URL` no bundle - não há segredo indo pra imagem final, já que
+  o estágio `builder` inteiro é descartado no multi-stage build).
+
+### Atenção: IP fixo `2.25.115.184` embutido no bundle do frontend
+
+Como pedido explicitamente pelo usuário, mas vale registrar a implicação:
+qualquer mudança de IP do servidor (novo deploy, troca de VPS) exige
+**rebuildar a imagem do `web`** (não só reiniciar o container), já que o
+valor fica congelado no JS gerado - não é lido em runtime.
+
+### Status de validação
+
+Revisão de código (rebuild fica para o usuário rodar em seguida):
+confirmado por leitura de `docker-compose.yml` que a porta real da API é
+`3001`; `nginx.conf`, `web/Dockerfile`, `web/.env`, `web/.env.example`,
+`web/.dockerignore` e `api.js` lidos de volta após a edição para conferir
+sintaxe.
+
+---
+
 ## Endpoints de Dashboard e ajuste rápido de Estoque (2026-09-08)
 
 ### `GET /dashboard` - `dashboard.service.js` + `dashboard.controller.js` + `dashboard.routes.js`
