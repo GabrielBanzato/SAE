@@ -3929,6 +3929,67 @@ Testado com o dev server real via Playwright:
 
 ---
 
+## Container da API reiniciando: `AssertionError: missing secret` do @fastify/jwt (2026-09-12)
+
+### O pedido presumia um bug que não existia no código
+
+O pedido pra investigar assumia que faltava `require('dotenv').config()` no
+topo do entrypoint, que `secret` não estava setado como
+`process.env.JWT_SECRET` no `@fastify/jwt`, e que `dotenv` não estava no
+`package.json`. **Os três já estavam corretos** (`api/src/server.js` linha
+1, `api/src/plugins/auth.js` linha 24, `api/package.json`) - não fiz
+nenhuma dessas três alterações pra não introduzir código redundante.
+Também **não** adicionei o fallback sugerido
+(`secret: process.env.JWT_SECRET || 'fallback_secret_temporario'`): mascarar
+esse assertion silenciosamente é um risco de segurança de verdade (a API
+subiria "funcionando" só que assinando/validando token com um secret
+público e previsível, sem ninguém perceber).
+
+### Causa real: `docker-compose.yml` nunca repassava `JWT_SECRET` pro container
+
+O serviço `api` no `docker-compose.yml` já define `environment:` manualmente
+(`DB_HOST`, `DATABASE_URL`, `PORT` etc.) em vez de usar `env_file` - e essa
+lista nunca incluiu `JWT_SECRET`/`JWT_EXPIRES_IN`. O `.env` da raiz (usado
+pelo `docker compose` pra interpolar `${...}`) também não tinha essas
+chaves - só existiam em `api/.env` (arquivo local, git-ignorado, que nem
+sempre existe/está atualizado no host que faz o build). Corrigido:
+
+- `.env` e `.env.example` (raiz) ganharam `JWT_SECRET`/`JWT_EXPIRES_IN`
+  (mesmo padrão das variáveis do MySQL).
+- `docker-compose.yml`: serviço `api` agora repassa
+  `JWT_SECRET=${JWT_SECRET}` e `JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-8h}`.
+
+### `.dockerignore` novo em `api/` (achado ao investigar)
+
+Não existia nenhum `.dockerignore` na API, e o `Dockerfile` faz `COPY . .`
+depois do `npm install` - isso significa que o `api/.env` local (com
+segredos reais) e o `api/node_modules` do host (compilado pro SO do
+desenvolvedor, não pro Linux da imagem) estavam sendo copiados pra dentro
+da imagem Docker. Além de mascarar o bug real (às vezes "funcionava" só
+porque o `.env` local vazava pra dentro da imagem por acidente), isso é
+risco de segurança (segredo do dev fica gravado numa camada da imagem) e
+risco de bug (node_modules errado sobrescrevendo o instalado no container).
+Criado `api/.dockerignore` (`node_modules`, `.env`, `npm-debug.log`,
+`api_dev_out.log`).
+
+### Bônus: warning do Prisma sobre OpenSSL no `node:20-slim`
+
+Adicionado `RUN apt-get update -y && apt-get install -y openssl` no
+`api/Dockerfile`, antes do `COPY package*.json`, resolvendo o aviso
+"Prisma failed to detect the libssl/openssl version" que aparecia no boot.
+
+### Status de validação
+
+Revisão de código (não rebuildei a imagem nesta sessão - fica pro usuário
+rodar `docker compose build` / `docker compose up -d` em seguida):
+confirmado que `server.js`/`auth.js`/`package.json` já estavam corretos,
+identificada a ausência de `JWT_SECRET` no `docker-compose.yml` como causa
+raiz mais provável do `AssertionError`, e os 4 arquivos alterados
+(`.env`, `.env.example`, `docker-compose.yml`, `api/Dockerfile`) mais o
+`api/.dockerignore` novo foram lidos de volta pra conferir a sintaxe.
+
+---
+
 ## Endpoints de Dashboard e ajuste rápido de Estoque (2026-09-08)
 
 ### `GET /dashboard` - `dashboard.service.js` + `dashboard.controller.js` + `dashboard.routes.js`

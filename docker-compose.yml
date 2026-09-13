@@ -37,6 +37,8 @@ services:
       # URL do Prisma para conectar no MySQL interno do Docker
       - DATABASE_URL=mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
       - PORT=3001
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-8h}
     ports:
       - "3001:3001"
     depends_on:
