@@ -1,3 +1,4 @@
+import 'dotenv/config'; // Essencial para carregar o .env
 require('dotenv').config();
 
 const buildApp = require('./app');
