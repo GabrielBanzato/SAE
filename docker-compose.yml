@@ -60,16 +60,19 @@ services:
     networks:
       - sae_net
 
+  cloudflare:
+    image: cloudflare/cloudflared:latest
+    container_name: sae_cloudflare
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    networks:
+      - sae_net
+
 volumes:
   sae_mysql_data:
 
 networks:
   sae_net:
     driver: bridge
-
-cloudflare:
-    image: cloudflare/cloudflared:latest
-    restart: unless-stopped
-    command: tunnel run
-    environment:
-      - TUNNEL_TOKEN="eyJhIjoiZGE4MGUxNDZhZTIxZGIzNzFhNTBhNzUwOGM2YTZhY2UiLCJ0IjoiNGNkYWY0YjktYjIwZC00MjM5LWI1ZWUtYTMwM2I2ODdkOTE3IiwicyI6Ik1qTTVNekUxWVRZdFltUXhZUzAwWkRnM0xXSXdOak10TURobFltSXdNMkkzWVRaaiJ9"

@@ -4049,6 +4049,63 @@ sintaxe.
 
 ---
 
+## Serviço `cloudflare` fora do bloco `services:` + token exposto no GitHub (2026-09-13)
+
+### O bug de indentação era real, mas havia algo mais grave junto
+
+O usuário tinha adicionado manualmente um serviço `cloudflare` no fim do
+`docker-compose.yml`, **depois** do bloco `networks:` e com 4 espaços de
+indentação (em vez de 2, dentro de `services:`) - por isso o Portainer
+rejeitava com "additional properties 'cloudflare' not allowed" (o parser
+via `cloudflare` como uma chave solta no nível raiz do documento, não como
+um serviço). Corrigido: bloco movido pra dentro de `services:`, indentação
+de 2 espaços igual a `mysql`/`api`/`web`, e adicionados `container_name:
+sae_cloudflare` e `networks: [sae_net]` pra ficar consistente com o
+restante do arquivo (o pedido não mencionou esses dois, mas todos os outros
+serviços já os têm).
+
+### Achado grave: token real do túnel Cloudflare em texto puro, já commitado e já enviado ao GitHub
+
+O valor colado pelo usuário no `TUNNEL_TOKEN` não era um placeholder - era
+o token real do túnel. Pior: **já existia um commit** (`a22b87f "token
+cloudflare"`) com esse valor em `docker-compose.yml`, e `git status -sb`
+confirmou que `main` está sincronizado com `origin/main`
+(`github.com/GabrielBanzato/SAE`) - ou seja, **o token já está público no
+histórico do repositório remoto**, não só no working tree local. Reescrever
+o arquivo agora não apaga essa exposição do histórico do Git/GitHub.
+
+**Ação recomendada ao usuário (não executada nesta sessão - requer conta
+Cloudflare do usuário)**: revogar/rotacionar esse token em Cloudflare Zero
+Trust > Networks > Tunnels o quanto antes, já que qualquer pessoa com
+acesso ao repositório (ou ao histórico, mesmo que o repo vire privado
+depois) pode usá-lo para conectar um túnel arbitrário à rede do usuário.
+
+Corrigido pra não repetir o padrão: `TUNNEL_TOKEN` saiu do
+`docker-compose.yml` e foi pro `.env` da raiz (`${TUNNEL_TOKEN}` no
+compose, mesmo padrão de `JWT_SECRET`/`MYSQL_PASSWORD`) - `.env` já está no
+`.gitignore` da raiz. Adicionado também um comentário no próprio `.env`
+avisando que esse valor específico deve ser tratado como comprometido.
+`.env.example` ganhou o placeholder `TUNNEL_TOKEN=troque_pelo_token_do_seu_tunnel`.
+
+### Aspas duplas dentro do valor de `environment:` (list form) viram parte literal da string
+
+O trecho colado pelo usuário tinha `TUNNEL_TOKEN="<token>"` - na forma de
+lista (`- VAR=valor`) do `environment:` do Compose não existe parsing de
+shell, então as aspas ficariam **dentro** do valor da variável
+(`TUNNEL_TOKEN` literalmente começaria e terminaria com `"`), o que faria o
+`cloudflared` falhar a autenticação mesmo com o serviço no lugar certo.
+Corrigido para `TUNNEL_TOKEN=${TUNNEL_TOKEN}` sem aspas.
+
+### Status de validação
+
+`docker compose -f docker-compose.yml config --quiet` rodado depois da
+correção - **sem erros**, só o aviso pré-existente (não relacionado a esta
+tarefa) de que o atributo `version: '3.8'` está obsoleto no Compose
+moderno. Confirma que o YAML é válido e `cloudflare` foi reconhecido como
+serviço de verdade.
+
+---
+
 ## Endpoints de Dashboard e ajuste rápido de Estoque (2026-09-08)
 
 ### `GET /dashboard` - `dashboard.service.js` + `dashboard.controller.js` + `dashboard.routes.js`
