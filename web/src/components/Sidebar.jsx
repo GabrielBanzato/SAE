@@ -160,6 +160,13 @@ export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFechar
     navigate('/login', { replace: true });
   }
 
+  function handleAbrirConfiguracoes() {
+    onFecharNoMobile?.();
+    // "/configuracoes" sozinho ja cai na aba "Dados da Loja" por padrao
+    // (ver Configuracoes.jsx - abaInicial so muda com "?aba=..." na URL).
+    navigate('/configuracoes');
+  }
+
   function alternarCategoria(chave) {
     setCategoriaAberta((atual) => (atual === chave ? null : chave));
   }
@@ -294,24 +301,45 @@ export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFechar
       {/* Rodape fixo - fora da area de scroll da nav (e irmao dela, nao
           filho), entao nunca rola junto com a lista de links. */}
       <div className="shrink-0 border-t border-slate-200 p-3 dark:border-slate-800">
-        <button
-          type="button"
-          onClick={toggleTheme}
-          aria-label="Alternar tema"
-          title={!isExpanded ? 'Alternar entre modo claro e escuro' : undefined}
-          className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-lg font-semibold text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 ${
-            !isExpanded ? 'md:justify-center md:px-0' : ''
-          }`}
-        >
-          {escuro ? (
-            <Sun size={22} className="shrink-0" aria-hidden="true" />
-          ) : (
-            <Moon size={22} className="shrink-0" aria-hidden="true" />
-          )}
-          <span className={`flex-1 text-left ${!isExpanded ? 'md:hidden' : ''}`}>
-            {escuro ? 'Modo Claro' : 'Modo Escuro'}
-          </span>
-        </button>
+        {/* Tema + atalho de Configuracoes lado a lado - o botao de tema
+            ocupa o espaco restante (`flex-1`), o de engrenagem e um
+            quadrado fixo ao lado. No collapse de desktop (icone-so,
+            `md:w-20`) o quadrado de engrenagem some (`md:hidden`) e o
+            botao de tema volta a ocupar a linha inteira sozinho, sem
+            adicionar mais um elemento pra espremer nesse espaco minusculo -
+            mesmo comportamento de antes nesse modo. */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label="Alternar tema"
+            title={!isExpanded ? 'Alternar entre modo claro e escuro' : undefined}
+            className={`flex flex-1 items-center gap-3 rounded-xl px-4 py-3 text-lg font-semibold text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 ${
+              !isExpanded ? 'md:justify-center md:px-0' : ''
+            }`}
+          >
+            {escuro ? (
+              <Sun size={22} className="shrink-0" aria-hidden="true" />
+            ) : (
+              <Moon size={22} className="shrink-0" aria-hidden="true" />
+            )}
+            <span className={`flex-1 text-left ${!isExpanded ? 'md:hidden' : ''}`}>
+              {escuro ? 'Modo Claro' : 'Modo Escuro'}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleAbrirConfiguracoes}
+            aria-label="Configurações"
+            title="Configurações"
+            className={`flex shrink-0 items-center justify-center rounded-xl p-3 text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 ${
+              !isExpanded ? 'md:hidden' : ''
+            }`}
+          >
+            <Settings size={22} className="shrink-0" aria-hidden="true" />
+          </button>
+        </div>
 
         <button
           type="button"

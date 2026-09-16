@@ -5277,9 +5277,9 @@ Sem Docker rodando nesta máquina e sem `chromium-cli`/Playwright
 disponíveis (mesma limitação de tarefas anteriores) - `npm run build`
 limpo e `npm run lint` sem nenhum aviso novo introduzido (corrigi um
 aviso real que o lint apontou durante o desenvolvimento: um caractere BOM
-literal que acabou colado dentro de um comentário em vez do texto
-"﻿", disparando `no-irregular-whitespace` - trocado por uma
-descrição em palavras). Os avisos remanescentes (`only-export-components`
+literal que acabou colado dentro de um comentário em vez do texto da
+sequência de escape correspondente, disparando `no-irregular-whitespace` -
+trocado por uma descrição em palavras). Os avisos remanescentes (`only-export-components`
 em `ToastContext.jsx`, mesmo padrão de `ThemeContext.jsx`/
 `AuthContext.jsx`; `set-state-in-effect` em `Lancamentos.jsx`, o mesmo
 padrão onipresente de busca de dados) são pré-existentes/aceitos no
@@ -5291,3 +5291,40 @@ que não retorna nada (conferir o toast), e o fluxo completo de virar
 Apoiador → conferir os 2 cards → cancelar o apoio → conferir que volta
 pro Gratuito de verdade (inclusive após recarregar a página, já que agora
 é uma mudança persistida no banco).
+
+---
+
+## Atalho de Configurações no rodapé da Sidebar (2026-09-19)
+
+`Sidebar.jsx`: botão de tema (Modo Claro/Escuro) e o novo botão de
+engrenagem agora dividem uma linha (`flex items-center gap-2`) - o de
+tema virou `flex-1` (ocupa o espaço restante), o de engrenagem é um
+quadrado fixo (`shrink-0`, só o ícone `Settings`, mesmo padding/hover/
+`rounded-xl` do botão de tema) que navega pra `/configuracoes` (cai
+direto na aba "Dados da Loja", que já é a aba padrão dessa página - não
+precisou de `?aba=...` na URL). O botão "Sair" continua exatamente onde
+estava, na linha de baixo, sem nenhuma mudança.
+
+**Tratamento do collapse de desktop (ícone-só, `md:w-20`)**: o botão de
+engrenagem some inteiro (`md:hidden`) nesse modo, e o de tema volta a
+ocupar a linha sozinho (o `flex-1` já resolve isso sozinho, já que o
+irmão escondido não ocupa espaço) - não tentei espremer 2 quadrados de
+ícone numa faixa de 80px de largura, que ficaria apertado demais pra
+clicar direito. Não pedido explicitamente, mas sinalizado aqui porque
+sem esse cuidado o modo recolhido do desktop ficaria quebrado.
+
+Clique no botão de engrenagem também fecha o menu mobile
+(`onFecharNoMobile`) antes de navegar - mesmo comportamento de todo link
+de navegação da Sidebar (ver tarefa do layout responsivo) - sem isso, o
+drawer ficaria aberto por cima da tela de Configurações no celular.
+
+### Status de validação
+
+`npm run build` limpo e `npm run lint` sem nenhum aviso novo em
+`Sidebar.jsx`. Sem Docker/`chromium-cli` disponíveis nesta máquina -
+não testado visualmente. Recomendo ao usuário conferir: os dois botões
+lado a lado (proporção 1 grande + 1 quadrado) em desktop expandido e no
+drawer mobile, o clique na engrenagem abrindo "Configurações" com a aba
+"Dados da Loja" já selecionada, e o modo recolhido de desktop (clicar na
+"berruga") continuando a mostrar só o ícone de tema centralizado, sem o
+quadrado de engrenagem quebrando o layout.
