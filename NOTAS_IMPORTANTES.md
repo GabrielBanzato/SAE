@@ -5411,3 +5411,45 @@ mas a posição sempre abre alinhada à esquerda do campo, então um campo
 muito perto da borda direita da tela ainda pode estourar horizontalmente
 em alguns casos - não implementado nenhum ajuste automático de lado
 ("flip") pra esse cenário.
+
+---
+
+## Bug real: engrenagem sumia no collapse de desktop (2026-09-21)
+
+Confirmado exatamente como reportado: o botão de engrenagem (adicionado 2
+tarefas atrás) tinha `${!isExpanded ? 'md:hidden' : ''}` na classe -
+sumia por completo no modo recolhido de desktop (`md:w-20`, ícone-só).
+Removido esse `md:hidden`; a engrenagem agora aparece sempre.
+
+Como um rail de 80px não cabe 2 botões lado a lado de forma legível, o
+container que segura Tema+Engrenagem virou responsivo ao próprio
+`isExpanded`, não só `md:hidden` num dos dois:
+
+- **Expandido/mobile** (inalterado): `flex-row`, tema com `flex-1`
+  (ocupa o espaço restante), engrenagem quadrada fixa ao lado.
+- **Recolhido** (`!isExpanded`, só a partir do `md`): container vira
+  `md:flex-col md:gap-4`, e os dois botões perdem o dimensionamento
+  antigo (tema `flex-1`, engrenagem `p-3`) em favor de um tamanho fixo
+  igual pros dois: `md:h-11 md:w-11 md:p-0` (44×44px, ícone centralizado
+  sem padding assimétrico).
+
+O botão "Sair" (fora desse container, um `<button>` irmão logo abaixo)
+ganhou o mesmo tratamento nesse modo - `md:h-11 md:w-11 md:p-0
+md:mx-auto` (o `mx-auto` centraliza horizontalmente porque o pai dele,
+o `<div>` do rodapé, é um bloco comum, não um flex container) - garante
+que os 3 botões (Tema/Engrenagem/Sair) fiquem com exatamente o mesmo
+tamanho e centralização quando empilhados, como pedido explicitamente.
+Espaçamento entre o grupo Tema+Engrenagem e o Sair também ficou
+consistente com o `gap-4` interno do grupo (`mt-1` vira `md:mt-4` nesse
+modo, em vez de manter o `mt-1` apertado que fazia sentido pro layout
+antigo).
+
+### Status de validação
+
+`npm run build` limpo e `npm run lint` sem nenhum aviso novo em
+`Sidebar.jsx`. Sem Docker/`chromium-cli` disponíveis nesta máquina -
+**não testado visualmente** (mesma limitação de todas as tarefas de UI
+desta sessão). Recomendo fortemente ao usuário clicar na "berruga" de
+collapse e conferir os 3 botões empilhados no rodapé - tamanho igual,
+centralizados, com espaçamento visualmente equilibrado - antes de
+considerar o bug resolvido de verdade.

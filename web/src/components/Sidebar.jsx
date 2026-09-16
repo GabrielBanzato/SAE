@@ -304,21 +304,22 @@ export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFechar
       {/* Rodape fixo - fora da area de scroll da nav (e irmao dela, nao
           filho), entao nunca rola junto com a lista de links. */}
       <div className="shrink-0 border-t border-slate-200 p-3 dark:border-slate-800">
-        {/* Tema + atalho de Configuracoes lado a lado - o botao de tema
-            ocupa o espaco restante (`flex-1`), o de engrenagem e um
-            quadrado fixo ao lado. No collapse de desktop (icone-so,
-            `md:w-20`) o quadrado de engrenagem some (`md:hidden`) e o
-            botao de tema volta a ocupar a linha inteira sozinho, sem
-            adicionar mais um elemento pra espremer nesse espaco minusculo -
-            mesmo comportamento de antes nesse modo. */}
-        <div className="flex items-center gap-2">
+        {/* Tema + atalho de Configuracoes. Bug corrigido aqui: a
+            engrenagem tinha `md:hidden` (sumia no collapse de desktop) -
+            ela deve aparecer SEMPRE, so muda de layout. Expandido/mobile:
+            lado a lado (`flex-row`, tema com `flex-1` ocupando o espaco
+            restante). Recolhido (`md:w-20`, estreito demais pra 2 botoes
+            lado a lado): empilha vertical (`md:flex-col md:gap-4`) e os 2
+            viram quadrados de tamanho fixo (`md:w-11 md:h-11`) em vez de um
+            deles esticar (`flex-1` some nesse modo). */}
+        <div className={`flex items-center gap-2 ${!isExpanded ? 'md:flex-col md:gap-4' : ''}`}>
           <button
             type="button"
             onClick={toggleTheme}
             aria-label="Alternar tema"
             title={!isExpanded ? 'Alternar entre modo claro e escuro' : undefined}
             className={`flex flex-1 items-center gap-3 rounded-xl px-4 py-3 text-lg font-semibold text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 ${
-              !isExpanded ? 'md:justify-center md:px-0' : ''
+              !isExpanded ? 'md:h-11 md:w-11 md:flex-none md:justify-center md:p-0' : ''
             }`}
           >
             {escuro ? (
@@ -337,7 +338,7 @@ export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFechar
             aria-label="Configurações"
             title="Configurações"
             className={`flex shrink-0 items-center justify-center rounded-xl p-3 text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 ${
-              !isExpanded ? 'md:hidden' : ''
+              !isExpanded ? 'md:h-11 md:w-11 md:p-0' : ''
             }`}
           >
             <Settings size={22} className="shrink-0" aria-hidden="true" />
@@ -350,7 +351,7 @@ export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFechar
           aria-label="Sair"
           title={!isExpanded ? 'Sair' : undefined}
           className={`mt-1 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-lg font-semibold text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 ${
-            !isExpanded ? 'md:justify-center md:px-0' : ''
+            !isExpanded ? 'md:mt-4 md:h-11 md:w-11 md:justify-center md:p-0 md:mx-auto' : ''
           }`}
         >
           <LogOut size={22} className="shrink-0" aria-hidden="true" />
