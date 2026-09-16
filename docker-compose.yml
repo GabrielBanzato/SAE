@@ -61,14 +61,12 @@ services:
       - sae_net
 
   cloudflare:
-    image: cloudflare/cloudflared:latest
-    container_name: sae_cloudflare
-    restart: unless-stopped
-    command: tunnel run
-    environment:
-      - TUNNEL_TOKEN=${CLOUDFLARE_TOKEN}
-    networks:
-      - sae_net
+  image: cloudflare/cloudflared:latest
+  container_name: sae_cloudflare
+  restart: unless-stopped
+  command: tunnel run --token ${CLOUDFLARE_TOKEN}
+  networks:
+    - sae_net
 
 volumes:
   sae_mysql_data:
