@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, Download, Plus, Receipt 
 import { apiFetch } from '../services/api';
 import { dataCalendario } from '../utils/datas';
 import { useToast } from '../context/ToastContext';
+import CampoData from '../components/CampoData';
 import ModalLancamento from '../components/lancamentos/ModalLancamento';
 
 function formatarMoeda(valor) {
@@ -35,7 +36,7 @@ function gerarCsv(lancamentos) {
     item.tipo === 'ENTRADA' ? 'Entrada' : 'Saída',
     Number(item.valor).toFixed(2).replace('.', ','),
     formatarData(item.dataVencimento),
-    estaAtrasado(item) ? 'Vencido' : item.status === 'PAGO' ? 'Pago' : 'Pendente',
+    estaAtrasado(item) ? 'Vencido' : item.status === 'PAGO' ? rotuloStatusConcluido(item) : 'Pendente',
   ]);
 
   return [cabecalho, ...linhas].map((linha) => linha.map(campoCsv).join(';')).join('\r\n');
@@ -51,6 +52,18 @@ function estaAtrasado(lancamento) {
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
   return dataCalendario(lancamento.dataVencimento) < hoje;
+}
+
+/**
+ * Rotulo do status "concluido" (pedido explicito): uma Entrada paga e
+ * dinheiro que efetivamente ENTROU no caixa - "Recebido" descreve isso
+ * melhor que "Pago" (que soa como algo que VOCE pagou, o oposto). Uma
+ * Saida paga continua "Pago" (a leitura antiga, correta pra despesa).
+ * So se aplica a lancamentos JA `PAGO` - "Pendente"/"Vencido" nao mudam
+ * com o tipo.
+ */
+function rotuloStatusConcluido(lancamento) {
+  return lancamento.tipo === 'ENTRADA' ? 'Recebido' : 'Pago';
 }
 
 /**
@@ -144,7 +157,7 @@ function ValorLancamento({ tipo, valor }) {
  * `atualizando` desabilita o clique e troca o texto por "Salvando..." -
  * evita cliques duplicados enquanto o PUT esta em voo.
  */
-function TogglePago({ pago, atualizando, onToggle }) {
+function TogglePago({ pago, rotuloPago, atualizando, onToggle }) {
   return (
     <button
       type="button"
@@ -175,7 +188,7 @@ function TogglePago({ pago, atualizando, onToggle }) {
               : 'text-amber-600 dark:text-amber-400'
         }`}
       >
-        {atualizando ? 'Salvando...' : pago ? 'Pago' : 'Pendente'}
+        {atualizando ? 'Salvando...' : pago ? rotuloPago : 'Pendente'}
       </span>
     </button>
   );
@@ -377,22 +390,20 @@ export default function Lancamentos() {
           </CampoFiltro>
 
           <CampoFiltro label="Data Inicial">
-            <input
-              type="date"
+            <CampoData
+              variant="compacta"
               value={dataInicial}
-              onChange={(event) => setDataInicial(event.target.value)}
+              onChange={setDataInicial}
               max={dataFinal || undefined}
-              className={classesFiltro}
             />
           </CampoFiltro>
 
           <CampoFiltro label="Data Final">
-            <input
-              type="date"
+            <CampoData
+              variant="compacta"
               value={dataFinal}
-              onChange={(event) => setDataFinal(event.target.value)}
+              onChange={setDataFinal}
               min={dataInicial || undefined}
-              className={classesFiltro}
             />
           </CampoFiltro>
         </div>
@@ -504,6 +515,7 @@ export default function Lancamentos() {
                       <td className="px-6 py-4">
                         <TogglePago
                           pago={lancamento.status === 'PAGO'}
+                          rotuloPago={rotuloStatusConcluido(lancamento)}
                           atualizando={idAtualizando === lancamento.id}
                           onToggle={() => alternarStatus(lancamento)}
                         />

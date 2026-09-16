@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Calendar, FileText, Tag, X } from 'lucide-react';
+import { FileText, Tag, X } from 'lucide-react';
 import CampoTexto from '../CampoTexto';
+import CampoData from '../CampoData';
 
 const CORES_TAG = [
   { valor: 'azul', classe: 'bg-blue-500' },
@@ -101,14 +102,7 @@ export default function ModalLembrete({ dataInicial, onFechar, onSalvar }) {
             />
           </label>
 
-          <CampoTexto
-            label="Data"
-            icon={Calendar}
-            type="date"
-            value={data}
-            onChange={(event) => setData(event.target.value)}
-            required
-          />
+          <CampoData label="Data" value={data} onChange={setData} required />
 
           <div>
             <span className="flex items-center gap-2 text-lg font-semibold text-slate-800 dark:text-slate-200">

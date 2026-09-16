@@ -5328,3 +5328,86 @@ drawer mobile, o clique na engrenagem abrindo "Configurações" com a aba
 "Dados da Loja" já selecionada, e o modo recolhido de desktop (clicar na
 "berruga") continuando a mostrar só o ícone de tema centralizado, sem o
 quadrado de engrenagem quebrando o layout.
+
+---
+
+## Sidebar sem "Configurações" duplicada, status Recebido/Pago, date picker custom (2026-09-20)
+
+### "Configurações" saiu do grupo "Administração" no menu
+
+`Sidebar.jsx`: removido o item `Configurações` de `CATEGORIAS_MENU`. A
+engrenagem no rodapé (implementada na tarefa anterior) já leva pra lá -
+o pedido desta tarefa foi eliminar o segundo caminho pra não ter 2 links
+pra mesma tela. O ícone `Settings` continua importado (ainda é usado pela
+própria engrenagem do rodapé).
+
+O pedido também re-descrevia o botão de engrenagem no rodapé (item 2) -
+já estava implementado assim desde a tarefa anterior (linha a linha:
+`flex items-center gap-2`, tema com `flex-1`, engrenagem quadrada
+`shrink-0`), então nenhuma mudança nova foi necessária ali.
+
+### Status "Recebido" (Entrada) vs "Pago" (Saída)
+
+`Lancamentos.jsx` ganhou `rotuloStatusConcluido(lancamento)` - `'Recebido'`
+pra `tipo === 'ENTRADA'`, `'Pago'` pra Saída (só se aplica a lançamentos
+já `PAGO`; `Pendente`/`Vencido` não mudam com o tipo). Usado nos 2 lugares
+que mostravam esse texto: o toggle da tabela (`TogglePago`, que ganhou uma
+prop `rotuloPago` em vez de decidir sozinho) e a coluna "Status" do CSV
+exportado (pra o arquivo baixado ficar consistente com o que a tela
+mostra). A cor (verde quando pago, independente do texto) não mudou -
+pedido explícito era só trocar o texto.
+
+### Date picker customizado - substituiu todo `<input type="date">` nativo do app
+
+Trocado nos 4 lugares que existiam (`ModalLancamento.jsx`,
+`ModalLembrete.jsx`, filtros de período de `Lancamentos.jsx` e de
+`Relatorios.jsx`) - não só nos 2 exemplos citados no pedido, pra não
+deixar o app com uma mistura de calendário custom em alguns campos e
+nativo em outros. Novo componente `components/CampoData.jsx`: campo
+clicável que abre um calendário em popover (mês + grade de dias,
+navegação anterior/próximo, atalho "Hoje", "Limpar" pra campos
+opcionais), estilizado 100% com Tailwind pra combinar com o resto do
+dashboard - zero biblioteca nova instalada (o pedido dava a opção
+explícita de usar uma lib ou construir na mão; optei por construir, mesmo
+espírito de "sem dependência nova quando dá pra fazer nativo" já seguido
+em outras tarefas desta sessão, tipo o sistema de toast).
+
+Valor continua sendo string `"YYYY-MM-DD"` (mesmo formato que um
+`<input type="date">` já produzia) - todo o estado ao redor (os 4
+consumidores acima) não precisou mudar nada além da troca do campo em si.
+
+**Reuso, não duplicação**: a grade de calendário (mês → array de 42
+células, com `null` nas pontas) já existia dentro de `pages/Agenda.jsx`
+(construída há algumas tarefas atrás pro calendário mensal da Agenda) -
+extraída pra `utils/datas.js` (`gerarGradeDoMes`, `DIAS_SEMANA`) e
+reaproveitada tanto por `Agenda.jsx` quanto por `CampoData.jsx`, em vez de
+reimplementar a mesma lógica de novo.
+
+`variant="grande"` (modais - label próprio, ícone, fonte grande, mesmo
+peso visual de `CampoTexto.jsx`) vs `variant="compacta"` (filtros de
+período - sem label/ícone próprios, o `<label>`/`<span>` já existente no
+chamador continua desenhando o rótulo).
+
+**CSS órfão removido**: a regra `.dark input[type='date'] { color-scheme:
+dark }` (adicionada 2 tarefas atrás pra consertar o popup nativo em modo
+escuro) virou código morto - não sobrou nenhum `<input type="date">`
+nativo no app pra ela afetar. Removida de `index.css`.
+
+### Status de validação
+
+`npm run build` limpo e `npm run lint` sem nenhum aviso novo nos arquivos
+tocados (os 2 avisos restantes, em `Lancamentos.jsx`/`Agenda.jsx`, são o
+mesmo padrão `set-state-in-effect` de busca de dados já onipresente no
+projeto). Sem Docker/`chromium-cli` disponíveis nesta máquina - **não
+testado visualmente**. Recomendo fortemente ao usuário validar o
+`CampoData` num navegador de verdade antes de considerar isso pronto -
+é o componente mais novo/complexo desta tarefa (popover posicionado,
+fechar ao clicar fora, navegação de mês, limites min/max): abrir o
+calendário nos 4 lugares, navegar entre meses, selecionar uma data,
+clicar fora pra fechar, testar o "Limpar" nos filtros de período, e
+conferir que o popover não fica cortado/fora da tela em telas estreitas
+(mobile) - a largura é limitada via `w-[min(18rem,calc(100vw-2rem))]`,
+mas a posição sempre abre alinhada à esquerda do campo, então um campo
+muito perto da borda direita da tela ainda pode estourar horizontalmente
+em alguns casos - não implementado nenhum ajuste automático de lado
+("flip") pra esse cenário.

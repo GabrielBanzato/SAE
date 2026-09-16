@@ -1,11 +1,9 @@
 import { useState } from 'react';
 import { BarChart3, Download, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import CampoData from '../components/CampoData';
 import RelatoriosSimples from '../components/relatorios/RelatoriosSimples';
 import RelatoriosAvancados from '../components/relatorios/RelatoriosAvancados';
-
-const classesInputData =
-  'mt-1 w-full rounded-xl border-2 border-slate-300 bg-white px-3 py-2 text-base font-medium text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-blue-400';
 
 /**
  * Decide qual variante de relatorio mostrar a partir de `empresa.plano`
@@ -54,23 +52,11 @@ export default function Relatorios() {
         <div className="flex flex-1 flex-col gap-4 sm:flex-row">
           <label className="block">
             <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">Data Inicial</span>
-            <input
-              type="date"
-              value={dataInicial}
-              onChange={(event) => setDataInicial(event.target.value)}
-              max={dataFinal || undefined}
-              className={classesInputData}
-            />
+            <CampoData variant="compacta" value={dataInicial} onChange={setDataInicial} max={dataFinal || undefined} />
           </label>
           <label className="block">
             <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">Data Final</span>
-            <input
-              type="date"
-              value={dataFinal}
-              onChange={(event) => setDataFinal(event.target.value)}
-              min={dataInicial || undefined}
-              className={classesInputData}
-            />
+            <CampoData variant="compacta" value={dataFinal} onChange={setDataFinal} min={dataInicial || undefined} />
           </label>
         </div>
 

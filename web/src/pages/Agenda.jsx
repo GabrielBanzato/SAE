@@ -13,9 +13,8 @@ import {
   Loader2,
 } from 'lucide-react';
 import { apiFetch } from '../services/api';
+import { DIAS_SEMANA, gerarGradeDoMes } from '../utils/datas';
 import ModalLembrete from '../components/agenda/ModalLembrete';
-
-const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 // Mapeamento de cor pedido: Verde = Recebimentos/Vendas, Vermelho =
 // Pagamentos/Contas, Azul = Lembretes/Tarefas. Reaproveitado tanto nas
@@ -72,17 +71,6 @@ function ehEventoDeLancamento(evento) {
 
 function idNumericoDoLancamento(evento) {
   return Number(evento.id.slice('lancamento-'.length));
-}
-
-function gerarGradeDoMes(ano, mesIndice) {
-  const primeiroDiaSemana = new Date(ano, mesIndice, 1).getDay();
-  const totalDias = new Date(ano, mesIndice + 1, 0).getDate();
-
-  const celulas = [];
-  for (let i = 0; i < primeiroDiaSemana; i++) celulas.push(null);
-  for (let dia = 1; dia <= totalDias; dia++) celulas.push(dia);
-  while (celulas.length % 7 !== 0) celulas.push(null);
-  return celulas;
 }
 
 /**

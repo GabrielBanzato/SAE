@@ -50,10 +50,13 @@ const CATEGORIAS_MENU = [
     chave: 'administracao',
     titulo: 'Administração',
     icon: Building2,
+    // "Configuracoes" saiu daqui de proposito (pedido explicito) - agora e
+    // acessada so pela engrenagem no rodape (ver botao "Configuracoes" mais
+    // abaixo, perto do toggle de tema), pra nao ter 2 caminhos diferentes
+    // levando pra mesma tela.
     itens: [
       { label: 'Controle Financeiro', to: '/financeiro', icon: Wallet },
       { label: 'Relatórios', to: '/relatorios', icon: BarChart3 },
-      { label: 'Configurações', to: '/configuracoes', icon: Settings },
     ],
   },
 ];

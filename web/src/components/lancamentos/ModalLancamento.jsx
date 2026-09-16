@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ArrowDownCircle, ArrowUpCircle, Calendar, CheckCircle2, Circle, FileText, X } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, CheckCircle2, Circle, FileText, X } from 'lucide-react';
 import CampoTexto from '../CampoTexto';
+import CampoData from '../CampoData';
 
 function SimboloReal({ className }) {
   return <span className={`text-base font-bold ${className}`}>R$</span>;
@@ -185,12 +186,10 @@ export default function ModalLancamento({ onFechar, onSalvar }) {
               onChange={(event) => atualizarCampo('valor', event.target.value)}
               required
             />
-            <CampoTexto
+            <CampoData
               label={rotuloCampoData(campos.tipo, campos.status)}
-              icon={Calendar}
-              type="date"
               value={campos.dataVencimento}
-              onChange={(event) => atualizarCampo('dataVencimento', event.target.value)}
+              onChange={(valor) => atualizarCampo('dataVencimento', valor)}
               required
             />
           </div>
