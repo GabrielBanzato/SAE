@@ -41,6 +41,10 @@ export default function Assinatura({ empresa, onEmpresaAtualizada }) {
   const [atualizando, setAtualizando] = useState(false);
   const [erro, setErro] = useState('');
 
+  const [confirmandoDowngrade, setConfirmandoDowngrade] = useState(false);
+  const [voltandoParaGratuito, setVoltandoParaGratuito] = useState(false);
+  const [erroDowngrade, setErroDowngrade] = useState('');
+
   if (!empresa) {
     return null;
   }
@@ -84,6 +88,35 @@ export default function Assinatura({ empresa, onEmpresaAtualizada }) {
     }
   }
 
+  /**
+   * Downgrade real (nao mockado): `PUT /empresa/assinatura` ja aceita
+   * `plano: 'gratuito'` sem exigir `valor_contribuicao` (o backend zera a
+   * contribuicao sozinho - ver comentario em
+   * `empresa.service.js#atualizarAssinatura`). Pedido explicito: o botao
+   * fica "secundario/discreto" - por isso o clique inicial so abre uma
+   * confirmacao inline (mesmo padrao de "2 cliques" ja usado no convite de
+   * UsuariosEquipe.jsx) em vez de agir na hora, pra nao cancelar o apoio
+   * de alguem sem querer.
+   */
+  async function handleVoltarParaGratuito() {
+    setVoltandoParaGratuito(true);
+    setErroDowngrade('');
+
+    try {
+      const atualizada = await apiFetch('/empresa/assinatura', {
+        method: 'PUT',
+        body: JSON.stringify({ plano: 'gratuito' }),
+      });
+      onEmpresaAtualizada((atual) => ({ ...atual, ...atualizada }));
+      refreshEmpresa();
+      setConfirmandoDowngrade(false);
+    } catch (err) {
+      setErroDowngrade(err.message || 'Não foi possível voltar para o plano gratuito agora.');
+    } finally {
+      setVoltandoParaGratuito(false);
+    }
+  }
+
   return (
     <div className="max-w-3xl space-y-6">
       <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700">
@@ -102,15 +135,18 @@ export default function Assinatura({ empresa, onEmpresaAtualizada }) {
       </div>
 
       <div className="grid gap-6 sm:grid-cols-2">
+        {/* Este card e SEMPRE "Plano Gratuito" - antes ele virava um clone
+            do card Apoiador (titulo trocava pra "Plano Apoiador") quando o
+            usuario ja era Apoiador, fazendo o Plano Gratuito "sumir"
+            visualmente da tela (bug real reportado: os 2 planos precisam
+            aparecer sempre, os dois lado a lado). */}
         <div className="rounded-3xl border-2 border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800">
           <span className="inline-block rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-            Seu plano atual
+            {ehApoiador ? 'Disponível' : 'Seu plano atual'}
           </span>
-          <h3 className="mt-3 text-2xl font-extrabold text-slate-900 dark:text-slate-100">
-            {ehApoiador ? 'Plano Apoiador' : 'Plano Essencial'}
-          </h3>
+          <h3 className="mt-3 text-2xl font-extrabold text-slate-900 dark:text-slate-100">Plano Gratuito</h3>
           <p className="mt-1 text-lg text-slate-500 dark:text-slate-400">
-            {ehApoiador ? 'Obrigado por apoiar o projeto! 💙' : 'Gratuito e ativo — funções base'}
+            {ehApoiador ? 'O plano que você usava antes de virar Apoiador.' : 'Gratuito e ativo — funções base'}
           </p>
           <ul className="mt-4 space-y-2 text-base text-slate-600 dark:text-slate-300">
             <li className="flex items-center gap-2">
@@ -126,11 +162,53 @@ export default function Assinatura({ empresa, onEmpresaAtualizada }) {
               Controle de estoque e alertas
             </li>
           </ul>
+
+          {ehApoiador && (
+            <div className="mt-6 border-t border-slate-100 pt-4 dark:border-slate-700">
+              {!confirmandoDowngrade ? (
+                <button
+                  type="button"
+                  onClick={() => setConfirmandoDowngrade(true)}
+                  className="text-sm font-semibold text-slate-500 underline decoration-dotted underline-offset-4 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                >
+                  Voltar para o plano gratuito (Cancelar apoio)
+                </button>
+              ) : (
+                <div className="rounded-2xl bg-amber-50 p-4 dark:bg-amber-900/20">
+                  <p className="text-base text-amber-800 dark:text-amber-200">
+                    Tem certeza? Você vai perder os benefícios de Apoiador (desconto em módulos, acesso antecipado,
+                    prioridade no suporte e gestão de equipe).
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={handleVoltarParaGratuito}
+                      disabled={voltandoParaGratuito}
+                      className="rounded-xl bg-slate-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-600 dark:hover:bg-slate-500"
+                    >
+                      {voltandoParaGratuito ? 'Um instante...' : 'Sim, cancelar apoio'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmandoDowngrade(false)}
+                      disabled={voltandoParaGratuito}
+                      className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-300 dark:hover:bg-slate-700"
+                    >
+                      Voltar
+                    </button>
+                  </div>
+                  {erroDowngrade && (
+                    <p className="mt-3 text-sm font-medium text-red-600 dark:text-red-400">{erroDowngrade}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="rounded-3xl border-2 border-blue-500 bg-blue-50 p-6 dark:border-blue-500 dark:bg-blue-950/40">
           <span className="inline-block rounded-full bg-blue-600 px-3 py-1 text-sm font-semibold text-white">
-            Plano Apoiador
+            {ehApoiador ? 'Seu plano atual' : 'Plano Apoiador'}
           </span>
           <h3 className="mt-3 text-2xl font-extrabold text-slate-900 dark:text-slate-100">Recursos avançados</h3>
           <p className="mt-1 text-lg text-slate-500 dark:text-slate-400">

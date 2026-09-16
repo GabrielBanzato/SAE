@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, Download, Loader2, Plus, Receipt } from 'lucide-react';
+import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, Download, Plus, Receipt } from 'lucide-react';
 import { apiFetch } from '../services/api';
 import { dataCalendario } from '../utils/datas';
+import { useToast } from '../context/ToastContext';
 import ModalLancamento from '../components/lancamentos/ModalLancamento';
 
 function formatarMoeda(valor) {
@@ -10,6 +11,34 @@ function formatarMoeda(valor) {
 
 function formatarData(valor) {
   return dataCalendario(valor).toLocaleDateString('pt-BR');
+}
+
+/** Escapa um campo pra CSV: sempre entre aspas duplas, com aspas internas duplicadas (regra padrao do formato). */
+function campoCsv(valor) {
+  return `"${String(valor).replace(/"/g, '""')}"`;
+}
+
+/**
+ * Gera o CSV a partir dos lancamentos JA FILTRADOS (o que esta visivel na
+ * tabela) e dispara o download via Blob + link temporario - sem
+ * biblioteca nenhuma, e um padrao nativo do browser. `;` como separador
+ * (nao `,`) porque o Excel em pt-BR usa virgula como separador decimal
+ * (`R$ 1.234,56`) - usar `,` como delimitador de coluna quebraria a
+ * importacao. O BOM (marca de ordem de bytes) UTF-8 no inicio do arquivo
+ * evita que o Excel abra acentos e caracteres como `Ç`/`Ã` corrompidos
+ * (sem esse marcador explicito, o Excel assume ISO-8859-1 por padrao).
+ */
+function gerarCsv(lancamentos) {
+  const cabecalho = ['Descrição', 'Tipo', 'Valor', 'Data', 'Status'];
+  const linhas = lancamentos.map((item) => [
+    item.descricao,
+    item.tipo === 'ENTRADA' ? 'Entrada' : 'Saída',
+    Number(item.valor).toFixed(2).replace('.', ','),
+    formatarData(item.dataVencimento),
+    estaAtrasado(item) ? 'Vencido' : item.status === 'PAGO' ? 'Pago' : 'Pendente',
+  ]);
+
+  return [cabecalho, ...linhas].map((linha) => linha.map(campoCsv).join(';')).join('\r\n');
 }
 
 /**
@@ -169,11 +198,12 @@ export default function Lancamentos() {
   const [filtroCategoria, setFiltroCategoria] = useState('todas');
   const [dataInicial, setDataInicial] = useState('');
   const [dataFinal, setDataFinal] = useState('');
-  const [exportando, setExportando] = useState(false);
 
   const [modalAberto, setModalAberto] = useState(false);
   const [idAtualizando, setIdAtualizando] = useState(null);
   const [erroAtualizacao, setErroAtualizacao] = useState('');
+
+  const { mostrarToast } = useToast();
 
   useEffect(() => {
     let ativo = true;
@@ -227,17 +257,23 @@ export default function Lancamentos() {
     filtroTipo === 'todos' && filtroStatus === 'todos' && filtroCategoria === 'todas' && !dataInicial && !dataFinal;
 
   function handleExportar() {
-    // Mock (pedido explicito): sem rota de backend de exportacao ainda.
-    console.log('Exportando CSV...', {
-      filtroTipo,
-      filtroStatus,
-      filtroCategoria,
-      dataInicial,
-      dataFinal,
-      totalRegistros: lancamentosFiltrados.length,
-    });
-    setExportando(true);
-    setTimeout(() => setExportando(false), 2000);
+    if (lancamentosFiltrados.length === 0) {
+      mostrarToast('Não há dados para exportar no período selecionado.', 'aviso');
+      return;
+    }
+
+    const blob = new Blob([`﻿${gerarCsv(lancamentosFiltrados)}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `lancamentos_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    mostrarToast(`${lancamentosFiltrados.length} lançamento(s) exportado(s) com sucesso.`, 'sucesso');
   }
 
   async function criarLancamento(payload) {
@@ -365,15 +401,10 @@ export default function Lancamentos() {
           <button
             type="button"
             onClick={handleExportar}
-            disabled={exportando}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-800 px-5 py-2.5 text-base font-bold text-white shadow-sm transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-slate-700 dark:hover:bg-slate-600"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-800 px-5 py-2.5 text-base font-bold text-white shadow-sm transition-colors hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600"
           >
-            {exportando ? (
-              <Loader2 size={18} className="shrink-0 animate-spin" aria-hidden="true" />
-            ) : (
-              <Download size={18} className="shrink-0" aria-hidden="true" />
-            )}
-            {exportando ? 'Exportando...' : 'Exportar'}
+            <Download size={18} className="shrink-0" aria-hidden="true" />
+            Exportar
           </button>
         </div>
       </div>
@@ -405,7 +436,7 @@ export default function Lancamentos() {
                   Valor
                 </th>
                 <th className="px-6 py-4 text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Vencimento
+                  Data / Venc.
                 </th>
                 <th className="px-6 py-4 text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   Status

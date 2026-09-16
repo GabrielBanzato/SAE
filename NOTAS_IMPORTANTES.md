@@ -5195,3 +5195,99 @@ fecha sozinho, redimensionar a janela cruzando o breakpoint `md` com o
 menu aberto (conferir que não fica preso num estado visual estranho), e o
 collapse de desktop (ícone-só) continuando a funcionar como antes em telas
 largas.
+
+---
+
+## Refinamentos: coluna de data, calendário escuro, export CSV real, downgrade de plano (2026-09-18)
+
+### Coluna "Vencimento" virou "Data / Venc."
+
+`Lancamentos.jsx`: só o texto do `<th>` mudou - a tabela mistura Entradas
+(onde a data é mais um recebimento do que um "vencimento" no sentido
+estrito) e Saídas, e o pedido queria um rótulo neutro pros dois casos.
+
+### Calendário nativo (`<input type="date">`) respeitando o Dark Mode
+
+`index.css` ganhou uma regra `.dark input[type='date'] { color-scheme:
+dark; }` (mais `time`/`datetime-local`, já que é o mesmo problema). Não
+existe seletor CSS pro popup do calendário em si (ele roda fora do DOM da
+página) - `color-scheme` é a única propriedade que o navegador lê pra
+decidir se desenha esse popup (e o ícone de calendário dentro do campo,
+no Chrome/Edge) em paleta clara ou escura. Aplica em todos os `<input
+type="date">` do app de uma vez só (Relatórios, Lançamentos, Suporte não
+usa, ModalLancamento, ModalLembrete) - não precisou tocar nesses
+componentes individualmente.
+
+### Sistema de toast criado do zero - não existia nenhum no projeto
+
+O pedido assumia que já existia "a biblioteca de notificações do
+projeto", mas isso não é verdade - conferido e documentado em pelo menos
+2 tarefas anteriores (Relatórios.jsx e Lançamentos.jsx usaram feedback
+inline "Gerando arquivo..." exatamente por falta disso). Criado
+`context/ToastContext.jsx` (novo): `ToastProvider` + hook `useToast()`
+retornando `mostrarToast(mensagem, tipo, duracaoMs)`, pilha de mensagens
+`fixed` no canto inferior/direito da tela (`z-[100]`, acima de qualquer
+modal ou da Sidebar mobile), auto-some depois de 5s ou ao clicar no X.
+**Sem nenhuma dependência nova** - Context + Tailwind, mesmo padrão de
+`ThemeContext.jsx`/`AuthContext.jsx` já existentes. Registrado em
+`main.jsx` (`AuthProvider > ThemeProvider > ToastProvider > App`).
+
+### Exportação de CSV: lógica real, não mais mock
+
+`Lancamentos.jsx#handleExportar`: antes só fazia `console.log` +
+`setTimeout`; agora gera um CSV de verdade a partir de
+`lancamentosFiltrados` (Descrição/Tipo/Valor/Data/Status, refletindo os
+filtros ativos na tela) e dispara o download via `Blob` + `<a download>`
+temporário - sem biblioteca, é um padrão nativo do browser. Separador
+`;` (não `,`): o Excel em pt-BR usa vírgula como separador decimal (`R$
+1.234,56`), então `,` como delimitador de coluna quebraria a importação.
+BOM UTF-8 no início do arquivo evita o Excel corromper `Ç`/`Ã` (sem esse
+marcador, ele assume ISO-8859-1 por padrão). Validação pedida
+explicitamente: se `lancamentosFiltrados.length === 0`, **não** gera
+nada - só dispara `mostrarToast('Não há dados para exportar no período
+selecionado.', 'aviso')` e sai. Removido o `exportando`/spinner que
+existia antes (a geração é síncrona agora, não tem "tempo de espera" real
+pra mostrar).
+
+### Assinatura: bug real corrigido - Plano Gratuito "sumia" pra quem já era Apoiador
+
+Achado confirmando o pedido: o card esquerdo antes **trocava de nome**
+pra "Plano Apoiador" quando `empresa.plano === 'apoiador'` (reaproveitava
+o mesmo card pra mostrar "seu plano atual", seja ele qual for) - na
+prática, o Plano Gratuito nunca aparecia mais na tela depois que alguém
+virava Apoiador. Corrigido: o card esquerdo agora é **sempre** "Plano
+Gratuito" (só o badge/subtítulo mudam - "Seu plano atual" vs.
+"Disponível"/"O plano que você usava antes"), e o card direito ("Plano
+Apoiador") agora mostra o badge "Seu plano atual" quando aplicável (antes
+sempre dizia só "Plano Apoiador", sem indicar que era o plano ativo).
+
+**Downgrade é real, não mockado**: descobri (lendo
+`empresa.service.js#atualizarAssinatura` antes de implementar) que o
+backend já aceita `PUT /empresa/assinatura` com `{ plano: 'gratuito' }`
+e zera a contribuição sozinho - não precisou de nenhuma mudança no
+backend. Botão "Voltar para o plano gratuito (Cancelar apoio)" (estilo
+discreto/sublinhado, como pedido) só aparece no card Gratuito quando
+`ehApoiador`; o clique abre uma confirmação inline (2 passos, mesmo
+padrão já usado no convite de `UsuariosEquipe.jsx`) antes de chamar a
+API de verdade - evita cancelar o apoio de alguém por um clique acidental.
+
+### Status de validação
+
+Sem Docker rodando nesta máquina e sem `chromium-cli`/Playwright
+disponíveis (mesma limitação de tarefas anteriores) - `npm run build`
+limpo e `npm run lint` sem nenhum aviso novo introduzido (corrigi um
+aviso real que o lint apontou durante o desenvolvimento: um caractere BOM
+literal que acabou colado dentro de um comentário em vez do texto
+"﻿", disparando `no-irregular-whitespace` - trocado por uma
+descrição em palavras). Os avisos remanescentes (`only-export-components`
+em `ToastContext.jsx`, mesmo padrão de `ThemeContext.jsx`/
+`AuthContext.jsx`; `set-state-in-effect` em `Lancamentos.jsx`, o mesmo
+padrão onipresente de busca de dados) são pré-existentes/aceitos no
+projeto. **Não testado visualmente** - recomendo ao usuário validar com
+`npm run dev` + stack completa: abrir um `<input type="date">` em modo
+escuro, exportar um CSV com filtros aplicados e abrir no Excel/Google
+Sheets (conferir separador e acentuação), tentar exportar com um filtro
+que não retorna nada (conferir o toast), e o fluxo completo de virar
+Apoiador → conferir os 2 cards → cancelar o apoio → conferir que volta
+pro Gratuito de verdade (inclusive após recarregar a página, já que agora
+é uma mudança persistida no banco).

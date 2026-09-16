@@ -58,3 +58,18 @@ a {
   caret-color: white;
   transition: background-color 9999s ease-in-out 0s;
 }
+
+/*
+ * `color-scheme` e a unica forma (nao ha selector CSS pro popup nativo do
+ * calendario/relogio, ele roda fora do DOM da pagina) de pedir pro
+ * navegador desenhar o picker de `<input type="date"|"time"|"datetime-local">`
+ * (E o icone de calendario dentro do campo, no Chrome/Edge) em modo escuro -
+ * sem isso, o popup abre sempre em fundo branco, destoando do resto da UI
+ * em Dark Mode. So aplicado dentro de `.dark` - no tema claro o
+ * comportamento padrao do navegador (claro) ja e o correto.
+ */
+.dark input[type='date'],
+.dark input[type='time'],
+.dark input[type='datetime-local'] {
+  color-scheme: dark;
+}
