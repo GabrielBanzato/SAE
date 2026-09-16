@@ -22,17 +22,14 @@ import {
   ChevronRight,
   ChevronDown,
   LogOut,
+  X,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 
 /**
- * Reformulacao pedida: menu antigo (3 secoes sempre abertas + "Modulos
- * Extras") virou 5 itens de topo - Dashboard/Modulos/Suporte navegam direto,
- * Operacional/Administracao viram "gavetas" (accordion) com as mesmas
- * subcategorias de antes. "Modulos Extras" (Sidebar) foi promovido a uma
- * pagina propria (`/modulos`, ver pages/Modulos.jsx) - a vitrine de
- * apps/addons agora mora la, nao mais dentro do menu.
+ * Menu agrupado em secoes - Dashboard/Modulos/Suporte navegam direto,
+ * Operacional/Administracao viram "gavetas" (accordion) com subcategorias.
  */
 const CATEGORIAS_MENU = [
   {
@@ -75,18 +72,25 @@ function encontrarCategoriaDaRota(pathname) {
  * Fora do componente Sidebar (nao definido durante o render) - senao vira
  * um componente novo a cada render, perdendo qualquer estado/identidade do
  * React entre renders (o oxlint acusa isso como `static-components`).
- * Recebe `isExpanded` como prop em vez de fechar sobre a variavel do
- * componente pai.
+ *
+ * `isExpanded` so tem efeito visual a partir do breakpoint `md` (classes
+ * `md:...`) - abaixo disso a Sidebar e um overlay full-drawer (ver
+ * `<aside>` no componente principal) e sempre mostra o layout "expandido"
+ * (largura cheia, rotulo visivel), independente do collapse de desktop.
+ * `aoNavegar` fecha o menu mobile ao clicar num link (no desktop e um
+ * no-op inofensivo, ja que la o menu nao "fecha" - so o estado
+ * `abertaNoMobile`, que o desktop ignora, muda).
  */
-function ItemDireto({ label, to, icon: Icon, isExpanded }) {
+function ItemDireto({ label, to, icon: Icon, isExpanded, aoNavegar }) {
   return (
     <NavLink
       to={to}
       end={to === '/'}
+      onClick={aoNavegar}
       title={!isExpanded ? label : undefined}
       className={({ isActive }) =>
         `flex items-center gap-3 rounded-xl px-4 py-3 text-lg font-semibold transition-colors ${
-          isExpanded ? '' : 'justify-center px-0'
+          !isExpanded ? 'md:justify-center md:px-0' : ''
         } ${
           isActive
             ? 'bg-blue-600 text-white'
@@ -95,30 +99,37 @@ function ItemDireto({ label, to, icon: Icon, isExpanded }) {
       }
     >
       <Icon size={22} className="shrink-0" aria-hidden="true" />
-      <span className={`flex-1 text-left ${isExpanded ? '' : 'hidden'}`}>{label}</span>
+      <span className={`flex-1 text-left ${!isExpanded ? 'md:hidden' : ''}`}>{label}</span>
     </NavLink>
   );
 }
 
 /**
- * Menu lateral fixo (nunca rola com a pagina) e retratil. `isExpanded` e
- * `onToggle` vem do Layout (ver comentario la) - este componente so decide
- * como se desenhar em cada estado.
+ * Menu lateral. `isExpanded`/`onToggle` (collapse "berruga", so relevante a
+ * partir do `md`) e `abertaNoMobile`/`onFecharNoMobile` (drawer full-screen
+ * abaixo do `md`) vem do Layout - este componente so decide como se
+ * desenhar em cada estado.
  *
- * Estrutura em 3 blocos empilhados via flex-col (cabecalho e rodape com
- * altura propria, navegacao no meio com `flex-1` pra ocupar o espaco
- * restante) - e o que garante cabecalho/rodape sempre fixos e so a
- * navegacao rolando, sem depender de calculo manual de altura.
+ * Abaixo do `md`: `<aside>` vira um overlay `fixed` de largura fixa
+ * (`w-64`), escondido por padrao fora da tela (`-translate-x-full`) e
+ * deslizando pra dentro (`translate-x-0`) quando `abertaNoMobile` - o
+ * Layout renderiza o backdrop escuro por cima do resto da tela junto com
+ * esse estado. A partir do `md`, o overlay vira o comportamento antigo
+ * (sempre visivel, empurra o conteudo, largura variavel conforme
+ * `isExpanded`) - por isso a maioria das classes condicionais aqui usa o
+ * padrao "valor base = como fica expandido/mobile, com um `md:valor-b`
+ * adicional só quando `!isExpanded`" (ver comentario do `ItemDireto`
+ * acima) em vez do padrao antigo (`isExpanded ? a : b` sem prefixo),
+ * que so fazia sentido quando a Sidebar nunca saia do layout lado-a-lado.
  *
  * Accordion EXCLUSIVO: `categoriaAberta` guarda no maximo 1 chave por vez
  * (nao um Set/array) - abrir uma categoria fecha a outra automaticamente,
- * so por causa do proprio formato do estado (nao precisa de logica extra
- * pra "fechar as demais"). A suavidade do abrir/fechar e via
- * `max-height`/`opacity` com `transition-all duration-300` (Tailwind nao
- * anima `height: auto`, e o conteudo tem tamanho variavel - por isso um
- * `max-h-[...]` generoso em vez de medir a altura real via ref).
+ * so por causa do proprio formato do estado. A suavidade do abrir/fechar e
+ * via `max-height`/`opacity` com `transition-all duration-300` (Tailwind
+ * nao anima `height: auto`, e o conteudo tem tamanho variavel - por isso
+ * um `max-h-[...]` generoso em vez de medir a altura real via ref).
  */
-export default function Sidebar({ isExpanded, onToggle }) {
+export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFecharNoMobile }) {
   const { theme, toggleTheme } = useTheme();
   const { logout } = useAuth();
   const navigate = useNavigate();
@@ -154,44 +165,54 @@ export default function Sidebar({ isExpanded, onToggle }) {
   }
 
   const itemClasses = `flex items-center gap-3 rounded-xl px-4 py-3 text-lg font-semibold transition-colors ${
-    isExpanded ? '' : 'justify-center px-0'
+    !isExpanded ? 'md:justify-center md:px-0' : ''
   }`;
 
   return (
     <aside
-      className={`fixed left-0 top-0 z-20 flex h-screen flex-col border-r border-slate-200 bg-white transition-all duration-300 ease-in-out dark:border-slate-800 dark:bg-slate-900 ${
-        isExpanded ? 'w-64' : 'w-20'
-      }`}
+      className={`fixed left-0 top-0 z-50 flex h-screen w-64 flex-col border-r border-slate-200 bg-white transition-all duration-300 ease-in-out dark:border-slate-800 dark:bg-slate-900 ${
+        abertaNoMobile ? 'translate-x-0' : '-translate-x-full'
+      } md:translate-x-0 ${!isExpanded ? 'md:w-20' : 'md:w-64'}`}
     >
-      {/* Botao de recolher/expandir - "berruga" flutuando na borda direita,
-          centralizada verticalmente na tela inteira (a Sidebar e h-screen,
-          entao top-1/2 aqui cai no meio da viewport). Se posiciona relativo
-          a este <aside> porque `position: fixed` (classe `fixed` acima) JA
-          e, por si so, um contexto de posicionamento valido pra um filho
-          `absolute` - nao precisa (e nao deve) adicionar `relative` aqui
-          tambem: as duas classes juntas no mesmo elemento conflitam (so uma
-          delas vale por vez, dependendo da ordem interna do CSS gerado
-          pelo Tailwind, nao da ordem escrita no className) - isso ja
-          causou um bug real (Sidebar virando `position: relative` sem
-          querer, quebrando o offset do <main> no Layout.jsx). */}
+      {/* Botao de recolher/expandir (desktop) - "berruga" flutuando na borda
+          direita, centralizada verticalmente na tela inteira. So aparece a
+          partir do `md` (`hidden md:flex`): abaixo disso a Sidebar e um
+          drawer full-screen que abre/fecha pelo botao hamburguer + pelo X
+          interno + pelo backdrop, nao por um collapse pra icone-so. Se
+          posiciona relativo a este <aside> porque `position: fixed` (classe
+          `fixed` acima) JA e, por si so, um contexto de posicionamento
+          valido pra um filho `absolute` - nao precisa (e nao deve) adicionar
+          `relative` aqui tambem: as duas juntas no mesmo elemento conflitam
+          (ja causou um bug real, Sidebar virando `position: relative` sem
+          querer e quebrando o offset do <main> no Layout.jsx). */}
       <button
         type="button"
         onClick={onToggle}
         aria-label={isExpanded ? 'Recolher menu' : 'Expandir menu'}
         title={isExpanded ? 'Recolher menu' : 'Expandir menu'}
-        className="absolute top-1/2 -right-4 -translate-y-1/2 w-8 h-8 bg-blue-600 rounded-full border-4 border-slate-900 flex items-center justify-center cursor-pointer z-50 text-white transition-transform hover:scale-110"
+        className="absolute top-1/2 -right-4 hidden h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border-4 border-slate-900 bg-blue-600 text-white transition-transform hover:scale-110 md:flex"
       >
         {isExpanded ? <ChevronLeft size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}
       </button>
 
       {/* Cabecalho fixo - "SAE" nunca some, so muda de alinhamento
-          (esquerda vs. centro) conforme o menu esta expandido ou
-          recolhido. O botao de recolher/expandir saiu daqui - agora vive
-          na "berruga" acima. */}
-      <div className="shrink-0 px-4 py-6">
-        <div className={`flex items-center ${isExpanded ? 'justify-start' : 'justify-center'}`}>
+          (esquerda vs. centro) conforme o menu esta expandido ou recolhido
+          A PARTIR DO `md` (no mobile e sempre alinhado a esquerda, ja que o
+          drawer e sempre "expandido"). O X de fechar só existe no mobile
+          (`md:hidden`) - a partir do `md` a Sidebar nao "fecha" mais nesse
+          sentido. */}
+      <div className="flex shrink-0 items-center justify-between px-4 py-6">
+        <div className={`flex items-center justify-start ${!isExpanded ? 'md:justify-center' : ''}`}>
           <span className="text-2xl font-extrabold text-blue-700 dark:text-blue-400">SAE</span>
         </div>
+        <button
+          type="button"
+          onClick={onFecharNoMobile}
+          aria-label="Fechar menu"
+          className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 md:hidden"
+        >
+          <X size={22} aria-hidden="true" />
+        </button>
       </div>
 
       {/* Navegacao - unica parte que rola. A barra de rolagem fica
@@ -202,7 +223,7 @@ export default function Sidebar({ isExpanded, onToggle }) {
         className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         aria-label="Navegacao principal"
       >
-        <ItemDireto {...ITEM_DASHBOARD} isExpanded={isExpanded} />
+        <ItemDireto {...ITEM_DASHBOARD} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
 
         {CATEGORIAS_MENU.map(({ chave, titulo, icon: Icon, itens }) => {
           const aberto = categoriaAberta === chave;
@@ -222,52 +243,52 @@ export default function Sidebar({ isExpanded, onToggle }) {
                 }`}
               >
                 <Icon size={22} className="shrink-0" aria-hidden="true" />
-                <span className={`flex-1 text-left ${isExpanded ? '' : 'hidden'}`}>{titulo}</span>
+                <span className={`flex-1 text-left ${!isExpanded ? 'md:hidden' : ''}`}>{titulo}</span>
                 <ChevronDown
                   size={18}
                   className={`shrink-0 transition-transform duration-300 ${aberto ? 'rotate-180' : ''} ${
-                    isExpanded ? '' : 'hidden'
+                    !isExpanded ? 'md:hidden' : ''
                   }`}
                   aria-hidden="true"
                 />
               </button>
 
-              {/* Gaveta da categoria - so existe (visualmente) quando a
-                  Sidebar esta expandida; recolhida, os subitens ficam
-                  inacessiveis pelo menu mesmo (sem espaco pra um flyout
-                  aqui), igual o resto do menu ja escondia texto. */}
-              {isExpanded && (
-                <div
-                  className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                    aberto ? 'max-h-[28rem] opacity-100' : 'max-h-0 opacity-0'
-                  }`}
-                >
-                  <div className="flex flex-col gap-1 py-1 pl-4">
-                    {itens.map(({ label, to, icon: SubIcon }) => (
-                      <NavLink
-                        key={label}
-                        to={to}
-                        className={({ isActive }) =>
-                          `flex items-center gap-3 rounded-xl px-4 py-2.5 text-base font-semibold transition-colors ${
-                            isActive
-                              ? 'bg-blue-600 text-white'
-                              : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-                          }`
-                        }
-                      >
-                        <SubIcon size={18} className="shrink-0" aria-hidden="true" />
-                        <span className="flex-1 text-left">{label}</span>
-                      </NavLink>
-                    ))}
-                  </div>
+              {/* Gaveta da categoria - sempre presente no mobile (onde a
+                  Sidebar e sempre "expandida"); a partir do `md`, some por
+                  completo quando a Sidebar esta recolhida (`md:hidden`),
+                  independente de `aberto` - nao ha espaco pra um flyout
+                  nesse modo icone-so. */}
+              <div
+                className={`overflow-hidden transition-all duration-300 ease-in-out ${!isExpanded ? 'md:hidden' : ''} ${
+                  aberto ? 'max-h-[28rem] opacity-100' : 'max-h-0 opacity-0'
+                }`}
+              >
+                <div className="flex flex-col gap-1 py-1 pl-4">
+                  {itens.map(({ label, to, icon: SubIcon }) => (
+                    <NavLink
+                      key={label}
+                      to={to}
+                      onClick={onFecharNoMobile}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 rounded-xl px-4 py-2.5 text-base font-semibold transition-colors ${
+                          isActive
+                            ? 'bg-blue-600 text-white'
+                            : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+                        }`
+                      }
+                    >
+                      <SubIcon size={18} className="shrink-0" aria-hidden="true" />
+                      <span className="flex-1 text-left">{label}</span>
+                    </NavLink>
+                  ))}
                 </div>
-              )}
+              </div>
             </div>
           );
         })}
 
-        <ItemDireto {...ITEM_MODULOS} isExpanded={isExpanded} />
-        <ItemDireto {...ITEM_SUPORTE} isExpanded={isExpanded} />
+        <ItemDireto {...ITEM_MODULOS} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
+        <ItemDireto {...ITEM_SUPORTE} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
       </nav>
 
       {/* Rodape fixo - fora da area de scroll da nav (e irmao dela, nao
@@ -279,7 +300,7 @@ export default function Sidebar({ isExpanded, onToggle }) {
           aria-label="Alternar tema"
           title={!isExpanded ? 'Alternar entre modo claro e escuro' : undefined}
           className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-lg font-semibold text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 ${
-            isExpanded ? '' : 'justify-center px-0'
+            !isExpanded ? 'md:justify-center md:px-0' : ''
           }`}
         >
           {escuro ? (
@@ -287,7 +308,9 @@ export default function Sidebar({ isExpanded, onToggle }) {
           ) : (
             <Moon size={22} className="shrink-0" aria-hidden="true" />
           )}
-          <span className={isExpanded ? 'flex-1 text-left' : 'hidden'}>{escuro ? 'Modo Claro' : 'Modo Escuro'}</span>
+          <span className={`flex-1 text-left ${!isExpanded ? 'md:hidden' : ''}`}>
+            {escuro ? 'Modo Claro' : 'Modo Escuro'}
+          </span>
         </button>
 
         <button
@@ -296,11 +319,11 @@ export default function Sidebar({ isExpanded, onToggle }) {
           aria-label="Sair"
           title={!isExpanded ? 'Sair' : undefined}
           className={`mt-1 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-lg font-semibold text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 ${
-            isExpanded ? '' : 'justify-center px-0'
+            !isExpanded ? 'md:justify-center md:px-0' : ''
           }`}
         >
           <LogOut size={22} className="shrink-0" aria-hidden="true" />
-          <span className={isExpanded ? 'flex-1 text-left' : 'hidden'}>Sair</span>
+          <span className={`flex-1 text-left ${!isExpanded ? 'md:hidden' : ''}`}>Sair</span>
         </button>
       </div>
     </aside>

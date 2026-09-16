@@ -5105,3 +5105,93 @@ Lançamento (conferir que persiste após recarregar a página) vs. num
 lembrete (conferir que **não** persiste - comportamento esperado, não
 bug), e os 4 filtros + exportação em Lançamentos, incluindo o caso de
 combinar vários filtros ao mesmo tempo.
+
+---
+
+## Layout responsivo (Sidebar overlay no mobile) (2026-09-17)
+
+### Causa do bug: `<main>` tinha margem esquerda fixa (`ml-64`/`ml-20`) sem breakpoint
+
+`Layout.jsx` aplicava `ml-64`/`ml-20` (largura da Sidebar) direto no
+`<main>`, sem nenhum prefixo responsivo - numa tela de 375px isso deixava
+só ~110-190px pra todo o conteúdo, e a Sidebar continuava sempre visível e
+"lado a lado" (nunca virava overlay), daí o efeito "esmagando o
+conteúdo". O tamanho de fonte gigante do Dashboard (`text-3xl` fixo, sem
+variante menor) piorava mais ainda em telas estreitas.
+
+### Sidebar: virou um drawer overlay abaixo do `md`, mantendo o comportamento antigo a partir dali
+
+`Sidebar.jsx` ganhou 2 props novas (`abertaNoMobile`/`onFecharNoMobile`,
+estado mora em `Layout.jsx` - mesmo motivo de "lift state up" que já
+justificava `isExpanded`, ver comentário no arquivo). O `<aside>` agora é
+`fixed` com `w-64` fixo, `-translate-x-full` (fora da tela) por padrão e
+`translate-x-0` quando `abertaNoMobile` - a partir do `md`,
+`md:translate-x-0` força ele sempre visível, voltando ao comportamento
+antigo (lado a lado, largura variando com `isExpanded`).
+
+**A parte mais delicada**: quase todo o resto do arquivo já decidia
+classes com base em `isExpanded` (`isExpanded ? 'A' : 'B'`, sem nenhum
+prefixo de breakpoint) - isso agora precisa significar "recolhido" só a
+partir do `md` (no mobile a Sidebar é *sempre* visualmente "expandida",
+já que é um drawer full-width quando aberta, sem meio-termo tipo "modo
+ícone-só"). Todo esse padrão foi reescrito pra "valor base = como fica
+expandido (vale pro mobile inteiro e pro desktop expandido), com um
+`md:valor-b` adicional só quando `!isExpanded`" - documentado com detalhe
+no comentário do `ItemDireto` e do componente principal em
+`Sidebar.jsx`, porque não é óbvio e um dev futuro mexendo em só um desses
+`isExpanded ? ... : ...` sem entender o padrão reintroduziria o bug (ex.:
+a gaveta de "Operacional/Administração" ficaria escondida no mobile
+sempre que `isExpanded` fosse `false`, se a condição `isExpanded && (...)`
+antiga não tivesse sido trocada por `${!isExpanded ? 'md:hidden' : ''}`
+direto na classe, sempre renderizando o container).
+
+Adicionado também: botão X de fechar dentro do cabeçalho da Sidebar
+(`md:hidden`) e `onClick` de fechar o menu mobile em **todo** link de
+navegação (`ItemDireto` e os itens dentro da gaveta) - sem isso, tocar num
+item do menu no celular navegaria mas deixaria o drawer aberto por cima
+da tela seguinte. A "berruga" de collapse (desktop) virou `hidden md:flex`
+- não faz sentido nenhum modo ícone-só num drawer full-screen.
+
+### Layout: backdrop + header mobile com hambúrguer
+
+`Layout.jsx`: `menuMobileAberto` (estado novo) controla a Sidebar e um
+backdrop (`fixed inset-0 z-40 bg-slate-900/50 md:hidden`, clicável pra
+fechar) - só existe na árvore quando o menu está aberto. Nova `<header>`
+(`md:hidden`, `sticky top-0`) com botão hambúrguer (ícone `Menu` do
+lucide-react) + logo "SAE", já que a partir de agora a Sidebar começa
+escondida no mobile e a "berruga" de abrir/fechar dela também sumiu nesse
+tamanho de tela - precisa de outro jeito de abrir o menu.
+
+`<main>` perdeu a margem fixa: agora é `md:ml-64`/`md:ml-20` (só a partir
+do `md`) + `w-full` explícito. Padding do conteúdo também ficou
+progressivo: `px-4 py-6 sm:px-6 sm:py-8 md:px-10` (antes era `px-6 py-8
+sm:px-10`, sem nada menor que `px-6`).
+
+Zero-index empilhado de propósito: Sidebar `z-50` > backdrop `z-40` >
+header mobile `z-30` - garante que a Sidebar sempre fique por cima do
+backdrop, que por sua vez cobre o header e o resto do conteúdo.
+
+### Dashboard: título da saudação virou responsivo
+
+`text-3xl` fixo (o único header do app sem nenhuma variante responsiva -
+todas as outras páginas já usavam `text-2xl ... sm:text-3xl`) virou
+`text-2xl md:text-4xl`, exatamente como sugerido no pedido - bem menor no
+celular, maior que o padrão das outras páginas no desktop (papel de
+"tela principal"/hero do app).
+
+### Status de validação
+
+Sem Docker rodando nesta máquina (mesma limitação de tarefas anteriores)
+e sem `chromium-cli`/Playwright disponíveis neste ambiente - `npm run
+build` limpo e `npm run lint` sem nenhum aviso novo nos 3 arquivos
+tocados (o aviso restante em `Dashboard.jsx` é o mesmo padrão
+`set-state-in-effect` de busca de dados já onipresente no projeto, não
+código novo). **Não testado visualmente em nenhum tamanho de tela** -
+recomendo fortemente ao usuário rodar `npm run dev` e conferir com as
+DevTools em modo responsivo (ou um celular de verdade): abrir/fechar o
+menu pelo hambúrguer, tocar no backdrop pra fechar, navegar por um item
+de dentro da gaveta "Operacional"/"Administração" e confirmar que o menu
+fecha sozinho, redimensionar a janela cruzando o breakpoint `md` com o
+menu aberto (conferir que não fica preso num estado visual estranho), e o
+collapse de desktop (ícone-só) continuando a funcionar como antes em telas
+largas.

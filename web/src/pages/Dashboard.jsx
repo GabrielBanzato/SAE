@@ -130,7 +130,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-extrabold text-slate-900 dark:text-slate-100">
+        <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 md:text-4xl">
           {usuario?.nome ? `Olá, ${usuario.nome}! Aqui está o resumo de hoje` : 'Olá! Aqui está o resumo de hoje'}
         </h1>
         <p className="mt-1 text-lg text-slate-500 dark:text-slate-400">{HOJE_FORMATADO}</p>
