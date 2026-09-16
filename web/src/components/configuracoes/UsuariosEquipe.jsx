@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { UserPlus, UserCircle2, Users } from 'lucide-react';
+import { UserPlus, UserCircle2, Users, Lock, Heart } from 'lucide-react';
 
 const ROTULOS_ROLE = {
   admin: 'Administrador(a)',
@@ -21,7 +21,11 @@ const ROTULOS_PLANO = {
 // Espelha LIMITE_USUARIOS_POR_PLANO em api/src/services/empresa.service.js -
 // precisa ficar em sincronia se o limite mudar no backend (usado so pra
 // exibir o contador e desabilitar o botao antes de bater no 403 real).
-const LIMITES_POR_PLANO = { gratuito: 2, apoiador: 5 };
+// So tem entrada "apoiador": a Gestao de Equipe inteira agora e exclusiva
+// desse plano (ver bloqueio logo no topo do componente) - o plano
+// "gratuito" nunca chega a renderizar essa lista, entao o limite dele
+// deixou de ser relevante aqui.
+const LIMITES_POR_PLANO = { apoiador: 5 };
 
 function ContadorUsuarios({ total, limite, plano }) {
   const atingiuLimite = total >= limite;
@@ -58,11 +62,48 @@ function ContadorUsuarios({ total, limite, plano }) {
  * visual por enquanto (POST /empresa/usuarios ja existe no backend, mas
  * conectar o formulario de convite de verdade e um passo futuro) - o que
  * mudou aqui e que agora o botao reflete o limite REAL do plano
- * (LIMITE_USUARIOS_POR_PLANO no backend: gratuito=2, apoiador=5,
- * contando o admin), desabilitando antes mesmo de tentar convidar.
+ * (LIMITE_USUARIOS_POR_PLANO no backend: apoiador=5, contando o admin),
+ * desabilitando antes mesmo de tentar convidar.
+ *
+ * Pedido explicito (tarefa de redesign do Plano Apoiador): a Gestao de
+ * Equipe inteira virou um beneficio exclusivo de quem e Apoiador (ver
+ * "Liberação da Gestão de Equipe" em Assinatura.jsx) - antes disso, o
+ * plano gratuito tinha acesso limitado (2 pessoas) em vez de bloqueio
+ * total. `onIrParaAssinatura` (passado por Configuracoes.jsx) leva direto
+ * pra aba onde a pessoa pode virar Apoiador.
  */
-export default function UsuariosEquipe({ usuarios, plano }) {
+export default function UsuariosEquipe({ usuarios, plano, onIrParaAssinatura }) {
   const [mostrarAvisoConvite, setMostrarAvisoConvite] = useState(false);
+
+  if (plano && plano !== 'apoiador') {
+    return (
+      <div
+        aria-disabled="true"
+        className="flex max-w-2xl flex-col items-center gap-4 rounded-3xl bg-white p-10 text-center shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700"
+      >
+        <span className="flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400">
+          <Lock size={32} aria-hidden="true" />
+        </span>
+        <h2 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100">
+          Gestão de Equipe é exclusiva para Apoiadores
+        </h2>
+        <p className="max-w-md text-lg text-slate-500 dark:text-slate-400">
+          Recurso exclusivo para Apoiadores do sistema. Vire Apoiador para convidar sua equipe e gerenciar quem tem
+          acesso à sua loja.
+        </p>
+        {onIrParaAssinatura && (
+          <button
+            type="button"
+            onClick={onIrParaAssinatura}
+            className="mt-2 inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-6 py-3 text-lg font-bold text-white shadow-sm transition-colors hover:bg-blue-700"
+          >
+            <Heart size={20} aria-hidden="true" />
+            Vire Apoiador
+          </button>
+        )}
+      </div>
+    );
+  }
 
   const total = usuarios?.length ?? 0;
   const limite = LIMITES_POR_PLANO[plano];
@@ -91,8 +132,7 @@ export default function UsuariosEquipe({ usuarios, plano }) {
 
       {atingiuLimite && (
         <p className="rounded-2xl bg-amber-50 p-4 text-lg text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
-          Você atingiu o limite de usuários do plano {ROTULOS_PLANO[plano] || plano}.{' '}
-          {plano === 'gratuito' && 'Vire Apoiador na aba Assinatura para adicionar mais pessoas à equipe.'}
+          Você atingiu o limite de usuários do plano {ROTULOS_PLANO[plano] || plano}.
         </p>
       )}
 

@@ -1,12 +1,22 @@
 import { useState } from 'react';
-import { Heart, CheckCircle2, FileText, BarChart3, Sparkles } from 'lucide-react';
+import { Heart, CheckCircle2, Percent, Rocket, Headphones, Users } from 'lucide-react';
 import { apiFetch } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 
+/**
+ * Lista de beneficios reformulada (pedido explicito: tirar qualquer mencao
+ * a "Nota Fiscal" daqui - emissao fiscal continua existindo como um modulo
+ * pago a parte, ver pages/Modulos.jsx, nao mais como beneficio incluido no
+ * Apoiador). "Liberacao da Gestao de Equipe" e o motivo pelo qual
+ * UsuariosEquipe.jsx agora bloqueia a aba "Equipe" pra quem nao e
+ * Apoiador - os dois lados dessa mudanca (o beneficio aqui, o bloqueio la)
+ * precisam ficar em sincronia se a regra mudar de novo.
+ */
 const RECURSOS_APOIADOR = [
-  { icon: FileText, texto: 'Módulo fiscal: emissão de NFe/NFCe' },
-  { icon: BarChart3, texto: 'Relatórios avançados de vendas e lucro' },
-  { icon: Sparkles, texto: 'Novidades em primeira mão' },
+  { icon: Percent, texto: 'Desconto de 15% em todos os Módulos Premium' },
+  { icon: Rocket, texto: 'Acesso Antecipado a Novidades' },
+  { icon: Headphones, texto: 'Prioridade no Suporte' },
+  { icon: Users, texto: 'Liberação da Gestão de Equipe' },
 ];
 
 const VALOR_MINIMO_CONTRIBUICAO = 10;
@@ -79,12 +89,15 @@ export default function Assinatura({ empresa, onEmpresaAtualizada }) {
       <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700">
         <div className="flex items-center gap-3 text-rose-600 dark:text-rose-400">
           <Heart size={28} aria-hidden="true" />
-          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">Uma mensalidade caridosa</h2>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+            Ajude a manter o sistema gratuito e ganhe vantagens exclusivas
+          </h2>
         </div>
         <p className="mt-3 text-lg text-slate-600 dark:text-slate-300">
           O SAE é e sempre será gratuito para quem está começando. Se o sistema já está ajudando o seu negócio a
           crescer e você pode contribuir, vire um Apoiador — isso mantém o sistema gratuito para outros pequenos
-          empreendedores que estão dando os primeiros passos, como você um dia deu.
+          empreendedores que estão dando os primeiros passos, como você um dia deu, e ainda desbloqueia vantagens
+          exclusivas pra você.
         </p>
       </div>
 

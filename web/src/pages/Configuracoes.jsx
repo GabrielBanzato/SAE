@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Store, Users, HeartHandshake } from 'lucide-react';
+import { Store, Users, HeartHandshake, Lock } from 'lucide-react';
 import { apiFetch } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import DadosDaLoja from '../components/configuracoes/DadosDaLoja';
 import UsuariosEquipe from '../components/configuracoes/UsuariosEquipe';
 import Assinatura from '../components/configuracoes/Assinatura';
+
+const MENSAGEM_EQUIPE_BLOQUEADA = 'Recurso exclusivo para Apoiadores do sistema.';
 
 const ABAS = [
   { id: 'dados', label: 'Dados da Loja', icon: Store },
@@ -45,6 +48,13 @@ export default function Configuracoes() {
   const [abaAtiva, setAbaAtiva] = useState(
     ABAS.some((aba) => aba.id === abaInicial) ? abaInicial : 'dados'
   );
+
+  // Plano vem do AuthContext (ja populado desde o login, sem esperar o
+  // fetch proprio desta pagina) - usado so pra decidir se a aba "Equipe"
+  // aparece bloqueada. Ver UsuariosEquipe.jsx pro bloqueio de conteudo em
+  // si (o motivo de negocio da mudanca mora la, nao aqui).
+  const { empresa: empresaSessao } = useAuth();
+  const ehApoiador = empresaSessao?.plano === 'apoiador';
 
   const [empresa, setEmpresa] = useState(null);
   const [carregandoEmpresa, setCarregandoEmpresa] = useState(false);
@@ -90,7 +100,11 @@ export default function Configuracoes() {
   }, [precisaDeEmpresa, empresa]);
 
   useEffect(() => {
-    if (abaAtiva !== 'usuarios' || usuarios !== null) {
+    // Nao busca a equipe se a aba esta bloqueada pra este plano - evita
+    // uma chamada de API desperdicada, ja que UsuariosEquipe.jsx nem usa
+    // `usuarios` enquanto `plano !== 'apoiador'` (so mostra o aviso de
+    // bloqueio).
+    if (abaAtiva !== 'usuarios' || usuarios !== null || !ehApoiador) {
       return undefined;
     }
 
@@ -112,7 +126,7 @@ export default function Configuracoes() {
     return () => {
       ativo = false;
     };
-  }, [abaAtiva, usuarios]);
+  }, [abaAtiva, usuarios, ehApoiador]);
 
   return (
     <div className="space-y-8">
@@ -128,23 +142,28 @@ export default function Configuracoes() {
         aria-label="Secoes de configuracao"
         className="-mx-6 flex gap-2 overflow-x-auto border-b border-slate-200 px-6 pb-2 dark:border-slate-800"
       >
-        {ABAS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={abaAtiva === id}
-            onClick={() => setAbaAtiva(id)}
-            className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2.5 text-base font-semibold transition-colors sm:px-5 sm:py-3 sm:text-lg ${
-              abaAtiva === id
-                ? 'bg-blue-600 text-white'
-                : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-            }`}
-          >
-            <Icon size={20} className="shrink-0" aria-hidden="true" />
-            {label}
-          </button>
-        ))}
+        {ABAS.map(({ id, label, icon: Icon }) => {
+          const bloqueada = id === 'usuarios' && !ehApoiador;
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={abaAtiva === id}
+              onClick={() => setAbaAtiva(id)}
+              title={bloqueada ? MENSAGEM_EQUIPE_BLOQUEADA : undefined}
+              className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2.5 text-base font-semibold transition-colors sm:px-5 sm:py-3 sm:text-lg ${
+                abaAtiva === id
+                  ? 'bg-blue-600 text-white'
+                  : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+              } ${bloqueada ? 'opacity-60' : ''}`}
+            >
+              <Icon size={20} className="shrink-0" aria-hidden="true" />
+              {label}
+              {bloqueada && <Lock size={16} className="shrink-0" aria-hidden="true" />}
+            </button>
+          );
+        })}
       </div>
 
       <div role="tabpanel">
@@ -163,7 +182,11 @@ export default function Configuracoes() {
           ) : erroUsuarios ? (
             <Erro mensagem={erroUsuarios} />
           ) : (
-            <UsuariosEquipe usuarios={usuarios} plano={empresa?.plano} />
+            <UsuariosEquipe
+              usuarios={usuarios}
+              plano={empresa?.plano}
+              onIrParaAssinatura={() => setAbaAtiva('assinatura')}
+            />
           ))}
 
         {abaAtiva === 'assinatura' &&

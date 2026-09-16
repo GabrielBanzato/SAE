@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Lock } from 'lucide-react';
+import { Lock, CheckCircle2 } from 'lucide-react';
 import TipoPessoaToggle from '../TipoPessoaToggle';
 
 function formatarDocumento(documento, tipoPessoa) {
@@ -35,17 +35,31 @@ function Campo({ label, value, onChange, placeholder, disabled = false, dica }) 
 
 /**
  * Formulario com os dados cadastrais da loja, prefiltrado a partir de
- * GET /empresa/dados. Razao Social/Nome Completo, Endereco e Telefone sao
- * editaveis localmente, mas o botao de salvar ainda esta desabilitado -
- * nao existe (ainda) uma rota PUT /empresa/dados no backend para
- * persistir isso. Tipo de pessoa (PF/PJ) e o documento (CPF/CNPJ) nunca
- * sao editaveis aqui - mudar de PF pra PJ (ou o documento em si) depois do
- * cadastro nao e uma operacao de formulario simples.
+ * GET /empresa/dados. Razao Social/Nome Completo, Apelido/Fantasia,
+ * Endereco e Telefone sao editaveis localmente. Tipo de pessoa (PF/PJ) e o
+ * documento (CPF/CNPJ) nunca sao editaveis aqui - mudar de PF pra PJ (ou o
+ * documento em si) depois do cadastro nao e uma operacao de formulario
+ * simples.
+ *
+ * "Salvar Alteracoes": nao existe (ainda) uma rota PUT /empresa/dados no
+ * backend pra persistir isso de verdade - o clique so faz um
+ * `console.log` do payload e mostra "Salvo com sucesso" por alguns
+ * segundos (pedido explicito: mock por enquanto, com feedback visual).
+ * Quando essa rota existir, e so trocar o `console.log` por um
+ * `apiFetch('/empresa/dados', { method: 'PUT', body: ... })` de verdade.
+ *
+ * "Apelido/Fantasia" e um campo novo, sem equivalente em `Empresa` no
+ * schema.prisma ainda - por isso nao vem prefiltrado do backend (comeca
+ * sempre vazio). Se um dia esse campo virar persistente de verdade, junto
+ * com o PUT acima, tambem precisa de uma coluna nova
+ * (`nome_fantasia String?`) na tabela `empresas`.
  */
 export default function DadosDaLoja({ empresa }) {
   const [razaoSocial, setRazaoSocial] = useState('');
+  const [apelido, setApelido] = useState('');
   const [endereco, setEndereco] = useState('');
   const [telefone, setTelefone] = useState('');
+  const [salvo, setSalvo] = useState(false);
 
   useEffect(() => {
     if (empresa) {
@@ -59,15 +73,43 @@ export default function DadosDaLoja({ empresa }) {
     return null;
   }
 
+  function handleSalvar(event) {
+    event.preventDefault();
+
+    // Mock: sem rota de backend pra isso ainda (ver comentario acima).
+    console.log('[DadosDaLoja] Salvar Alterações (mock):', {
+      razaoSocial,
+      apelido,
+      endereco,
+      telefone,
+    });
+
+    setSalvo(true);
+    setTimeout(() => setSalvo(false), 3000);
+  }
+
   return (
-    <div className="max-w-2xl rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700">
+    <form onSubmit={handleSalvar} className="max-w-2xl rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700">
       <div className="space-y-5">
         <TipoPessoaToggle value={empresa.tipoPessoa} disabled />
         <Campo
-          label={empresa.tipoPessoa === 'PF' ? 'Nome Completo' : 'Razão Social'}
+          label={empresa.tipoPessoa === 'PF' ? 'Nome Completo' : 'Nome da Loja'}
           value={razaoSocial}
-          onChange={setRazaoSocial}
-          placeholder={empresa.tipoPessoa === 'PF' ? 'Seu nome completo' : 'Nome da empresa'}
+          onChange={(valor) => {
+            setRazaoSocial(valor);
+            setSalvo(false);
+          }}
+          placeholder={empresa.tipoPessoa === 'PF' ? 'Seu nome completo' : 'Nome da loja'}
+        />
+        <Campo
+          label="Apelido / Nome Fantasia"
+          value={apelido}
+          onChange={(valor) => {
+            setApelido(valor);
+            setSalvo(false);
+          }}
+          placeholder="Como sua loja é conhecida no dia a dia"
+          dica="Opcional - usado em recibos e mensagens, se preenchido."
         />
         <Campo
           label={empresa.tipoPessoa === 'PF' ? 'CPF' : 'CNPJ'}
@@ -75,28 +117,41 @@ export default function DadosDaLoja({ empresa }) {
           disabled
           dica="O documento não pode ser alterado por aqui."
         />
-        <Campo label="Telefone" value={telefone} onChange={setTelefone} placeholder="(11) 98765-4321" />
         <Campo
-          label="Endereço"
+          label="Telefone / WhatsApp"
+          value={telefone}
+          onChange={(valor) => {
+            setTelefone(valor);
+            setSalvo(false);
+          }}
+          placeholder="(11) 98765-4321"
+        />
+        <Campo
+          label="Endereço Completo"
           value={endereco}
-          onChange={setEndereco}
+          onChange={(valor) => {
+            setEndereco(valor);
+            setSalvo(false);
+          }}
           placeholder="Rua, número, bairro, cidade - UF"
         />
       </div>
 
-      <div className="mt-6">
+      <div className="mt-6 flex flex-wrap items-center gap-4">
         <button
-          type="button"
-          disabled
-          title="Em breve"
-          className="inline-flex items-center justify-center rounded-2xl bg-blue-600 px-6 py-3 text-lg font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+          type="submit"
+          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 py-3 text-lg font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
         >
           Salvar Alterações
         </button>
-        <span className="ml-3 text-sm text-slate-400 dark:text-slate-500">
-          Em breve — por enquanto esta tela só exibe os dados.
-        </span>
+
+        {salvo && (
+          <span className="flex items-center gap-2 text-base font-semibold text-emerald-600 dark:text-emerald-400">
+            <CheckCircle2 size={20} aria-hidden="true" />
+            Salvo com sucesso!
+          </span>
+        )}
       </div>
-    </div>
+    </form>
   );
 }

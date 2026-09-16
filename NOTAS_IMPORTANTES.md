@@ -4903,3 +4903,112 @@ visualmente num navegador real (recomendo ao usuário rodar `npm run dev`
 e conferir o accordion, os cards de Módulos e o formulário de Suporte com
 os próprios olhos, inclusive em modo escuro, antes de subir pro
 servidor).
+
+---
+
+## Configurações/Assinatura/Equipe/Relatórios - 4 frentes (2026-09-15)
+
+### "Dados da Loja": campo novo (Apelido/Fantasia) e botão "Salvar" deixou de ser mock-desabilitado
+
+`DadosDaLoja.jsx` ganhou um campo **Apelido / Nome Fantasia** - não existe
+coluna equivalente em `Empresa` no `schema.prisma` (confirmado antes de
+mexer), então esse campo **não vem prefiltrado** do backend e começa
+sempre vazio; se um dia precisar persistir de verdade, falta uma migration
+(`nome_fantasia String?`) + a rota `PUT /empresa/dados` que também não
+existe ainda. Renomeei rótulos pra bater com o pedido: "Razão Social" (PJ)
+virou **"Nome da Loja"** (mantive a distinção PF="Nome Completo" - decisão
+já validada 2 sessões atrás, não pedida pra mudar), "Telefone" → "Telefone
+/ WhatsApp", "Endereço" → "Endereço Completo".
+
+O botão "Salvar Alterações" **antes era `disabled` com um aviso "Em breve"**
+(não existia `PUT /empresa/dados`) - agora, por pedido explícito, ficou
+clicável: `onSubmit` faz só um `console.log` do payload (continua sem
+rota de backend) e mostra "Salvo com sucesso!" com um ícone verde por 3s
+(`setTimeout`). Editar qualquer campo depois de salvar esconde a mensagem
+de novo (evita ela ficar "grudada" mostrando sucesso de um salvamento que
+já não reflete mais o formulário).
+
+### Assinatura: removida menção a Nota Fiscal, 4 benefícios novos, headline trocado
+
+`RECURSOS_APOIADOR` em `Assinatura.jsx`: saiu "Módulo fiscal: emissão de
+NFe/NFCe" (pedido explícito) e "Relatórios avançados de vendas e lucro"
+(substituído pela lista nova, que não menciona relatórios). Entraram:
+"Desconto de 15% em todos os Módulos Premium", "Acesso Antecipado a
+Novidades", "Prioridade no Suporte", "Liberação da Gestão de Equipe" - os
+dois últimos são compromissos novos que **exigiram mudança de
+comportamento real** noutros componentes (ver próxima seção - "Prioridade
+no Suporte" ficou só como texto, não implementei fila de prioridade
+alguma no `Suporte.jsx` da tarefa anterior, já que não foi pedido). O
+headline da seção virou literalmente a frase pedida: "Ajude a manter o
+sistema gratuito e ganhe vantagens exclusivas".
+
+**Nota fiscal como módulo pago**: emissão de NFe/NFCe continua existindo
+no produto - só saiu da lista de benefícios do Apoiador porque agora é um
+módulo vendido separadamente (`pages/Modulos.jsx`, criado na tarefa
+anterior, card "Emissão de Notas Fiscais"). Não é uma remoção de
+funcionalidade, é uma mudança de onde ela é oferecida.
+
+### Equipe virou bloqueio total pra quem não é Apoiador (antes era limite de 2 no gratuito)
+
+Mudança de comportamento real, não só visual: antes, o plano gratuito
+tinha acesso à aba Equipe com limite de 2 usuários
+(`LIMITES_POR_PLANO.gratuito = 2` em `UsuariosEquipe.jsx`). O pedido desta
+tarefa ("bloqueie o acesso para usuários normais... Recurso exclusivo para
+Apoiadores do sistema") sobrepôs essa regra: agora **só** `plano ===
+'apoiador'` vê a lista de verdade - removi a entrada `gratuito` de
+`LIMITES_POR_PLANO` (ficou morta) e a mensagem que mandava o gratuito "virar
+Apoiador pra adicionar mais gente" (não fazia mais sentido, o gratuito nem
+chega mais nessa tela).
+
+Implementado em 2 camadas:
+- **`UsuariosEquipe.jsx`**: se `plano !== 'apoiador'`, retorna um painel
+  bloqueado (ícone de cadeado âmbar, mesma linguagem visual do Notas.jsx
+  "Módulo em Desenvolvimento", mas em âmbar em vez de azul - reforça
+  "recurso pago", não "ainda não existe") com um botão "Vire Apoiador" que
+  chama `onIrParaAssinatura` (troca a aba pai pra "Assinatura" - funil
+  direto pra conversão).
+- **`Configuracoes.jsx`** (a barra de abas): a aba "Equipe" ganha
+  `opacity-60`, um ícone de cadeado depois do rótulo, e `title` com a
+  mensagem exata pedida ("Recurso exclusivo para Apoiadores do sistema.")
+  pro hover. **Não usei o atributo HTML `disabled`** de propósito - um
+  botão `disabled` de verdade não dispara `onClick` nem mostra `title` de
+  forma confiável em todo navegador (o pedido queria "tooltip **ou**
+  clicar" mostrando a mensagem, e só clicar continua trocando de aba pra
+  mostrar o painel bloqueado acima, que repete a mensagem por extenso).
+  Também economizei uma chamada `GET /empresa/usuarios` desnecessária:
+  o efeito de busca agora só dispara se `ehApoiador` for verdadeiro.
+
+`ehApoiador` aqui lê `useAuth().empresa.plano` (o cache do AuthContext,
+populado desde o login) em vez de esperar o fetch próprio desta página -
+evita um instante de flicker onde a aba apareceria bloqueada e depois
+destravaria assim que o fetch local terminasse.
+
+### Relatórios: filtro de período + botão de exportação (só preparado, sem lógica real)
+
+`Relatorios.jsx` ganhou 2 `<input type="date">` (Data Inicial/Final, com
+`min`/`max` cruzados pra não deixar escolher um intervalo invertido) e um
+botão "Exportar Dados" (ícone `Download`, vira um spinner `Loader2` +
+texto "Gerando arquivo..." por 2s ao clicar). **Nada disso está
+conectado**: não existe rota de backend de exportação, e
+`RelatoriosSimples.jsx`/`RelatoriosAvancados.jsx` (os componentes que de
+fato mostram os dados) não usam `dataInicial`/`dataFinal` pra filtrar nada
+ainda - por pedido explícito ("deixe a função de clique preparada pra
+receber a lógica futura"), ficou só a casca visual + o estado dos filtros
+guardado no componente pai, pronto pra ser passado adiante quando a
+exportação de verdade for implementada. Não existe um sistema de toast no
+projeto (conferido antes de implementar) - o feedback "Gerando arquivo..."
+é local ao próprio botão (troca de ícone/texto), não um toast flutuante.
+
+### Status de validação
+
+Sem Docker/backend rodando nesta máquina (mesma limitação de tarefas
+anteriores) - `npm run build` limpo e `npm run lint` sem nenhum aviso novo
+introduzido nos 5 arquivos tocados (os 3 avisos restantes, em
+`Configuracoes.jsx`/`DadosDaLoja.jsx`, são o mesmo padrão
+`set-state-in-effect` de busca-de-dados já onipresente no projeto, não
+código novo desta tarefa). Não testado visualmente num navegador real -
+recomendo ao usuário validar com `npm run dev`: o formulário de Dados da
+Loja (incluindo a mensagem de sucesso), a aba Equipe bloqueada pra uma
+empresa no plano gratuito e desbloqueada pra uma Apoiadora, a nova lista
+de benefícios em Assinatura, e os filtros/botão de exportação em
+Relatórios - em modo claro e escuro.
