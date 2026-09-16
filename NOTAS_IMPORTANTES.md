@@ -5453,3 +5453,143 @@ desta sessão). Recomendo fortemente ao usuário clicar na "berruga" de
 collapse e conferir os 3 botões empilhados no rodapé - tamanho igual,
 centralizados, com espaçamento visualmente equilibrado - antes de
 considerar o bug resolvido de verdade.
+
+---
+
+## Módulo "IA no WhatsApp" com 2 modalidades comparáveis (2026-09-16)
+
+### Estrutura de dados: modulo com `modalidades[]` em vez de preço único
+
+`pages/Modulos.jsx`: `MODULO_WHATSAPP` virou uma constante separada dos
+demais módulos (`MODULOS_SIMPLES`, hoje só "Notas Fiscais") - só ele tem
+o campo novo `modalidades` (array de 2: `ia-whatsapp-qrcode`,
+`ia-whatsapp-oficial`), cada uma com preço, `pros`/`contras` e um `id`
+próprio pro registro de interesse (as 2 modalidades são ofertas
+distintas, então "interesse" é rastreado por modalidade, não por módulo -
+alguém pode manifestar interesse só na oficial, só na padrão, ou nas
+duas).
+
+### Layout: 2 cards lado a lado, não tabela nem toggle
+
+Das 3 opções sugeridas no pedido (tabela / 2 cards / toggle "Padrão-
+Oficial"), escolhi 2 cards lado a lado (`CardModalidade`, dentro de
+`SecaoModuloWhatsApp`) - as duas ofertas ficam visíveis ao mesmo tempo
+pra comparação direta, sem esconder uma atrás de um clique de toggle
+(que exigiria alternar de um lado pro outro só pra comparar preço/prós/
+contras). Mesmo padrão visual já usado em `Assinatura.jsx` (2 planos
+lado a lado) - reaproveita uma linguagem visual que já existe no app,
+não inventa uma nova.
+
+A modalidade "API Oficial Meta" ganhou destaque visual (borda azul,
+selo "Mais seguro" em vez do selo neutro cinza da Padrão) - decisão de
+copywriting minha, não pedida explicitamente: "risco zero de banimento"
+é o argumento mais forte das duas, então faz sentido puxar o olho pra lá
+primeiro (mesmo raciocínio de "plano recomendado" comum em páginas de
+preço). Fácil de reverter (só tirar `destaque: true` do objeto da
+modalidade) se o usuário preferir neutro.
+
+Prós viram itens com `CheckCircle2` verde, contras com `AlertTriangle`
+âmbar - reaproveita as mesmas cores/ícones já usados em outras listas de
+benefício do app (ex.: `Assinatura.jsx`), só que agora numa lista mista
+(prós E contras na mesma UL, prós primeiro) em vez de 2 listas
+inteiramente positivas como antes.
+
+### `BotaoInteresse` extraído - reaproveitado pelo card simples E pelas modalidades
+
+O botão "Tenho Interesse"/"Interesse registrado!" que antes vivia
+inline dentro de `CardModulo` virou um componente próprio
+(`BotaoInteresse`, com uma prop `tamanho` - `'normal'` pros cards de
+módulo simples, `'compacto'` pras modalidades, que são mais estreitas)
+- evita duplicar a mesma lógica visual/de estado 2 vezes agora que
+existem 2 "famílias" de cards precisando do mesmo botão.
+
+### Status de validação
+
+`npm run build` limpo e `npm run lint` sem nenhum aviso novo em
+`Modulos.jsx`. Sem Docker/`chromium-cli` disponíveis nesta máquina -
+**não testado visualmente**. Recomendo ao usuário conferir: os 2 cards
+de modalidade lado a lado em desktop (e empilhados em mobile, via
+`sm:grid-cols-2`), o destaque azul da "API Oficial" contra o neutro da
+"Padrão", clicar em "Tenho Interesse" em cada modalidade
+independentemente (confirmar que registrar uma não afeta a outra), e o
+card "Notas Fiscais" abaixo continuando com o layout simples de antes,
+sem nenhuma regressão visual.
+
+---
+
+## Arquitetura backend do módulo "IA no WhatsApp" (Adapter/Strategy) (2026-09-16)
+
+Primeira peça de backend do módulo de IA no WhatsApp (até aqui só existia
+o card de vitrine em `web/src/pages/Modulos.jsx`) - pedido explícito foi
+só a arquitetura/scaffolding (interfaces + providers mockados), não a
+integração real com Baileys/Meta/OpenAI ainda.
+
+### `api/src/services/ai/` - wrapper da IA
+
+- `AiProvider.js`: contrato (classe abstrata, métodos lançam erro se não
+  sobrescritos) - `generateResponse(systemPrompt, userMessage)`.
+- `OpenAiCompatibleProvider.js`: implementação real usando o SDK oficial
+  `openai` (instalado, `^7.15.0` - **testei que `require('openai')` +
+  `new OpenAI({...})` + `.chat.completions.create` funcionam** nessa
+  major version antes de escrever o resto em cima). **Decisão importante:
+  não criei uma classe `OllamaProvider` separada** - o Ollama expõe um
+  endpoint compatível com a API da OpenAI (`/v1`), então trocar de
+  provedor aqui é 100% configuração (`AI_BASE_URL`), não uma integração
+  diferente. Uma classe nova só faria sentido pra um provedor com
+  protocolo genuinamente diferente (Anthropic, Gemini) - e o contrato
+  `AiProvider` já deixa esse encaixe pronto pra quando isso acontecer.
+- `index.js`: instancia o provider uma vez e exporta a função simples
+  pedida, `generateResponse(systemPrompt, userMessage)`.
+
+**Variável extra não pedida, mas necessária**: além de `AI_BASE_URL`/
+`AI_API_KEY` (pedidas explicitamente), adicionei `AI_MODEL` (opcional) -
+sem ela não haveria como saber qual modelo chamar em cada servidor.
+Comportamento por padrão bate com o que foi descrito: `AI_BASE_URL`
+vazia → `gpt-4o-mini` (OpenAI); `AI_BASE_URL` setada → `qwen2.5`
+(assumindo Ollama local) - mas como o nome exato do modelo baixado no
+Ollama de cada máquina pode variar (ex.: `qwen2.5:7b-instruct`),
+`AI_MODEL` permite sobrescrever. Documentado no código e no
+`.env.example` pra não parecer uma omissão silenciosa.
+
+### `api/src/services/whatsapp/` - providers de conexão
+
+- `WhatsAppProvider.js`: contrato - `initialize()`, `sendMessage(to,
+  text)`, `onMessageReceived(callback)`.
+- `BaileysProvider.js` e `MetaApiProvider.js`: mocks pedidos
+  explicitamente (só `console.log` + comentários `TODO` explicando o que
+  cada método vai precisar fazer de verdade - ex.: `MetaApiProvider`
+  precisará de `META_WHATSAPP_TOKEN`/`META_PHONE_NUMBER_ID`/
+  `META_APP_SECRET`, nenhuma delas existe ainda porque nada faz chamada
+  real ainda).
+- `index.js`: fábrica `getWhatsAppProvider()` decidida por
+  `WHATSAPP_PROVIDER` (`baileys` padrão ou `meta`) - quem for consumir
+  isso no futuro deve sempre passar por essa fábrica, nunca importar
+  `BaileysProvider`/`MetaApiProvider` direto (evita acoplar no provedor
+  específico). Lança erro claro se `WHATSAPP_PROVIDER` vier com um valor
+  que não seja um dos 2 - testado manualmente.
+
+**Nada foi registrado em `routes/index.js`** - pedido explícito foi só a
+estrutura pronta "pra injetarmos... em seguida", não uma rota nova. Os 2
+módulos ficam prontos pra importar quando essa próxima tarefa vier.
+
+`.env.example` ganhou as variáveis novas (`AI_API_KEY`, `AI_BASE_URL`/
+`AI_MODEL` comentadas como opcionais, `WHATSAPP_PROVIDER=baileys`, e os 3
+placeholders `META_*` comentados como "vai precisar quando implementar
+de verdade").
+
+### Status de validação
+
+**Testado de verdade, sem precisar de Docker/MySQL** (diferente das
+tarefas de frontend desta sessão - isso aqui é só Node puro, sem tocar
+banco): `node -e` carregando os 2 módulos, confirmando que
+`generateResponse`/`getWhatsAppProvider` existem e têm o tipo certo, que
+a fábrica de WhatsApp devolve `BaileysProvider` por padrão e
+`MetaApiProvider` com `WHATSAPP_PROVIDER=meta`, que um valor inválido
+lança o erro esperado, e que os 3 métodos mockados
+(`initialize`/`sendMessage`/`onMessageReceived`) executam sem lançar
+erro. Também confirmei que o SDK `openai@7.15.0` recém-instalado aceita
+`new OpenAI({ apiKey, baseURL })` com e sem `baseURL` customizada antes
+de escrever `OpenAiCompatibleProvider.js` em cima dessa suposição. **Não
+testada uma chamada real** (`generateResponse` de ponta a ponta) - isso
+exigiria uma `AI_API_KEY` de verdade (OpenAI) ou um Ollama rodando
+localmente, nenhum dos dois disponível nesta sessão.
