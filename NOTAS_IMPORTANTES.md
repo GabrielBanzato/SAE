@@ -5012,3 +5012,96 @@ Loja (incluindo a mensagem de sucesso), a aba Equipe bloqueada pra uma
 empresa no plano gratuito e desbloqueada pra uma Apoiadora, a nova lista
 de benefícios em Assinatura, e os filtros/botão de exportação em
 Relatórios - em modo claro e escuro.
+
+---
+
+## Usabilidade em Lançamentos e Agenda (2026-09-16)
+
+### Modal de Lançamento: rótulo do campo de data virou dinâmico
+
+`ModalLancamento.jsx` ganhou `rotuloCampoData(tipo, status)`: "Vencimento"
+pra Saída, "Data do Recebimento" pra Entrada+Pago, "Data Esperada" pra
+Entrada+Pendente - só o texto exibido muda, o campo continua mandando
+`data_vencimento` pro backend (schema não mudou).
+
+### Agenda: "Novo Evento/Lembrete" virou modal de verdade, mas sem persistência
+
+`components/agenda/ModalLembrete.jsx` (novo): Título, Descrição, Data
+(pré-preenchida com o dia selecionado no calendário) e um seletor de Cor
+da tag (3 swatches - mesmas 3 cores verde/vermelho/azul já usadas na
+legenda da Agenda). Substituiu o botão que só mostrava o aviso "Em breve".
+
+**Sem POST /tarefas no backend** (confirmado antes de implementar - o
+model `Tarefa` existe no `schema.prisma` e é lido no `GET
+/agenda/:mes_ano`, mas nunca escrito por nenhuma rota própria) - o
+lembrete criado pelo modal só entra no estado local (`eventos`) de
+`Agenda.jsx`, com um id sintético (`local-<timestamp>`). Aparece na hora
+no calendário/lista do dia, mas **some se a página for recarregada**.
+Mesmo espírito de mock já usado nesta sessão (Suporte, Módulos, Dados da
+Loja) - avisado aqui e ao usuário. Se isso precisar persistir de verdade,
+falta: rota `POST /tarefas` no backend e (se quiser guardar a cor
+escolhida) uma coluna nova em `Tarefa` (o schema atual não tem `cor`).
+
+### Agenda: "Dar baixa" no círculo - real pra Lançamento, só em memória pra Tarefa/lembrete
+
+O círculo vazio de cada evento pendente virou um `<button>` clicável. A
+origem do evento é decidida pelo prefixo do próprio `id` que o backend já
+manda (`agenda.service.js`: `"lancamento-{id}"` / `"tarefa-{id}"`):
+
+- **`lancamento-*`**: chama de verdade `PUT /lancamentos/:id` (a mesma
+  rota que `Lancamentos.jsx` já usa pro toggle Pago/Pendente da tabela) -
+  `data_pagamento` vai como a data de hoje. Mostra um spinner
+  (`Loader2`) enquanto a requisição está em voo e uma mensagem de erro se
+  falhar.
+- **`tarefa-*`/`local-*`**: só atualiza `statusConcluida` no estado local
+  - sem rota de backend pra isso ainda (mesma limitação do item acima).
+  Vira o ícone `CheckCircle2` preenchido imediatamente, mas silenciosamente
+  não persiste.
+
+`evento.cor` (quando presente, só em lembretes criados localmente) agora
+tem prioridade sobre a cor padrão do `tipo` nos dois lugares que decidem
+cor (bolinha do calendário e ícone da lista) - é o que faz o seletor de
+cor do modal ter efeito visual de verdade.
+
+### Lançamentos: barra de filtros avançados substituiu os 4 botões-pílula antigos
+
+Os antigos filtros rápidos (Todos/A Pagar/A Receber/Atrasados, mutuamente
+exclusivos) saíram - a nova barra (Tipo/Status/Categoria/Período,
+combináveis entre si) já cobre os mesmos 4 casos e adiciona 2 filtros
+novos, então manter os dois seria redundante. Botão "Exportar" ao lado,
+mockado com `console.log('Exportando CSV...', { filtros, totalRegistros })`
+por pedido explícito (sem rota de exportação no backend) - mostra
+"Exportando..." com spinner por 2s.
+
+**Filtro por Categoria é uma heurística, não um campo real**: `Lancamento`
+no `schema.prisma` não tem coluna `categoria` (só
+descricao/valor/tipo/datas/status, conferido antes de implementar). Cada
+categoria (`Vendas`, `Fornecedores/Compras`, `Aluguel`, `Salários`,
+`Impostos e Taxas`, `Contas e Serviços`) é uma lista de palavras-chave
+batida contra `descricao` em minúsculas - filtra de verdade (a lista
+reflete visualmente), mas por adivinhação de texto, não por uma
+categorização real gravada no cadastro. Se precisar de categorização
+confiável, o caminho certo é uma coluna `categoria` no backend + um campo
+novo em `ModalLancamento.jsx` pra escolher na hora de cadastrar, em vez de
+adivinhar depois pela descrição.
+
+**Filtro por Status "Vencido" reaproveita `estaAtrasado()`** (já existia
+no arquivo) - não é um valor de `status` novo no banco (que continua só
+`PENDENTE`/`PAGO`), é `PENDENTE` + `dataVencimento` no passado.
+
+### Status de validação
+
+Sem Docker/backend rodando nesta máquina (mesma limitação de tarefas
+anteriores, backend real fica no servidor remoto) - `npm run build` limpo
+e `npm run lint` sem nenhum aviso novo introduzido nos 4 arquivos tocados
+(os 2 avisos restantes, em `Lancamentos.jsx`/`Agenda.jsx`, são o mesmo
+padrão `set-state-in-effect` de busca-de-dados já onipresente no projeto,
+não código novo desta tarefa). Não testado visualmente num navegador real
+com o backend de verdade - recomendo ao usuário validar com `npm run dev`
++ stack completa: o rótulo dinâmico no modal de Lançamento (alternando
+Tipo/Status), criar um lembrete colorido na Agenda e ver a bolinha do
+calendário refletir a cor escolhida, dar baixa num evento vindo de
+Lançamento (conferir que persiste após recarregar a página) vs. num
+lembrete (conferir que **não** persiste - comportamento esperado, não
+bug), e os 4 filtros + exportação em Lançamentos, incluindo o caso de
+combinar vários filtros ao mesmo tempo.

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, Plus, Receipt } from 'lucide-react';
+import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, Download, Loader2, Plus, Receipt } from 'lucide-react';
 import { apiFetch } from '../services/api';
 import { dataCalendario } from '../utils/datas';
 import ModalLancamento from '../components/lancamentos/ModalLancamento';
@@ -24,12 +24,61 @@ function estaAtrasado(lancamento) {
   return dataCalendario(lancamento.dataVencimento) < hoje;
 }
 
-const FILTROS = [
-  { valor: 'todos', rotulo: 'Todos' },
-  { valor: 'a_pagar', rotulo: 'A Pagar' },
-  { valor: 'a_receber', rotulo: 'A Receber' },
-  { valor: 'atrasados', rotulo: 'Atrasados' },
+/**
+ * Filtro por Categoria: `Lancamento` no schema.prisma NAO tem uma coluna
+ * `categoria` (conferido antes de implementar) - so existem
+ * descricao/valor/tipo/datas/status. Sem um campo real pra filtrar,
+ * cada categoria aqui e uma lista de palavras-chave batida contra
+ * `descricao` (case-insensitive) - uma heuristica no frontend, nao uma
+ * categorizacao de verdade. Documentado tambem na resposta ao usuario: se
+ * precisar de categorizacao confiavel, o caminho correto e adicionar uma
+ * coluna `categoria` no backend (o usuario escolheria a categoria no
+ * `ModalLancamento.jsx` na hora de cadastrar, em vez de adivinhar depois
+ * pelo texto da descricao).
+ */
+const CATEGORIAS = [
+  { valor: 'vendas', rotulo: 'Vendas', palavrasChave: ['venda'] },
+  {
+    valor: 'fornecedores',
+    rotulo: 'Fornecedores/Compras',
+    palavrasChave: ['fornecedor', 'compra', 'insumo', 'materia-prima', 'matéria-prima', 'materia prima'],
+  },
+  { valor: 'aluguel', rotulo: 'Aluguel', palavrasChave: ['aluguel'] },
+  {
+    valor: 'salarios',
+    rotulo: 'Salários',
+    palavrasChave: ['salario', 'salário', 'folha', 'pro-labore', 'pró-labore'],
+  },
+  {
+    valor: 'impostos',
+    rotulo: 'Impostos e Taxas',
+    palavrasChave: ['imposto', 'taxa', 'tributo', 'simples nacional', 'das'],
+  },
+  {
+    valor: 'contas_servicos',
+    rotulo: 'Contas e Serviços',
+    palavrasChave: ['agua', 'água', 'luz', 'energia', 'internet', 'telefone', 'servico', 'serviço'],
+  },
 ];
+
+const STATUS_OPCOES = [
+  { valor: 'todos', rotulo: 'Todos' },
+  { valor: 'PAGO', rotulo: 'Pago' },
+  { valor: 'PENDENTE', rotulo: 'Pendente' },
+  { valor: 'VENCIDO', rotulo: 'Vencido' },
+];
+
+const classesFiltro =
+  'mt-1 w-full rounded-xl border-2 border-slate-300 bg-white px-3 py-2 text-base font-medium text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-blue-400';
+
+function CampoFiltro({ label, children }) {
+  return (
+    <label className="block">
+      <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">{label}</span>
+      {children}
+    </label>
+  );
+}
 
 function BadgeTipo({ tipo }) {
   const entrada = tipo === 'ENTRADA';
@@ -115,7 +164,13 @@ export default function Lancamentos() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
 
-  const [filtroAtivo, setFiltroAtivo] = useState('todos');
+  const [filtroTipo, setFiltroTipo] = useState('todos');
+  const [filtroStatus, setFiltroStatus] = useState('todos');
+  const [filtroCategoria, setFiltroCategoria] = useState('todas');
+  const [dataInicial, setDataInicial] = useState('');
+  const [dataFinal, setDataFinal] = useState('');
+  const [exportando, setExportando] = useState(false);
+
   const [modalAberto, setModalAberto] = useState(false);
   const [idAtualizando, setIdAtualizando] = useState(null);
   const [erroAtualizacao, setErroAtualizacao] = useState('');
@@ -143,17 +198,47 @@ export default function Lancamentos() {
 
   const lancamentosFiltrados = useMemo(() => {
     if (!lancamentos) return [];
-    switch (filtroAtivo) {
-      case 'a_pagar':
-        return lancamentos.filter((item) => item.tipo === 'SAIDA');
-      case 'a_receber':
-        return lancamentos.filter((item) => item.tipo === 'ENTRADA');
-      case 'atrasados':
-        return lancamentos.filter(estaAtrasado);
-      default:
-        return lancamentos;
-    }
-  }, [lancamentos, filtroAtivo]);
+
+    const categoria = CATEGORIAS.find((item) => item.valor === filtroCategoria);
+    const inicio = dataInicial ? dataCalendario(dataInicial) : null;
+    const fim = dataFinal ? dataCalendario(dataFinal) : null;
+
+    return lancamentos.filter((item) => {
+      if (filtroTipo !== 'todos' && item.tipo !== filtroTipo) return false;
+
+      if (filtroStatus === 'PAGO' && item.status !== 'PAGO') return false;
+      if (filtroStatus === 'PENDENTE' && (item.status !== 'PENDENTE' || estaAtrasado(item))) return false;
+      if (filtroStatus === 'VENCIDO' && !estaAtrasado(item)) return false;
+
+      if (categoria) {
+        const descricao = item.descricao.toLowerCase();
+        if (!categoria.palavrasChave.some((palavra) => descricao.includes(palavra))) return false;
+      }
+
+      const vencimento = dataCalendario(item.dataVencimento);
+      if (inicio && vencimento < inicio) return false;
+      if (fim && vencimento > fim) return false;
+
+      return true;
+    });
+  }, [lancamentos, filtroTipo, filtroStatus, filtroCategoria, dataInicial, dataFinal]);
+
+  const nenhumFiltroAtivo =
+    filtroTipo === 'todos' && filtroStatus === 'todos' && filtroCategoria === 'todas' && !dataInicial && !dataFinal;
+
+  function handleExportar() {
+    // Mock (pedido explicito): sem rota de backend de exportacao ainda.
+    console.log('Exportando CSV...', {
+      filtroTipo,
+      filtroStatus,
+      filtroCategoria,
+      dataInicial,
+      dataFinal,
+      totalRegistros: lancamentosFiltrados.length,
+    });
+    setExportando(true);
+    setTimeout(() => setExportando(false), 2000);
+  }
 
   async function criarLancamento(payload) {
     const criado = await apiFetch('/lancamentos', {
@@ -211,24 +296,86 @@ export default function Lancamentos() {
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {FILTROS.map((filtro) => {
-          const ativo = filtroAtivo === filtro.valor;
-          return (
-            <button
-              key={filtro.valor}
-              type="button"
-              onClick={() => setFiltroAtivo(filtro.valor)}
-              className={`rounded-full px-5 py-2.5 text-base font-bold transition-colors ${
-                ativo
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-700'
-              }`}
+      {/* Barra de ferramentas: filtros avancados + exportacao. Substitui os
+          antigos botoes-pilula (Todos/A Pagar/A Receber/Atrasados) - esses 4
+          casos continuam expressaveis aqui (Tipo=Saida, Tipo=Entrada,
+          Status=Vencido), so que combinaveis entre si em vez de mutuamente
+          exclusivos, alem dos 2 filtros novos (Categoria, Periodo). */}
+      <div className="flex flex-col gap-4 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+          <CampoFiltro label="Tipo">
+            <select value={filtroTipo} onChange={(event) => setFiltroTipo(event.target.value)} className={classesFiltro}>
+              <option value="todos">Todos</option>
+              <option value="ENTRADA">Entrada</option>
+              <option value="SAIDA">Saída</option>
+            </select>
+          </CampoFiltro>
+
+          <CampoFiltro label="Status">
+            <select
+              value={filtroStatus}
+              onChange={(event) => setFiltroStatus(event.target.value)}
+              className={classesFiltro}
             >
-              {filtro.rotulo}
-            </button>
-          );
-        })}
+              {STATUS_OPCOES.map(({ valor, rotulo }) => (
+                <option key={valor} value={valor}>
+                  {rotulo}
+                </option>
+              ))}
+            </select>
+          </CampoFiltro>
+
+          <CampoFiltro label="Categoria">
+            <select
+              value={filtroCategoria}
+              onChange={(event) => setFiltroCategoria(event.target.value)}
+              className={classesFiltro}
+            >
+              <option value="todas">Todas</option>
+              {CATEGORIAS.map(({ valor, rotulo }) => (
+                <option key={valor} value={valor}>
+                  {rotulo}
+                </option>
+              ))}
+            </select>
+          </CampoFiltro>
+
+          <CampoFiltro label="Data Inicial">
+            <input
+              type="date"
+              value={dataInicial}
+              onChange={(event) => setDataInicial(event.target.value)}
+              max={dataFinal || undefined}
+              className={classesFiltro}
+            />
+          </CampoFiltro>
+
+          <CampoFiltro label="Data Final">
+            <input
+              type="date"
+              value={dataFinal}
+              onChange={(event) => setDataFinal(event.target.value)}
+              min={dataInicial || undefined}
+              className={classesFiltro}
+            />
+          </CampoFiltro>
+        </div>
+
+        <div className="flex items-center justify-end border-t border-slate-100 pt-4 dark:border-slate-700">
+          <button
+            type="button"
+            onClick={handleExportar}
+            disabled={exportando}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-800 px-5 py-2.5 text-base font-bold text-white shadow-sm transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-slate-700 dark:hover:bg-slate-600"
+          >
+            {exportando ? (
+              <Loader2 size={18} className="shrink-0 animate-spin" aria-hidden="true" />
+            ) : (
+              <Download size={18} className="shrink-0" aria-hidden="true" />
+            )}
+            {exportando ? 'Exportando...' : 'Exportar'}
+          </button>
+        </div>
       </div>
 
       {erro && (
@@ -281,9 +428,9 @@ export default function Lancamentos() {
                       Nenhum lançamento encontrado.
                     </p>
                     <p className="mt-1 text-base text-slate-400 dark:text-slate-500">
-                      {filtroAtivo === 'todos'
+                      {nenhumFiltroAtivo
                         ? 'Clique em "Novo Lançamento" para começar.'
-                        : 'Tente outro filtro ou cadastre um novo lançamento.'}
+                        : 'Tente ajustar os filtros ou cadastre um novo lançamento.'}
                     </p>
                   </td>
                 </tr>

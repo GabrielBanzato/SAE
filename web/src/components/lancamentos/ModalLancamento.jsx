@@ -54,6 +54,20 @@ function valoresIniciais() {
 }
 
 /**
+ * Rotulo do campo de data e dinamico (pedido explicito): "Vencimento" so
+ * faz sentido pra uma conta a pagar (Saida). Numa Entrada, o significado da
+ * data muda conforme o status - se ja esta "Pago", a data e quando o
+ * dinheiro de fato entrou ("Data do Recebimento"); se ainda esta
+ * "Pendente", e uma previsao futura ("Data Esperada"). O `name` do campo no
+ * payload continua sendo `data_vencimento` pro backend (schema nao mudou,
+ * so o rotulo exibido).
+ */
+function rotuloCampoData(tipo, status) {
+  if (tipo === 'SAIDA') return 'Vencimento';
+  return status === 'PAGO' ? 'Data do Recebimento' : 'Data Esperada';
+}
+
+/**
  * Modal de cadastro manual de lancamento (receita/despesa avulsa) - mesmo
  * padrao visual/estrutural do ModalProduto.jsx e ModalClienteRapido.jsx:
  * overlay centralizado, fecha com Escape/clique fora, so cria (nao edita -
@@ -172,7 +186,7 @@ export default function ModalLancamento({ onFechar, onSalvar }) {
               required
             />
             <CampoTexto
-              label="Vencimento"
+              label={rotuloCampoData(campos.tipo, campos.status)}
               icon={Calendar}
               type="date"
               value={campos.dataVencimento}

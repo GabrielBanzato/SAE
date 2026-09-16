@@ -10,8 +10,10 @@ import {
   Bell,
   CheckCircle2,
   Circle,
+  Loader2,
 } from 'lucide-react';
 import { apiFetch } from '../services/api';
+import ModalLembrete from '../components/agenda/ModalLembrete';
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -56,6 +58,22 @@ function extrairDia(dataIsoVencimento) {
   return Number(dataIsoVencimento.slice(8, 10));
 }
 
+/**
+ * Origem do evento a partir do prefixo do `id` (ver agenda.service.js no
+ * backend: "lancamento-{id}"/"tarefa-{id}") - decide pra qual API mandar o
+ * "Dar baixa": Lancamento tem PUT /lancamentos/:id de verdade, Tarefa ainda
+ * nao tem nenhuma rota de escrita (so e lida agregada no GET /agenda),
+ * entao esses eventos (e os lembretes criados localmente, ver
+ * ModalLembrete.jsx) so atualizam o estado em memoria por enquanto.
+ */
+function ehEventoDeLancamento(evento) {
+  return evento.id.startsWith('lancamento-');
+}
+
+function idNumericoDoLancamento(evento) {
+  return Number(evento.id.slice('lancamento-'.length));
+}
+
 function gerarGradeDoMes(ano, mesIndice) {
   const primeiroDiaSemana = new Date(ano, mesIndice, 1).getDay();
   const totalDias = new Date(ano, mesIndice + 1, 0).getDate();
@@ -85,7 +103,9 @@ export default function Agenda() {
   const [eventos, setEventos] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
-  const [mostrarAvisoNovoEvento, setMostrarAvisoNovoEvento] = useState(false);
+  const [modalLembreteAberto, setModalLembreteAberto] = useState(false);
+  const [idBaixaEmAndamento, setIdBaixaEmAndamento] = useState(null);
+  const [erroBaixa, setErroBaixa] = useState('');
 
   const ano = mesExibido.getFullYear();
   const mesIndice = mesExibido.getMonth(); // 0-11
@@ -129,31 +149,87 @@ export default function Agenda() {
     const novoMes = new Date(ano, mesIndice - 1, 1);
     setMesExibido(novoMes);
     setDiaSelecionado(1);
-    setMostrarAvisoNovoEvento(false);
   }
 
   function irParaProximoMes() {
     const novoMes = new Date(ano, mesIndice + 1, 1);
     setMesExibido(novoMes);
     setDiaSelecionado(1);
-    setMostrarAvisoNovoEvento(false);
   }
 
   function irParaHoje() {
     setMesExibido(new Date(hoje.getFullYear(), hoje.getMonth(), 1));
     setDiaSelecionado(hoje.getDate());
-    setMostrarAvisoNovoEvento(false);
   }
 
   function selecionarDia(dia) {
     setDiaSelecionado(dia);
-    setMostrarAvisoNovoEvento(false);
   }
 
   const dataSelecionadaFormatada = capitalizar(
     new Date(ano, mesIndice, diaSelecionado).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' })
   );
   const eventosDoDia = eventosPorDia[diaSelecionado] || [];
+
+  // Data do dia selecionado no formato "YYYY-MM-DD" (pro <input type="date">
+  // do ModalLembrete vir pre-preenchido com o dia que o usuario ja estava
+  // olhando na Agenda).
+  const dataSelecionadaIso = `${ano}-${String(mesIndice + 1).padStart(2, '0')}-${String(diaSelecionado).padStart(2, '0')}`;
+
+  /**
+   * "Dar baixa": eventos vindos de Lancamento chamam o PUT real (mesma rota
+   * que Lancamentos.jsx usa). Eventos de Tarefa/lembrete local so mudam o
+   * estado em memoria - nao existe rota de escrita pra Tarefa no backend
+   * ainda (ver comentario de `ehEventoDeLancamento` acima).
+   */
+  async function darBaixa(evento) {
+    if (evento.statusConcluida) return;
+
+    setErroBaixa('');
+    setIdBaixaEmAndamento(evento.id);
+
+    if (!ehEventoDeLancamento(evento)) {
+      setEventos((atual) => atual.map((item) => (item.id === evento.id ? { ...item, statusConcluida: true } : item)));
+      setIdBaixaEmAndamento(null);
+      return;
+    }
+
+    try {
+      await apiFetch(`/lancamentos/${idNumericoDoLancamento(evento)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: 'PAGO', data_pagamento: new Date().toISOString().slice(0, 10) }),
+      });
+      setEventos((atual) => atual.map((item) => (item.id === evento.id ? { ...item, statusConcluida: true } : item)));
+    } catch (err) {
+      setErroBaixa(err.message || 'Não foi possível dar baixa neste lançamento.');
+    } finally {
+      setIdBaixaEmAndamento(null);
+    }
+  }
+
+  /**
+   * Sem POST /tarefas no backend ainda - o lembrete criado aqui existe so
+   * no estado local desta pagina (`eventos`). Aparece no calendario/lista
+   * na hora, mas nao sobrevive a um recarregamento de pagina nem aparece
+   * pra outros usuarios da mesma empresa. `cor` (escolhida no modal) fica
+   * junto do evento pra sobrescrever a cor padrao de "lembrete" (azul) nos
+   * lugares que leem `evento.cor ?? CONFIG_TIPO[evento.tipo].cor`.
+   */
+  function criarLembrete({ titulo, descricao, data, cor }) {
+    const novoEvento = {
+      id: `local-${Date.now()}`,
+      titulo,
+      descricao,
+      dataVencimento: `${data}T12:00:00.000Z`,
+      tipo: 'lembrete',
+      cor,
+      statusConcluida: false,
+      valor: null,
+    };
+
+    setEventos((atual) => [...atual, novoEvento]);
+    setModalLembreteAberto(false);
+  }
 
   return (
     <div className="space-y-6">
@@ -220,7 +296,9 @@ export default function Agenda() {
               if (dia === null) return <div key={indice} className="min-h-[64px] sm:min-h-[84px]" />;
 
               const eventosDesteDia = eventosPorDia[dia] || [];
-              const coresPresentes = [...new Set(eventosDesteDia.map((evento) => CONFIG_TIPO[evento.tipo]?.cor))];
+              const coresPresentes = [
+                ...new Set(eventosDesteDia.map((evento) => evento.cor ?? CONFIG_TIPO[evento.tipo]?.cor)),
+              ];
               const selecionado = dia === diaSelecionado;
 
               return (
@@ -283,16 +361,16 @@ export default function Agenda() {
 
           <button
             type="button"
-            onClick={() => setMostrarAvisoNovoEvento(true)}
+            onClick={() => setModalLembreteAberto(true)}
             className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-base font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
           >
             <Plus size={20} aria-hidden="true" />
             Novo Evento/Lembrete
           </button>
 
-          {mostrarAvisoNovoEvento && (
-            <p className="mt-3 rounded-2xl bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
-              Em breve você poderá criar eventos e lembretes por aqui.
+          {erroBaixa && (
+            <p className="mt-3 rounded-2xl bg-red-50 p-3 text-sm font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">
+              {erroBaixa}
             </p>
           )}
 
@@ -306,7 +384,9 @@ export default function Agenda() {
             {!carregando &&
               eventosDoDia.map((evento) => {
                 const config = CONFIG_TIPO[evento.tipo] ?? CONFIG_TIPO.lembrete;
+                const cor = evento.cor ?? config.cor;
                 const Icon = config.icon;
+                const dandoBaixa = idBaixaEmAndamento === evento.id;
 
                 return (
                   <div
@@ -314,7 +394,7 @@ export default function Agenda() {
                     className="flex items-start gap-3 rounded-2xl bg-slate-50 p-3 dark:bg-slate-900/50"
                   >
                     <span
-                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${CLASSES_ICONE[config.cor]}`}
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${CLASSES_ICONE[cor]}`}
                     >
                       <Icon size={20} aria-hidden="true" />
                     </span>
@@ -336,13 +416,22 @@ export default function Agenda() {
                     </div>
 
                     {evento.statusConcluida ? (
-                      <CheckCircle2
+                      <CheckCircle2 size={22} className="mt-1 shrink-0 text-emerald-500" aria-label="Concluído" />
+                    ) : dandoBaixa ? (
+                      <Loader2
                         size={22}
-                        className="mt-1 shrink-0 text-emerald-500"
-                        aria-label="Concluído"
+                        className="mt-1 shrink-0 animate-spin text-slate-400 dark:text-slate-500"
+                        aria-label="Dando baixa..."
                       />
                     ) : (
-                      <Circle size={22} className="mt-1 shrink-0 text-slate-300 dark:text-slate-600" aria-label="Pendente" />
+                      <button
+                        type="button"
+                        onClick={() => darBaixa(evento)}
+                        title="Dar baixa (marcar como concluído)"
+                        className="mt-1 shrink-0 text-slate-300 transition-colors hover:text-emerald-500 dark:text-slate-600 dark:hover:text-emerald-400"
+                      >
+                        <Circle size={22} aria-label="Pendente - clique para dar baixa" />
+                      </button>
                     )}
                   </div>
                 );
@@ -350,6 +439,14 @@ export default function Agenda() {
           </div>
         </div>
       </div>
+
+      {modalLembreteAberto && (
+        <ModalLembrete
+          dataInicial={dataSelecionadaIso}
+          onFechar={() => setModalLembreteAberto(false)}
+          onSalvar={criarLembrete}
+        />
+      )}
     </div>
   );
 }
