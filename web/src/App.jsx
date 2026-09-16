@@ -13,6 +13,8 @@ import Notas from './pages/Notas';
 import Agenda from './pages/Agenda';
 import Relatorios from './pages/Relatorios';
 import Configuracoes from './pages/Configuracoes';
+import Modulos from './pages/Modulos';
+import Suporte from './pages/Suporte';
 import Login from './pages/Login';
 import Cadastro from './pages/Cadastro';
 
@@ -39,6 +41,8 @@ export default function App() {
             <Route path="/agenda" element={<Agenda />} />
             <Route path="/relatorios" element={<Relatorios />} />
             <Route path="/configuracoes" element={<Configuracoes />} />
+            <Route path="/modulos" element={<Modulos />} />
+            <Route path="/suporte" element={<Suporte />} />
           </Route>
         </Route>
       </Routes>

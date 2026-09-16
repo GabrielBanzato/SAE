@@ -1,4 +1,5 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -8,35 +9,36 @@ import {
   Users,
   Receipt,
   Wallet,
-  ScrollText,
   CalendarDays,
   BarChart3,
   Settings,
+  Briefcase,
+  Building2,
+  LayoutGrid,
+  LifeBuoy,
   Sun,
   Moon,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   LogOut,
-  Lock,
-  MessageCircle,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 
 /**
- * Menu agrupado em secoes (pedido explicito: acabar com a lista unica e
- * "poluida" de 12 links soltos). A divisao em 3 grupos e uma escolha de
- * categorizacao (nao veio especificada item a item no pedido):
- * "Operacional" fica com o dia-a-dia de quem opera a loja, "Administracao"
- * com o que e mais retaguarda/gestao (financeiro, relatorios, config).
+ * Reformulacao pedida: menu antigo (3 secoes sempre abertas + "Modulos
+ * Extras") virou 5 itens de topo - Dashboard/Modulos/Suporte navegam direto,
+ * Operacional/Administracao viram "gavetas" (accordion) com as mesmas
+ * subcategorias de antes. "Modulos Extras" (Sidebar) foi promovido a uma
+ * pagina propria (`/modulos`, ver pages/Modulos.jsx) - a vitrine de
+ * apps/addons agora mora la, nao mais dentro do menu.
  */
-const SECOES_MENU = [
+const CATEGORIAS_MENU = [
   {
-    titulo: 'Visão Geral',
-    itens: [{ label: 'Dashboard', to: '/', icon: LayoutDashboard }],
-  },
-  {
+    chave: 'operacional',
     titulo: 'Operacional',
+    icon: Briefcase,
     itens: [
       { label: 'Vendas', to: '/vendas', icon: ShoppingCart },
       { label: 'Produtos', to: '/produtos', icon: Package },
@@ -48,7 +50,9 @@ const SECOES_MENU = [
     ],
   },
   {
+    chave: 'administracao',
     titulo: 'Administração',
+    icon: Building2,
     itens: [
       { label: 'Controle Financeiro', to: '/financeiro', icon: Wallet },
       { label: 'Relatórios', to: '/relatorios', icon: BarChart3 },
@@ -57,20 +61,44 @@ const SECOES_MENU = [
   },
 ];
 
+const ITEM_DASHBOARD = { label: 'Dashboard', to: '/', icon: LayoutDashboard };
+const ITEM_MODULOS = { label: 'Módulos', to: '/modulos', icon: LayoutGrid };
+const ITEM_SUPORTE = { label: 'Suporte', to: '/suporte', icon: LifeBuoy };
+
+/** Categoria (se houver) que contem a rota atual - usado pra abrir a gaveta certa sozinho ao navegar direto pra uma sub-rota (ex.: link do Dashboard pra "/vendas"). */
+function encontrarCategoriaDaRota(pathname) {
+  const categoria = CATEGORIAS_MENU.find((c) => c.itens.some((item) => item.to === pathname));
+  return categoria?.chave ?? null;
+}
+
 /**
- * "Modulos Extras" (features pagas, ainda nao lancadas). "Notas Fiscais" ja
- * tinha rota propria (pages/Notas.jsx - ja e a tela "Modulo Fiscal em
- * Desenvolvimento" com cadeado, ver NOTAS_IMPORTANTES.md) - mantive o link
- * funcional (leva pra essa explicacao) em vez de desativa-lo, so migrou de
- * secao e ganhou o mesmo selo visual do "IA no WhatsApp". Ja "IA no
- * WhatsApp" e 100% ficticio, sem rota - por isso vira um item inerte (nao
- * e um NavLink, nao navega pra lugar nenhum), so pra comunicar "isso vai
- * existir".
+ * Fora do componente Sidebar (nao definido durante o render) - senao vira
+ * um componente novo a cada render, perdendo qualquer estado/identidade do
+ * React entre renders (o oxlint acusa isso como `static-components`).
+ * Recebe `isExpanded` como prop em vez de fechar sobre a variavel do
+ * componente pai.
  */
-const ITENS_PREMIUM = [
-  { label: 'IA no WhatsApp', icon: MessageCircle },
-  { label: 'Notas Fiscais', to: '/notas', icon: ScrollText },
-];
+function ItemDireto({ label, to, icon: Icon, isExpanded }) {
+  return (
+    <NavLink
+      to={to}
+      end={to === '/'}
+      title={!isExpanded ? label : undefined}
+      className={({ isActive }) =>
+        `flex items-center gap-3 rounded-xl px-4 py-3 text-lg font-semibold transition-colors ${
+          isExpanded ? '' : 'justify-center px-0'
+        } ${
+          isActive
+            ? 'bg-blue-600 text-white'
+            : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
+        }`
+      }
+    >
+      <Icon size={22} className="shrink-0" aria-hidden="true" />
+      <span className={`flex-1 text-left ${isExpanded ? '' : 'hidden'}`}>{label}</span>
+    </NavLink>
+  );
+}
 
 /**
  * Menu lateral fixo (nunca rola com a pagina) e retratil. `isExpanded` e
@@ -82,21 +110,47 @@ const ITENS_PREMIUM = [
  * restante) - e o que garante cabecalho/rodape sempre fixos e so a
  * navegacao rolando, sem depender de calculo manual de altura.
  *
- * A navegacao agora e agrupada em secoes (`SECOES_MENU`) mais a area de
- * destaque "Modulos Extras" (`ITENS_PREMIUM`, ver comentario acima dela) -
- * o mecanismo de item desabilitado/"em breve" (removido antes, quando
- * todo item ganhou rota propria) voltou, mas so pra essa area de features
- * ainda nao lancadas.
+ * Accordion EXCLUSIVO: `categoriaAberta` guarda no maximo 1 chave por vez
+ * (nao um Set/array) - abrir uma categoria fecha a outra automaticamente,
+ * so por causa do proprio formato do estado (nao precisa de logica extra
+ * pra "fechar as demais"). A suavidade do abrir/fechar e via
+ * `max-height`/`opacity` com `transition-all duration-300` (Tailwind nao
+ * anima `height: auto`, e o conteudo tem tamanho variavel - por isso um
+ * `max-h-[...]` generoso em vez de medir a altura real via ref).
  */
 export default function Sidebar({ isExpanded, onToggle }) {
   const { theme, toggleTheme } = useTheme();
   const { logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const escuro = theme === 'dark';
+
+  const [categoriaAberta, setCategoriaAberta] = useState(() => encontrarCategoriaDaRota(location.pathname));
+
+  // Se o usuario chegar numa sub-rota por outro caminho (atalho do
+  // Dashboard, link direto, botao "voltar" do navegador), a gaveta certa
+  // abre sozinha - sem isso o item ativo apareceria "escondido" dentro de
+  // uma categoria fechada, sem nenhuma pista visual de onde ele esta.
+  // Ajuste de estado durante o proprio render (comparando com a rota
+  // anterior) em vez de `useEffect` - isso deriva de uma prop que mudou
+  // (`location.pathname`), nao sincroniza com nada externo, entao nao
+  // precisa do passo extra de render que um efeito custaria aqui.
+  const [rotaAnterior, setRotaAnterior] = useState(location.pathname);
+  if (location.pathname !== rotaAnterior) {
+    setRotaAnterior(location.pathname);
+    const categoriaDaRota = encontrarCategoriaDaRota(location.pathname);
+    if (categoriaDaRota) {
+      setCategoriaAberta(categoriaDaRota);
+    }
+  }
 
   function handleLogout() {
     logout();
     navigate('/login', { replace: true });
+  }
+
+  function alternarCategoria(chave) {
+    setCategoriaAberta((atual) => (atual === chave ? null : chave));
   }
 
   const itemClasses = `flex items-center gap-3 rounded-xl px-4 py-3 text-lg font-semibold transition-colors ${
@@ -145,105 +199,75 @@ export default function Sidebar({ isExpanded, onToggle }) {
           em si: o mouse/touch/teclado continuam rolando normalmente,
           so o "trilho" visivel some. */}
       <nav
-        className="flex flex-1 flex-col overflow-y-auto px-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         aria-label="Navegacao principal"
       >
-        {SECOES_MENU.map(({ titulo, itens }, indiceSecao) => (
-          <div key={titulo} className={indiceSecao === 0 ? '' : 'mt-4'}>
-            {isExpanded ? (
-              <p className="mb-2 px-4 text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                {titulo}
-              </p>
-            ) : (
-              indiceSecao > 0 && <div className="mx-2 mb-2 border-t border-slate-200 dark:border-slate-800" />
-            )}
+        <ItemDireto {...ITEM_DASHBOARD} isExpanded={isExpanded} />
 
-            <div className="flex flex-col gap-1">
-              {itens.map(({ label, to, icon: Icon }) => (
-                <NavLink
-                  key={label}
-                  to={to}
-                  end={to === '/'}
-                  title={!isExpanded ? label : undefined}
-                  className={({ isActive }) =>
-                    `${itemClasses} ${
-                      isActive
-                        ? 'bg-blue-600 text-white'
-                        : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
-                    }`
-                  }
+        {CATEGORIAS_MENU.map(({ chave, titulo, icon: Icon, itens }) => {
+          const aberto = categoriaAberta === chave;
+          const contemAtiva = itens.some((item) => item.to === location.pathname);
+
+          return (
+            <div key={chave}>
+              <button
+                type="button"
+                onClick={() => alternarCategoria(chave)}
+                title={!isExpanded ? titulo : undefined}
+                aria-expanded={aberto}
+                className={`${itemClasses} w-full ${
+                  contemAtiva
+                    ? 'text-blue-700 dark:text-blue-400'
+                    : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
+                }`}
+              >
+                <Icon size={22} className="shrink-0" aria-hidden="true" />
+                <span className={`flex-1 text-left ${isExpanded ? '' : 'hidden'}`}>{titulo}</span>
+                <ChevronDown
+                  size={18}
+                  className={`shrink-0 transition-transform duration-300 ${aberto ? 'rotate-180' : ''} ${
+                    isExpanded ? '' : 'hidden'
+                  }`}
+                  aria-hidden="true"
+                />
+              </button>
+
+              {/* Gaveta da categoria - so existe (visualmente) quando a
+                  Sidebar esta expandida; recolhida, os subitens ficam
+                  inacessiveis pelo menu mesmo (sem espaco pra um flyout
+                  aqui), igual o resto do menu ja escondia texto. */}
+              {isExpanded && (
+                <div
+                  className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                    aberto ? 'max-h-[28rem] opacity-100' : 'max-h-0 opacity-0'
+                  }`}
                 >
-                  <Icon size={22} className="shrink-0" aria-hidden="true" />
-                  <span className={`flex-1 text-left ${isExpanded ? '' : 'hidden'}`}>{label}</span>
-                </NavLink>
-              ))}
-            </div>
-          </div>
-        ))}
-
-        {/* "Modulos Extras" - secao de destaque com borda tracejada +
-            fundo amarelo suave, pra parecer um "cartao" separado do resto
-            do menu (visual comum em SaaS pra features premium/em breve),
-            nao so mais uma categoria igual as outras. */}
-        <div className="mt-4">
-          {isExpanded ? (
-            <p className="mb-2 px-4 text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-              Módulos Extras
-            </p>
-          ) : (
-            <div className="mx-2 mb-2 border-t border-slate-200 dark:border-slate-800" />
-          )}
-
-          <div className="flex flex-col gap-1 rounded-xl border border-dashed border-amber-300 bg-amber-50/60 p-1.5 dark:border-amber-400/30 dark:bg-amber-400/[0.06]">
-            {ITENS_PREMIUM.map(({ label, to, icon: Icon }) => {
-              const conteudo = (
-                <>
-                  <Icon size={22} className="shrink-0" aria-hidden="true" />
-                  <span className={`flex-1 text-left ${isExpanded ? '' : 'hidden'}`}>{label}</span>
-                  {isExpanded && (
-                    <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:bg-amber-400/10 dark:text-amber-400">
-                      <Lock size={10} aria-hidden="true" />
-                      Em breve
-                    </span>
-                  )}
-                </>
-              );
-
-              const classesPremium = `${itemClasses} text-amber-800/70 dark:text-amber-200/60`;
-
-              // "Notas Fiscais" ja tem uma tela real (Modulo Fiscal em
-              // Desenvolvimento) - continua navegavel. "IA no WhatsApp" nao
-              // tem rota nenhuma, entao vira um bloco inerte (nao e link).
-              if (!to) {
-                return (
-                  <div
-                    key={label}
-                    aria-disabled="true"
-                    title={!isExpanded ? `${label} (em breve)` : undefined}
-                    className={`${classesPremium} cursor-not-allowed select-none opacity-80`}
-                  >
-                    {conteudo}
+                  <div className="flex flex-col gap-1 py-1 pl-4">
+                    {itens.map(({ label, to, icon: SubIcon }) => (
+                      <NavLink
+                        key={label}
+                        to={to}
+                        className={({ isActive }) =>
+                          `flex items-center gap-3 rounded-xl px-4 py-2.5 text-base font-semibold transition-colors ${
+                            isActive
+                              ? 'bg-blue-600 text-white'
+                              : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+                          }`
+                        }
+                      >
+                        <SubIcon size={18} className="shrink-0" aria-hidden="true" />
+                        <span className="flex-1 text-left">{label}</span>
+                      </NavLink>
+                    ))}
                   </div>
-                );
-              }
+                </div>
+              )}
+            </div>
+          );
+        })}
 
-              return (
-                <NavLink
-                  key={label}
-                  to={to}
-                  title={!isExpanded ? `${label} (em breve)` : undefined}
-                  className={({ isActive }) =>
-                    `${classesPremium} ${
-                      isActive ? 'bg-amber-200/60 dark:bg-amber-400/10' : 'hover:bg-amber-100/70 dark:hover:bg-amber-400/10'
-                    }`
-                  }
-                >
-                  {conteudo}
-                </NavLink>
-              );
-            })}
-          </div>
-        </div>
+        <ItemDireto {...ITEM_MODULOS} isExpanded={isExpanded} />
+        <ItemDireto {...ITEM_SUPORTE} isExpanded={isExpanded} />
       </nav>
 
       {/* Rodape fixo - fora da area de scroll da nav (e irmao dela, nao

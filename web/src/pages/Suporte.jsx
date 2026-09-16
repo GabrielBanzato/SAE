@@ -1,0 +1,138 @@
+import { useState } from 'react';
+import { LifeBuoy, Send, CheckCircle2 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+
+const TIPOS_PROBLEMA = [
+  { value: 'bug', label: 'Bug (algo não está funcionando)' },
+  { value: 'duvida', label: 'Dúvida' },
+  { value: 'sugestao', label: 'Sugestão' },
+];
+
+/** Mesma linguagem visual dos campos de DadosDaLoja.jsx/Assinatura.jsx (borda 2px, foco azul, texto grande). */
+function Campo({ label, children }) {
+  return (
+    <label className="block">
+      <span className="text-lg font-semibold text-slate-800 dark:text-slate-200">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+const classesInput =
+  'mt-2 w-full rounded-2xl border-2 border-slate-300 bg-white px-4 py-3 text-lg font-medium text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-600 dark:focus:border-blue-400';
+
+/**
+ * Helpdesk simples: nao existe (nem foi pedido criar) uma rota de backend
+ * pra receber chamados de suporte, entao "enviar" aqui e so front-end - o
+ * formulario valida os campos e troca pra uma tela de agradecimento local,
+ * sem persistir nada de verdade. Documentando isso explicitamente aqui (e
+ * pro usuario, na resposta) pra nao passar a impressao de que ja existe um
+ * chamado sendo aberto de verdade em algum lugar.
+ */
+export default function Suporte() {
+  const { usuario } = useAuth();
+
+  const [nome, setNome] = useState(usuario?.nome || '');
+  const [email, setEmail] = useState(usuario?.email || '');
+  const [tipo, setTipo] = useState('duvida');
+  const [descricao, setDescricao] = useState('');
+  const [enviado, setEnviado] = useState(false);
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    setEnviado(true);
+  }
+
+  function handleNovoChamado() {
+    setEnviado(false);
+    setDescricao('');
+  }
+
+  return (
+    <div className="mx-auto max-w-2xl space-y-8">
+      <div>
+        <h1 className="flex items-center gap-3 text-2xl font-extrabold text-slate-900 dark:text-slate-100 sm:text-3xl">
+          <LifeBuoy size={30} className="shrink-0 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+          Suporte
+        </h1>
+        <p className="mt-1 text-lg text-slate-500 dark:text-slate-400">
+          Encontrou um problema ou tem alguma dúvida? Conta pra gente.
+        </p>
+      </div>
+
+      <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700 sm:p-8">
+        {enviado ? (
+          <div className="flex flex-col items-center gap-4 py-10 text-center">
+            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400">
+              <CheckCircle2 size={32} aria-hidden="true" />
+            </span>
+            <h2 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100">Mensagem enviada!</h2>
+            <p className="max-w-sm text-lg text-slate-500 dark:text-slate-400">
+              Recebemos sua mensagem e nossa equipe vai entrar em contato pelo e-mail informado em breve.
+            </p>
+            <button
+              type="button"
+              onClick={handleNovoChamado}
+              className="mt-2 text-base font-semibold text-blue-600 hover:underline dark:text-blue-400"
+            >
+              Abrir outro chamado
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <Campo label="Nome">
+              <input
+                type="text"
+                value={nome}
+                onChange={(event) => setNome(event.target.value)}
+                placeholder="Seu nome completo"
+                required
+                className={classesInput}
+              />
+            </Campo>
+
+            <Campo label="E-mail">
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="voce@seunegocio.com.br"
+                required
+                className={classesInput}
+              />
+            </Campo>
+
+            <Campo label="Tipo de Problema">
+              <select value={tipo} onChange={(event) => setTipo(event.target.value)} className={classesInput}>
+                {TIPOS_PROBLEMA.map(({ value, label }) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </Campo>
+
+            <Campo label="Descrição">
+              <textarea
+                value={descricao}
+                onChange={(event) => setDescricao(event.target.value)}
+                placeholder="Descreva com o máximo de detalhes possível: o que você esperava que acontecesse e o que aconteceu de fato."
+                required
+                rows={5}
+                className={`${classesInput} resize-none`}
+              />
+            </Campo>
+
+            <button
+              type="submit"
+              className="inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-blue-600 px-6 py-4 text-xl font-bold text-white shadow-lg shadow-blue-600/20 transition-all duration-200 hover:bg-blue-700 sm:w-auto"
+            >
+              <Send size={20} aria-hidden="true" />
+              Enviar
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}

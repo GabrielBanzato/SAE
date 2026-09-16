@@ -4811,3 +4811,95 @@ padrão das últimas tarefas - `geral` via UI, `alimentos` via API porque
 - Ambiente de teste limpo ao final (mesmo passo extra de sempre -
   `ficha_tecnica` apagada antes de `empresas`, por causa do `Restrict`
   em `ingrediente_id`).
+
+---
+
+## Redesign SaaS: Sidebar em accordion + páginas Módulos e Suporte (2026-09-15)
+
+Mudança de direção visual pedida (menu mais "profissional/foco em vendas"),
+substituindo o layout anterior (3 seções sempre abertas + "Módulos Extras"
+dentro do menu, criado 2 tarefas atrás).
+
+### `Sidebar.jsx`: 5 itens de topo, accordion exclusivo
+
+Agora só existem 5 itens no nível raiz do menu: Dashboard, Operacional,
+Administração, Módulos, Suporte. Dashboard/Módulos/Suporte navegam direto
+(`ItemDireto`, movido pra **fora** do componente `Sidebar` - definir
+sub-componentes dentro do corpo de uma função de render é recriar o
+componente a cada render, perde identidade do React entre renders; o
+`oxlint` (`react/static-components`) acusou isso na primeira versão).
+Operacional/Administração viram gavetas com as mesmas subcategorias de
+antes (mesma divisão operacional-vs-retaguarda já usada na tarefa
+anterior).
+
+**Accordion exclusivo**: `categoriaAberta` guarda no máximo 1 chave por
+vez (não um array/Set) - abrir uma fecha a outra automaticamente, só pelo
+formato do próprio estado, sem lógica extra de "fechar as demais".
+Suavidade via `max-height`/`opacity` + `transition-all duration-300`
+(Tailwind não anima `height: auto` e o conteúdo tem tamanho variável -
+por isso um `max-h-[28rem]` generoso em vez de medir a altura real via
+ref). Chevron (`ChevronDown`) gira 180° via `rotate-180` condicional.
+
+Se o usuário chega numa sub-rota (ex.: `/vendas`) por outro caminho que
+não seja clicar na gaveta (atalho do Dashboard, link direto, botão
+voltar), a categoria certa **abre sozinha** - senão o item ativo ficaria
+escondido dentro de uma gaveta fechada, sem nenhuma pista visual de onde
+ele está. Implementado comparando `location.pathname` com o valor
+anterior **durante o render** (não em `useEffect`) - é o padrão que o
+próprio `oxlint` (`react/set-state-in-effect`) sugere quando o estado só
+deriva de uma prop que mudou, sem sincronizar com nada externo; evita o
+passo extra de render que um efeito custaria aqui.
+
+### "Módulos Extras" saiu da Sidebar, virou a página `/modulos`
+
+O antigo bloco premium dentro do menu (criado na tarefa anterior) foi
+promovido a uma vitrine de verdade (`pages/Modulos.jsx`) - grid de cards
+com mockup placeholder (gradiente cinza + ícone do módulo, não uma print
+de tela de verdade, que não existe), título, descrição, preço mensal
+(`R$ 49,90/mês` IA no WhatsApp, `R$ 69,90/mês` Notas Fiscais - **valores
+ilustrativos**, não veio preço no pedido), tag colorida de status (verde
+`Disponível`/âmbar `Em breve`) e CTA.
+
+**"Notas Fiscais" já tinha uma página real** (`/notas` - "Módulo Fiscal em
+Desenvolvimento", da tarefa de 2 sessões atrás) que ficou **sem nenhum
+link no menu** depois desta reformulação. Pra essa tela não virar órfã, o
+card dela linka pra lá ("Saiba mais" + o próprio mockup clicável). "IA no
+WhatsApp" é 100% novo/fictício, sem página própria - só existe como card.
+
+**CTA sem backend**: não existe (nem foi pedido criar) uma rota pra
+registrar interesse/contratação de módulo. Clicar em "Tenho Interesse"
+só marca aquele card como respondido no estado local do componente (some
+se recarregar a página) - mesmo espírito do botão "Salvar Alterações"
+desabilitado em `DadosDaLoja.jsx`: comunica a intenção sem fingir que já
+existe uma feature de verdade por trás.
+
+### Nova página `/suporte` - helpdesk sem backend
+
+`pages/Suporte.jsx`: formulário com Nome/E-mail (pré-preenchidos do
+`useAuth()` se o usuário já estiver logado), Tipo de Problema (`<select>`
+Bug/Dúvida/Sugestão), Descrição (`<textarea>`) e botão Enviar. **Não
+existe rota de backend pra chamados de suporte** (confirmado via grep no
+`api/src` antes de implementar) - "enviar" troca a tela pro estado de
+agradecimento (mesmo padrão visual do `EstadoVazio`/sucesso usado em
+`Assinatura.jsx`), mas não persiste nada. Sinalizando isso explicitamente
+aqui e na resposta ao usuário pra não passar a impressão de que já existe
+um chamado sendo aberto de verdade em algum lugar - se isso precisar
+funcionar de verdade, falta criar a rota no backend (ex.:
+`POST /suporte`, tabela `chamados_suporte` ou e-mail direto).
+
+### Status de validação
+
+Sem Docker/backend rodando nesta máquina (mesma limitação de tarefas
+anteriores) - validado via `npm run build` (limpo, sem erros de
+sintaxe/JSX) e `npm run lint` (`oxlint`): os únicos avisos nos arquivos
+tocados por esta tarefa (`react/static-components` no `ItemDireto`
+definido dentro do render, `react/set-state-in-effect` no ajuste de
+`categoriaAberta` via `useEffect`) foram corrigidos e confirmados
+ausentes numa nova rodada de lint filtrada pelos arquivos da tarefa;
+os avisos remanescentes no restante do projeto (o padrão onipresente de
+`set-state-in-effect` em telas que buscam dados) já existiam antes e são
+o padrão estabelecido do projeto, fora do escopo desta tarefa. Não testado
+visualmente num navegador real (recomendo ao usuário rodar `npm run dev`
+e conferir o accordion, os cards de Módulos e o formulário de Suporte com
+os próprios olhos, inclusive em modo escuro, antes de subir pro
+servidor).
