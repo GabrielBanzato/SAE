@@ -5873,3 +5873,106 @@ recarregando a página, que a Data de Recebimento/Pagamento original NÃO
 mudou), e o fluxo completo Pendente→Pago→volta pra Pendente via edição
 (confirmar que a data de pagamento é gravada e depois limpa
 corretamente).
+
+---
+
+## 500 em Histórico de Vendas/Configurações/Relatórios - banco fora de sync com o schema.prisma (2026-09-18)
+
+### Não era um bug de código - era a migration que a tarefa anterior avisou que faltava
+
+O pedido veio como "atualize schema/controllers/rotas pra suportar `segment`
+em Empresa e um model `Sale`" (em inglês, nomes genéricos), mas conferindo o
+repo antes de mexer: a tarefa "Segmentação da Empresa + Venda multi-item +
+Histórico de Vendas (2026-09-17)" (commit `a1cf5ea`, ontem) já tinha
+implementado tudo isso - `Empresa.segmento`, `Venda`/`VendaItem`,
+`GET/PUT /empresa/dados`, `GET /vendas` (ordenado por `data` desc, com
+`cliente`/`usuario`/`itens` incluídos), `GET /vendas/:id` - código e schema
+já commitados, `git status` limpo. A própria seção daquela tarefa já
+avisava: "nenhuma migration foi gerada nem aplicada" (sessão sem
+Docker/MySQL disponível na época). Era exatamente isso: `npx prisma migrate
+status` confirmava que o banco real só tinha as 4 migrations antigas (até
+`20260908004951_produto_sob_demanda_cliente_venda`) - toda a evolução de
+schema de ontem existia só no `schema.prisma`, nunca chegou no MySQL. Front
+pedindo `segmento`/itens de venda que as colunas/tabelas do banco real não
+tinham = exatamente o 500 relatado (Prisma falha ao ler/gravar uma coluna
+inexistente, cai no catch-all global).
+
+### Banco já estava com drift - `migrate dev` pediria reset destrutivo, usei `db push`
+
+Docker Desktop estava parado nesta máquina - iniciei e depois rodei
+`docker compose up -d mysql` (o container `sae_mysql` já existia de uma
+sessão anterior, com dado real: 1 empresa, 1 usuário, 1 produto, 1
+lançamento - não é um banco vazio de teste).
+
+`npx prisma migrate dev --name segmento_e_venda_multi_item` recusou rodar
+direto: detectou "drift" (as tabelas `ficha_tecnica`/`ingredientes`/
+`lancamentos` e a coluna `nicho` já existiam no banco sem nenhuma migration
+correspondente - sinal de que um `db push` já tinha sido usado nesse banco
+antes, por fora do histórico de migrations) e exigia `prisma migrate reset`
+(apaga o banco inteiro, inclusive o usuário/produto/lançamento reais) pra
+poder prosseguir. Não fiz isso - o pedido já dava `db push` como
+alternativa válida, e é o caminho consistente com o que já tinha sido feito
+nesse mesmo banco antes. Rodei `npx prisma db push --accept-data-loss`
+(2ª tentativa - a 1ª bateu num erro transitório do schema-engine, "Duplicate
+foreign key constraint name" em `tarefas_empresa_id_fkey`, que sumiu ao
+rodar de novo). "Data loss" aqui foi só a coluna `nicho` (virou `segmento`,
+1 linha, valor antigo `geral` → default novo `outros` - exatamente o que a
+nota de ontem já previa pra esse valor, sem equivalente direto) e a
+reestruturação de `vendas` (tabela com 0 linhas, sem risco real). Usuário/
+produto/lançamento existentes conferidos intactos antes e depois.
+
+Consequência a saber: esse banco não tem mais o histórico de migrations
+100% consistente com o schema (o mesmo drift que já existia antes, agora
+maior) - um futuro `prisma migrate dev` provavelmente vai pedir reset de
+novo. Não tentei consertar isso agora (baseline de migrations é uma
+decisão maior, fora do escopo de "conserta o 500") - só sinalizando pra não
+ser surpresa numa próxima sessão.
+
+### Validado de ponta a ponta com o backend rodando de verdade
+
+Gerei um JWT de teste (`fast-jwt`, mesmo segredo do `.env`) pro usuário real
+(`banzatogabriel2@gmail.com`, id 4) e bati direto na API local
+(`node src/server.js`, porta 3000): `GET/PUT /empresa/dados` (leu e gravou
+`segmento` certo), `GET /vendas` (lista vazia, sem 500), `POST /vendas`
+(venda de teste com 1 item, `forma_pagamento: pix` - baixou estoque, gerou
+`Lancamento` `PAGO`, resposta com `itens`/`cliente`/`usuario` populados),
+`GET /relatorios/resumo` e `GET /relatorios/dre` (200 nos dois, `dre`
+retornou a série `vendasPorDia` completa). Todos 200, nenhum 500. Revertido
+manualmente depois (`DELETE` da venda/item/lançamento de teste, `UPDATE` do
+estoque de volta pra 5) pra não deixar lixo de teste no banco real do
+usuário - conferido `COUNT(*)` antes/depois batendo.
+
+### Os outros 2 pedidos do prompt já estavam cobertos - não dupliquei
+
+- Try/catch com `console.error` por controller: não adicionei. `app.js` já
+  tem um `fastify.setErrorHandler` global que envolve toda rota (Fastify
+  captura qualquer erro síncrono/assíncrono de um handler automaticamente,
+  não precisa de try/catch manual em cada um) - loga via
+  `request.log.error(err)` (Pino, estruturado, estritamente melhor que
+  `console.error` solto) quando é 5xx, e devolve `{ error: "Erro interno do
+  servidor." }` genérico (ou a mensagem real do `AppError` pra 4xx). Isso é
+  o padrão já estabelecido no projeto (`AppError` + esse handler central) -
+  replicar try/catch em cada controller seria código morto duplicando o que
+  o Fastify já faz, contra a convenção do resto do repo.
+- Relatórios não quebrar com "datas vazias/formato inesperado": conferido
+  `relatorios.controller.js`/`relatorios.service.js` - `resumo`/`dre` não
+  recebem nenhum parâmetro de data do cliente hoje (sempre calculam o mês
+  atual no servidor via `mesAtual()`). Não existe caminho de "data vazia
+  vinda do request" pra proteger, porque não existe request de data
+  nenhuma ainda. Se o `Relatorios.jsx` do frontend estiver de fato mandando
+  algum filtro de período que a API ignora silenciosamente, é uma lacuna
+  separada (filtro de data em relatórios nunca foi implementado) - não
+  investiguei o frontend a fundo aqui porque o pedido original era sobre o
+  banco desatualizado, e os 3 endpoints testados não travaram nem
+  quebraram em nenhum teste manual acima.
+
+### Sinalizando pro usuário: isso só corrigiu o banco LOCAL
+
+Só existe um MySQL nesta máquina (`sae_mysql`, container local, porta 3306)
+- é o que os testes acima usaram. Se existir um banco de produção separado
+(o domínio `api.projeto1.com.br`/túnel Cloudflare mencionado nos commits
+mais antigos), ele não foi tocado por esta sessão e provavelmente tem o
+mesmo drift (schema.prisma novo, banco desatualizado) - precisa rodar o
+mesmo `npx prisma db push` (ou uma migration de verdade) com o
+`DATABASE_URL` de produção antes de considerar isso resolvido lá. Docker
+Desktop ficou rodando ao final desta sessão (estava parado antes).
