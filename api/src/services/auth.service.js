@@ -24,7 +24,7 @@ function gerarToken(fastify, usuario) {
  * empresa recem-criada tambem e desfeita - nunca deve sobrar um tenant
  * "orfao" sem nenhum usuario capaz de acessa-lo.
  */
-async function register(fastify, { nome_empresa, tipo_pessoa, documento, nome_usuario, email, senha, nicho }) {
+async function register(fastify, { nome_empresa, tipo_pessoa, documento, nome_usuario, email, senha, segmento }) {
   const { prisma } = fastify;
 
   const tamanhoEsperado = TAMANHO_DOCUMENTO[tipo_pessoa];
@@ -44,9 +44,9 @@ async function register(fastify, { nome_empresa, tipo_pessoa, documento, nome_us
 
   const { empresa, usuario } = await prisma.$transaction(async (tx) => {
     const empresa = await tx.empresa.create({
-      // `nicho` e opcional aqui - se vier `undefined`, o Prisma nao inclui
-      // o campo no INSERT e o `@default("geral")` do schema assume sozinho.
-      data: { razaoSocial: nome_empresa, tipoPessoa: tipo_pessoa, documento, nicho },
+      // `segmento` e opcional aqui - se vier `undefined`, o Prisma nao inclui
+      // o campo no INSERT e o `@default("outros")` do schema assume sozinho.
+      data: { razaoSocial: nome_empresa, tipoPessoa: tipo_pessoa, documento, segmento },
     });
 
     // Primeiro usuario da empresa e sempre admin - nao ha ninguem mais para
@@ -73,7 +73,7 @@ async function register(fastify, { nome_empresa, tipo_pessoa, documento, nome_us
       razaoSocial: empresa.razaoSocial,
       tipoPessoa: empresa.tipoPessoa,
       documento: empresa.documento,
-      nicho: empresa.nicho,
+      segmento: empresa.segmento,
     },
     usuario: {
       id: usuario.id,

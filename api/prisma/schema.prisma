@@ -15,8 +15,8 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
-  url      = env("DATABASE_URL")
+  provider          = "mysql"
+  url               = env("DATABASE_URL")
   // "prisma migrate dev" precisa criar/derrubar um banco temporario para
   // calcular o diff de schema. O usuario da aplicacao (sae_app) so tem
   // grants no banco "sae" (concedidos automaticamente pelo docker-compose
@@ -58,6 +58,23 @@ enum TipoTarefa {
   lembrete
 }
 
+/// Forma de pagamento/saida de uma Venda. Enum (nao String solto) porque o
+/// conjunto TOTAL de valores possiveis e fixo e conhecido - o que MUDA por
+/// empresa e so quais dessas opcoes aparecem no select do PDV
+/// (`consumo_interno`/`doacao` so pra `Empresa.segmento === 'alimenticio'`,
+/// ver validacao em vendas.service.js), nao o vocabulario em si. Uma
+/// venda com essas 2 formas nao gera Lancamento (nao e dinheiro entrando
+/// no caixa) - ver `registrarVenda` em vendas.service.js.
+enum FormaPagamento {
+  dinheiro
+  pix
+  cartao_credito
+  cartao_debito
+  pendente
+  consumo_interno
+  doacao
+}
+
 /// Direcao do Lancamento no caixa da empresa. Em MAIUSCULO (diferente dos
 /// enums acima, todos lowercase) porque foi o valor pedido explicitamente
 /// nesta tarefa - inconsistencia de convencao sinalizada aqui de proposito,
@@ -77,34 +94,41 @@ enum StatusLancamento {
 /// Tabela "raiz" do modelo multi-tenant: Empresa.id E o tenant_id
 /// referenciado por Usuario, Produto e Venda.
 model Empresa {
-  id           Int          @id @default(autoincrement()) @db.UnsignedInt
-  razaoSocial  String       @map("razao_social") @db.VarChar(150)
-  tipoPessoa   TipoPessoa   @default(PJ) @map("tipo_pessoa")
+  id                Int          @id @default(autoincrement()) @db.UnsignedInt
+  razaoSocial       String       @map("razao_social") @db.VarChar(150)
+  tipoPessoa        TipoPessoa   @default(PJ) @map("tipo_pessoa")
   // CPF (11 digitos) ou CNPJ (14 digitos), so numeros, dependendo de
   // `tipoPessoa` - por isso VarChar(14) (tamanho maximo dos dois), nao
   // Char(14) como era so pro CNPJ: Char faz padding com espaco ate o
   // tamanho fixo, o que corromperia um CPF de 11 digitos.
-  documento    String       @unique @db.VarChar(14)
+  documento         String       @unique @db.VarChar(14)
   // Opcionais: nem toda empresa cadastrada vai ter preenchido de imediato.
-  endereco     String?      @db.VarChar(255)
-  telefone     String?      @db.VarChar(20)
+  endereco          String?      @db.VarChar(255)
+  telefone          String?      @db.VarChar(20)
   // Nome do campo no Prisma e "plano" (mais claro que carrega o nivel do
   // plano, nao um booleano) - mapeado pra coluna "plano_ativo" no MySQL.
-  plano        PlanoEmpresa @default(gratuito) @map("plano_ativo")
+  plano             PlanoEmpresa @default(gratuito) @map("plano_ativo")
   // Valor mensal que um Apoiador contribui (a "mensalidade caridosa") -
   // Decimal (nao Float) pelo mesmo motivo de Produto.custo/precoVenda
   // abaixo: dinheiro nunca deve usar ponto flutuante binario.
-  valorContribuicao Decimal @default(0.00) @map("valor_contribuicao") @db.Decimal(10, 2)
-  // Ramo de atuacao da empresa - decide funcionalidades extras (hoje: so
-  // "alimentos" desbloqueia Ficha Tecnica de ingredientes em Produto, ver
-  // FichaTecnica abaixo). String solto (nao enum), pedido explicitamente
-  // assim nesta tarefa - foge da convencao de enum ja usada pra outros
-  // campos de vocabulario controlado (RoleUsuario/PlanoEmpresa/TipoPessoa
-  // acima), entao a validacao de valores aceitos (`NICHOS_VALIDOS`) fica
-  // so na camada de aplicacao (empresa.service.js), nao no banco.
-  nicho        String       @default("geral") @db.VarChar(30)
-  criadoEm     DateTime     @default(now()) @map("criado_em")
-  atualizadoEm DateTime     @default(now()) @updatedAt @map("atualizado_em")
+  valorContribuicao Decimal      @default(0.00) @map("valor_contribuicao") @db.Decimal(10, 2)
+  // Segmento de atuacao da empresa - decide funcionalidades extras (hoje:
+  // so "alimenticio" desbloqueia Ficha Tecnica de ingredientes em Produto,
+  // ver FichaTecnica abaixo, e as formas de pagamento "Consumo Interno"/
+  // "Doacao" em Venda) e efeitos em cascata noutras telas (Vendas/Estoque).
+  // Renomeado de "nicho" (valores antigos "geral"/"alimentos") nesta
+  // tarefa - existiam 2 campos "que ramo e essa empresa" a caminho
+  // (o "nicho" antigo e o "Segmento da Empresa" pedido agora), o que
+  // criaria confusao sobre qual checar em features novas; unificados num
+  // so. String solto (nao enum) pelo mesmo motivo de antes - a validacao
+  // de valores aceitos (`SEGMENTOS_VALIDOS`) fica na aplicacao
+  // (empresa.service.js), nao no banco. Default "outros" (nao existe um
+  // equivalente direto pro antigo "geral" solto entre as 4 opcoes novas -
+  // ver NOTAS_IMPORTANTES.md pra instrucoes de migracao de dados
+  // existentes).
+  segmento          String       @default("outros") @db.VarChar(30)
+  criadoEm          DateTime     @default(now()) @map("criado_em")
+  atualizadoEm      DateTime     @default(now()) @updatedAt @map("atualizado_em")
 
   usuarios     Usuario[]
   produtos     Produto[]
@@ -127,8 +151,12 @@ model Usuario {
   criadoEm     DateTime    @default(now()) @map("criado_em")
   atualizadoEm DateTime    @default(now()) @updatedAt @map("atualizado_em")
 
-  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  vendas  Venda[]
+  empresa          Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  // 2 relacoes distintas com Venda (quem vendeu vs. quem consumiu
+  // internamente) - precisam de nome pra o Prisma saber diferenciar qual
+  // FK cada uma representa (ver Venda.usuarioId/funcionarioId acima).
+  vendas           Venda[] @relation("VendaVendedor")
+  consumosInternos Venda[] @relation("VendaFuncionarioConsumo")
 
   // Email e unico apenas DENTRO da mesma empresa, nao globalmente - dois
   // tenants diferentes podem ter usuarios com o mesmo e-mail.
@@ -154,9 +182,12 @@ model Produto {
   atualizadoEm  DateTime @default(now()) @updatedAt @map("atualizado_em")
 
   empresa      Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  vendas       Venda[]
-  // So populado (via API) quando a empresa e do nicho "alimentos" - ver
-  // FichaTecnica abaixo e a validacao em produtos.service.js.
+  // A relacao direta com Venda virou VendaItem nesta tarefa (ver
+  // comentario no model Venda) - um produto agora aparece em varias
+  // vendas atraves dos itens delas, nao mais um FK direto.
+  vendaItens   VendaItem[]
+  // So populado (via API) quando a empresa e do segmento "alimenticio" -
+  // ver FichaTecnica abaixo e a validacao em produtos.service.js.
   fichaTecnica FichaTecnica[]
 
   @@index([empresaId], map: "idx_produtos_empresa_id")
@@ -165,34 +196,82 @@ model Produto {
   @@map("produtos")
 }
 
+/// Cabecalho da venda - QUEM comprou, QUANDO, COMO pagou. Os itens
+/// (produto/quantidade/preco) moraram aqui ate esta tarefa ("1 produto por
+/// venda", decisao registrada quando o modulo nasceu) - extraidos pra
+/// VendaItem abaixo porque o Historico de Vendas agora precisa listar
+/// carrinhos com varios produtos, evolucao ja prevista na decisao
+/// original.
 model Venda {
-  id            Int      @id @default(autoincrement()) @db.UnsignedInt
-  empresaId     Int      @map("empresa_id") @db.UnsignedInt
-  usuarioId     Int      @map("usuario_id") @db.UnsignedInt
-  produtoId     Int      @map("produto_id") @db.UnsignedInt
+  id             Int            @id @default(autoincrement()) @db.UnsignedInt
+  empresaId      Int            @map("empresa_id") @db.UnsignedInt
+  usuarioId      Int            @map("usuario_id") @db.UnsignedInt
   // Opcional: nem toda venda tem um cliente identificado (venda avulsa de
-  // balcao, por exemplo).
-  clienteId     Int?     @map("cliente_id") @db.UnsignedInt
-  quantidade    Int      @default(1)
-  precoUnitario Decimal  @default(0.00) @map("preco_unitario") @db.Decimal(12, 2)
-  total         Decimal  @default(0.00) @db.Decimal(12, 2)
-  data          DateTime @default(now())
+  // balcao, por exemplo) - exibido como "Avulso" no Historico de Vendas.
+  clienteId      Int?           @map("cliente_id") @db.UnsignedInt
+  // Funcionario que CONSUMIU o produto - so preenchido quando
+  // `formaPagamento = consumo_interno` (empresas do segmento
+  // "alimenticio", ver Empresa.segmento e a validacao em
+  // vendas.service.js). Restrict (nao SetNull) pelo mesmo motivo de
+  // usuario abaixo: preserva o vinculo, nao deixa apagar um usuario que
+  // ja consta em consumo interno registrado.
+  funcionarioId  Int?           @map("funcionario_id") @db.UnsignedInt
+  formaPagamento FormaPagamento @default(dinheiro) @map("forma_pagamento")
+  total          Decimal        @default(0.00) @db.Decimal(12, 2)
+  // Data da venda escolhida no PDV (o usuario pode registrar uma venda
+  // retroativa, nao e sempre "agora") - so a parte de calendario importa,
+  // sem hora (mesmo padrao ja usado em Lancamento.dataVencimento, ver
+  // utils/datas.js no frontend).
+  data           DateTime       @default(now())
+  // So preenchida pras formas de pagamento que representam dinheiro
+  // recebido de fato (dinheiro/pix/cartao de credito/debito) - fica NULL
+  // pra 'pendente' (ainda nao recebido) e pra 'consumo_interno'/'doacao'
+  // (nunca vira dinheiro no caixa). Ver `registrarVenda` em
+  // vendas.service.js.
+  dataPagamento  DateTime?      @map("data_pagamento")
+  criadoEm       DateTime       @default(now()) @map("criado_em")
 
-  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  empresa     Empresa     @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   // Nao permite apagar um usuario que ja registrou vendas (preserva historico financeiro).
-  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  // Restrict (nao SetNull) pelo mesmo motivo de usuario/produto acima -
-  // preserva o vinculo financeiro entre venda e cliente; apagar um cliente
-  // com vendas registradas nao e permitido.
-  cliente Cliente? @relation(fields: [clienteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  usuario     Usuario     @relation("VendaVendedor", fields: [usuarioId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  // Restrict (nao SetNull) pelo mesmo motivo de usuario acima - preserva o
+  // vinculo financeiro entre venda e cliente; apagar um cliente com vendas
+  // registradas nao e permitido.
+  cliente     Cliente?    @relation(fields: [clienteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  funcionario Usuario?    @relation("VendaFuncionarioConsumo", fields: [funcionarioId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  itens       VendaItem[]
 
   @@index([empresaId], map: "idx_vendas_empresa_id")
   @@index([empresaId, data], map: "idx_vendas_empresa_data")
   @@index([usuarioId], map: "idx_vendas_usuario_id")
-  @@index([empresaId, produtoId], map: "idx_vendas_empresa_produto")
   @@index([clienteId], map: "idx_vendas_cliente_id")
+  @@index([funcionarioId], map: "idx_vendas_funcionario_id")
   @@map("vendas")
+}
+
+/// Item de uma Venda (produto + quantidade + preco no momento da compra) -
+/// extraido de Venda nesta tarefa (ver comentario acima dela). Preco fica
+/// congelado aqui no momento da venda (nao le mais Produto.precoVenda
+/// depois) - historico financeiro nao deve mudar se o preco do produto for
+/// reajustado no futuro.
+model VendaItem {
+  id            Int     @id @default(autoincrement()) @db.UnsignedInt
+  vendaId       Int     @map("venda_id") @db.UnsignedInt
+  produtoId     Int     @map("produto_id") @db.UnsignedInt
+  quantidade    Int     @default(1)
+  precoUnitario Decimal @default(0.00) @map("preco_unitario") @db.Decimal(12, 2)
+  subtotal      Decimal @default(0.00) @db.Decimal(12, 2)
+
+  // Cascade: um item nao tem sentido sem a venda-pai.
+  venda   Venda   @relation(fields: [vendaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  // Restrict (nao Cascade) - mesmo motivo do antigo Venda.produtoId:
+  // preserva o historico de vendas, nao permite apagar um produto que ja
+  // foi vendido.
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([vendaId], map: "idx_venda_itens_venda_id")
+  @@index([produtoId], map: "idx_venda_itens_produto_id")
+  @@map("venda_itens")
 }
 
 /// Cadastro simples de clientes, usado pra atrelar vendas a uma pessoa
@@ -221,16 +300,16 @@ model Cliente {
 /// agenda.controller.js), nao consulta esta tabela; nenhuma rota de
 /// escrita (criar/editar/concluir Tarefa) foi criada ainda.
 model Tarefa {
-  id             Int        @id @default(autoincrement()) @db.UnsignedInt
-  empresaId      Int        @map("empresa_id") @db.UnsignedInt
-  titulo         String     @db.VarChar(150)
+  id              Int        @id @default(autoincrement()) @db.UnsignedInt
+  empresaId       Int        @map("empresa_id") @db.UnsignedInt
+  titulo          String     @db.VarChar(150)
   // Opcional: nem todo evento (ex.: uma venda) precisa de detalhamento extra.
-  descricao      String?    @db.VarChar(500)
-  dataVencimento DateTime   @map("data_vencimento")
-  tipo           TipoTarefa
-  statusConcluida Boolean   @default(false) @map("status_concluida")
-  criadoEm       DateTime   @default(now()) @map("criado_em")
-  atualizadoEm   DateTime   @default(now()) @updatedAt @map("atualizado_em")
+  descricao       String?    @db.VarChar(500)
+  dataVencimento  DateTime   @map("data_vencimento")
+  tipo            TipoTarefa
+  statusConcluida Boolean    @default(false) @map("status_concluida")
+  criadoEm        DateTime   @default(now()) @map("criado_em")
+  atualizadoEm    DateTime   @default(now()) @updatedAt @map("atualizado_em")
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
@@ -272,26 +351,26 @@ model Lancamento {
   @@map("lancamentos")
 }
 
-/// Materia-prima de empresas do nicho "alimentos" (ver Empresa.nicho) -
+/// Materia-prima de empresas do segmento "alimenticio" (ver Empresa.segmento) -
 /// insumos usados na producao dos produtos, com controle de estoque
 /// proprio, separado do estoque de Produto (que conta unidades PRONTAS
 /// pra vender, nao os ingredientes que as compoem).
 model Ingrediente {
-  id        Int @id @default(autoincrement()) @db.UnsignedInt
-  empresaId Int @map("empresa_id") @db.UnsignedInt
-  nome      String @db.VarChar(120)
+  id            Int      @id @default(autoincrement()) @db.UnsignedInt
+  empresaId     Int      @map("empresa_id") @db.UnsignedInt
+  nome          String   @db.VarChar(120)
   // "kg", "g", "l", "ml", "un" etc - String solto (nao enum), mesmo motivo
   // de Empresa.nicho acima (pedido explicito da tarefa); validado na
   // aplicacao via `UNIDADES_MEDIDA_VALIDAS` (ingredientes.service.js).
-  unidadeMedida String  @map("unidade_medida") @db.VarChar(10)
+  unidadeMedida String   @map("unidade_medida") @db.VarChar(10)
   // Decimal (nao Float) - mesmo motivo de Produto.custo/precoVenda: dinheiro
   // nunca usa ponto flutuante binario.
-  custoUnitario Decimal @default(0.00) @map("custo_unitario") @db.Decimal(12, 2)
+  custoUnitario Decimal  @default(0.00) @map("custo_unitario") @db.Decimal(12, 2)
   // Decimal (nao Int, diferente de Produto.estoqueAtual) - ingrediente e
   // medido em unidade de massa/volume/unidade (kg, l, un), entao o estoque
   // pode ser fracionario (ex.: "2.500 kg de farinha restantes"). 3 casas
   // decimais cobre precisao de grama dentro de um total em kg.
-  estoqueAtual  Decimal @default(0.000) @map("estoque_atual") @db.Decimal(12, 3)
+  estoqueAtual  Decimal  @default(0.000) @map("estoque_atual") @db.Decimal(12, 3)
   criadoEm      DateTime @default(now()) @map("criado_em")
   atualizadoEm  DateTime @default(now()) @updatedAt @map("atualizado_em")
 
@@ -304,16 +383,16 @@ model Ingrediente {
 }
 
 /// Tabela relacional: define quais ingredientes (e em que quantidade) compoem
-/// um Produto - a "receita"/ficha tecnica usada por empresas do nicho
-/// "alimentos". Sem `empresa_id` proprio (o pedido especificou so
+/// um Produto - a "receita"/ficha tecnica usada por empresas do segmento
+/// "alimenticio". Sem `empresa_id` proprio (o pedido especificou so
 /// id/produto_id/ingrediente_id/quantidade_usada) - o isolamento de tenant
 /// e garantido indiretamente, exigindo que tanto `produtoId` quanto
 /// `ingredienteId` pertencam ao `tenantId` do request antes de gravar
 /// (ver produtos.service.js).
 model FichaTecnica {
-  id             Int     @id @default(autoincrement()) @db.UnsignedInt
-  produtoId      Int     @map("produto_id") @db.UnsignedInt
-  ingredienteId  Int     @map("ingrediente_id") @db.UnsignedInt
+  id              Int     @id @default(autoincrement()) @db.UnsignedInt
+  produtoId       Int     @map("produto_id") @db.UnsignedInt
+  ingredienteId   Int     @map("ingrediente_id") @db.UnsignedInt
   // Quantidade do ingrediente consumida por 1 unidade do produto (mesma
   // unidade de medida do Ingrediente - ex.: 0.150 kg de farinha por pao).
   quantidadeUsada Decimal @map("quantidade_usada") @db.Decimal(12, 3)

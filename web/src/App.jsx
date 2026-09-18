@@ -3,6 +3,7 @@ import Layout from './components/Layout';
 import PrivateRoute from './components/PrivateRoute';
 import Dashboard from './pages/Dashboard';
 import Vendas from './pages/Vendas';
+import HistoricoVendas from './pages/HistoricoVendas';
 import Produtos from './pages/Produtos';
 import CalculadoraPrecificacao from './pages/CalculadoraPrecificacao';
 import Estoque from './pages/Estoque';
@@ -31,6 +32,7 @@ export default function App() {
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/vendas" element={<Vendas />} />
+            <Route path="/historico-vendas" element={<HistoricoVendas />} />
             <Route path="/produtos" element={<Produtos />} />
             <Route path="/precificacao" element={<CalculadoraPrecificacao />} />
             <Route path="/estoque" element={<Estoque />} />

@@ -5,6 +5,25 @@ async function obterDados(request, reply) {
   return reply.send(empresa);
 }
 
+async function atualizarDados(request, reply) {
+  const { razaoSocial, endereco, telefone, segmento } = request.body || {};
+
+  const temCampoValido = [razaoSocial, endereco, telefone, segmento].some((valor) => valor !== undefined);
+  if (!temCampoValido) {
+    return reply
+      .code(400)
+      .send({ error: 'Informe ao menos um campo para atualizar: razaoSocial, endereco, telefone, segmento.' });
+  }
+
+  const empresa = await empresaService.atualizarDados(request.server.prisma, request.tenantId, {
+    razaoSocial,
+    endereco,
+    telefone,
+    segmento,
+  });
+  return reply.send(empresa);
+}
+
 async function listarUsuarios(request, reply) {
   const usuarios = await empresaService.listarUsuarios(request.server.prisma, request.tenantId);
   return reply.send(usuarios);
@@ -41,4 +60,4 @@ async function atualizarAssinatura(request, reply) {
   return reply.send(empresa);
 }
 
-module.exports = { obterDados, listarUsuarios, adicionarUsuario, atualizarAssinatura };
+module.exports = { obterDados, atualizarDados, listarUsuarios, adicionarUsuario, atualizarAssinatura };

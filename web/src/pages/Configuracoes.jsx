@@ -173,7 +173,7 @@ export default function Configuracoes() {
           ) : erroEmpresa ? (
             <Erro mensagem={erroEmpresa} />
           ) : (
-            <DadosDaLoja empresa={empresa} />
+            <DadosDaLoja empresa={empresa} onEmpresaAtualizada={setEmpresa} />
           ))}
 
         {abaAtiva === 'usuarios' &&

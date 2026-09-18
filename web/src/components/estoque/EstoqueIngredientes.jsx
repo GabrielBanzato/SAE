@@ -39,8 +39,8 @@ function calcularAutonomia(produto) {
 }
 
 /**
- * Aba "Ingredientes" da tela de Estoque (so aparece pra empresas do nicho
- * "alimentos" - ver pages/Estoque.jsx). Lista os insumos cadastrados
+ * Aba "Ingredientes" da tela de Estoque (so aparece pra empresas do
+ * segmento "alimenticio" - ver pages/Estoque.jsx). Lista os insumos cadastrados
  * (GET /ingredientes) e cruza com a Ficha Técnica de cada Produto
  * (GET /produtos, que já vem com `fichaTecnica` incluída desde a tarefa
  * anterior) pra calcular a "Autonomia de Produção" - quantas unidades de

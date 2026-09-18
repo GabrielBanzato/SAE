@@ -1,10 +1,10 @@
 const authService = require('../services/auth.service');
-const { NICHOS_VALIDOS } = require('../services/empresa.service');
+const { SEGMENTOS_VALIDOS } = require('../services/empresa.service');
 
 const TIPOS_PESSOA_VALIDOS = ['PF', 'PJ'];
 
 async function register(request, reply) {
-  const { nome_empresa, tipo_pessoa, documento, nome_usuario, email, senha, nicho } = request.body || {};
+  const { nome_empresa, tipo_pessoa, documento, nome_usuario, email, senha, segmento } = request.body || {};
 
   if (!nome_empresa || !tipo_pessoa || !documento || !nome_usuario || !email || !senha) {
     return reply.code(400).send({
@@ -16,9 +16,12 @@ async function register(request, reply) {
     return reply.code(400).send({ error: "tipo_pessoa deve ser 'PF' ou 'PJ'." });
   }
 
-  // Opcional - se nao vier, o schema ja tem @default("geral") no banco.
-  if (nicho !== undefined && !NICHOS_VALIDOS.includes(nicho)) {
-    return reply.code(400).send({ error: `nicho deve ser um dos seguintes: ${NICHOS_VALIDOS.join(', ')}.` });
+  // Opcional - se nao vier, o schema ja tem @default("outros") no banco.
+  // O frontend de Cadastro ainda nao pede o segmento nesta tela (a tarefa
+  // que introduziu o campo pediu ele em Configuracoes/Dados da Loja, nao
+  // no registro inicial) - fica pronto pra aceitar caso isso mude.
+  if (segmento !== undefined && !SEGMENTOS_VALIDOS.includes(segmento)) {
+    return reply.code(400).send({ error: `segmento deve ser um dos seguintes: ${SEGMENTOS_VALIDOS.join(', ')}.` });
   }
 
   const resultado = await authService.register(request.server, {
@@ -28,7 +31,7 @@ async function register(request, reply) {
     nome_usuario,
     email,
     senha,
-    nicho,
+    segmento,
   });
 
   return reply.code(201).send(resultado);

@@ -3,6 +3,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   ShoppingCart,
+  History,
   Package,
   Calculator,
   Boxes,
@@ -38,6 +39,7 @@ const CATEGORIAS_MENU = [
     icon: Briefcase,
     itens: [
       { label: 'Vendas', to: '/vendas', icon: ShoppingCart },
+      { label: 'Histórico de Vendas', to: '/historico-vendas', icon: History },
       { label: 'Produtos', to: '/produtos', icon: Package },
       { label: 'Precificação', to: '/precificacao', icon: Calculator },
       { label: 'Estoque', to: '/estoque', icon: Boxes },

@@ -38,11 +38,11 @@ function valoresIniciais(produto) {
  * Ganhou 2 pecas novas nesta tarefa: o botao "Calculadora de Lucros"
  * (abre `ModalCalculadoraLucros` empilhado por cima, devolve o preco
  * calculado pro formulario) e a secao "Ficha Tecnica / Ingredientes",
- * visivel so quando `empresa.nicho === 'alimentos'` (AuthContext).
+ * visivel so quando `empresa.segmento === 'alimenticio'` (AuthContext).
  */
 export default function ModalProduto({ produto, onFechar, onSalvar }) {
   const { empresa } = useAuth();
-  const nichoAlimentos = empresa?.nicho === 'alimentos';
+  const segmentoAlimenticio = empresa?.segmento === 'alimenticio';
 
   const [campos, setCampos] = useState(() => valoresIniciais(produto));
   const [salvando, setSalvando] = useState(false);
@@ -70,11 +70,11 @@ export default function ModalProduto({ produto, onFechar, onSalvar }) {
     return () => window.removeEventListener('keydown', handleEsc);
   }, [onFechar, modalCalculadoraAberto]);
 
-  // So busca a lista de ingredientes cadastrados se a empresa for do nicho
-  // "alimentos" - pra qualquer outro nicho a secao inteira nem aparece,
-  // entao a chamada seria desperdicada.
+  // So busca a lista de ingredientes cadastrados se a empresa for do
+  // segmento "alimenticio" - pra qualquer outro segmento a secao inteira
+  // nem aparece, entao a chamada seria desperdicada.
   useEffect(() => {
-    if (!nichoAlimentos) return undefined;
+    if (!segmentoAlimenticio) return undefined;
 
     let ativo = true;
     setCarregandoIngredientes(true);
@@ -91,7 +91,7 @@ export default function ModalProduto({ produto, onFechar, onSalvar }) {
     return () => {
       ativo = false;
     };
-  }, [nichoAlimentos]);
+  }, [segmentoAlimenticio]);
 
   function atualizarCampo(campo, valor) {
     setCampos((atual) => ({ ...atual, [campo]: valor }));
@@ -150,10 +150,10 @@ export default function ModalProduto({ produto, onFechar, onSalvar }) {
         estoque_atual: campos.sobDemanda ? 0 : Number(campos.estoqueAtual) || 0,
         estoque_minimo: campos.sobDemanda ? 0 : Number(campos.estoqueMinimo) || 0,
         sob_demanda: campos.sobDemanda,
-        // So manda `ingredientes` pra empresas do nicho "alimentos" - a API
-        // rejeita (403) esse campo pra qualquer outro nicho (ver
+        // So manda `ingredientes` pra empresas do segmento "alimenticio" -
+        // a API rejeita (403) esse campo pra qualquer outro segmento (ver
         // produtos.service.js), entao nem inclui a chave nos demais casos.
-        ...(nichoAlimentos
+        ...(segmentoAlimenticio
           ? {
               ingredientes: campos.ingredientes.map((item) => ({
                 ingrediente_id: item.ingredienteId,
@@ -276,7 +276,7 @@ export default function ModalProduto({ produto, onFechar, onSalvar }) {
             </div>
           )}
 
-          {nichoAlimentos && (
+          {segmentoAlimenticio && (
             <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-900/50">
               <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200">
                 <ChefHat size={20} aria-hidden="true" />

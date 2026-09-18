@@ -5593,3 +5593,211 @@ de escrever `OpenAiCompatibleProvider.js` em cima dessa suposição. **Não
 testada uma chamada real** (`generateResponse` de ponta a ponta) - isso
 exigiria uma `AI_API_KEY` de verdade (OpenAI) ou um Ollama rodando
 localmente, nenhum dos dois disponível nesta sessão.
+
+---
+
+## Segmentação da Empresa + Venda multi-item + Histórico de Vendas (2026-09-17)
+
+Tarefa grande, full-stack, tocando schema do banco. **Sem Docker/MySQL
+disponível nesta sessão** - todo o backend foi validado por meios que não
+exigem conexão real (`prisma validate`/`prisma generate`/`node -e`
+carregando os módulos), mas **nenhuma migration foi gerada nem aplicada**.
+Ver "Como aplicar" no final desta seção antes de rodar isso em qualquer
+lugar.
+
+### Achado antes de implementar: já existia um campo "que ramo é essa empresa"
+
+`Empresa.nicho` (`"geral"`/`"alimentos"`, criado numa tarefa antiga pra
+liberar Ficha Técnica de ingredientes) fazia essencialmente o mesmo papel
+do "Segmento da Empresa" pedido agora. Manter os dois criaria uma
+pergunta permanente ("uma feature nova checa `nicho` ou `segmento`?") -
+**decisão tomada (não pedida explicitamente, mas necessária)**:
+renomear/expandir `nicho` → `segmento`, valores `geral`/`alimentos` →
+`alimenticio`/`varejo`/`servicos`/`outros` (default mudou de `"geral"`
+pra `"outros"` - não existe equivalente direto pro antigo "geral" solto
+entre as 4 opções novas). Único campo, uma fonte de verdade.
+
+Isso tocou mais arquivos do que o pedido em si: `schema.prisma`
+(`Empresa.nicho` → `Empresa.segmento`), `empresa.service.js`
+(`NICHOS_VALIDOS` → `SEGMENTOS_VALIDOS`, valores novos),
+`auth.controller.js`/`auth.service.js` (o fluxo de cadastro aceitava
+`nicho` opcional no body - virou `segmento`; `Cadastro.jsx` no frontend
+**nunca expôs esse campo na UI**, confirmado antes de mexer, então não há
+tela de cadastro pra atualizar), `produtos.service.js`
+(`validarNichoAlimentos` → `validarSegmentoAlimenticio`, checa
+`segmento === 'alimenticio'`), e os gates de frontend em `Estoque.jsx`/
+`ModalProduto.jsx` (`empresa.nicho === 'alimentos'` →
+`empresa.segmento === 'alimenticio'`).
+
+**Migração de dados existentes**: se este projeto já tiver um banco com
+empresas cadastradas, renomear a coluna preserva os valores antigos
+(`"geral"`/`"alimentos"`) numa coluna agora chamada `segmento`, que
+espera outro vocabulário. Depois de rodar a migration, alguém precisa
+rodar manualmente:
+```sql
+UPDATE empresas SET segmento = 'alimenticio' WHERE segmento = 'alimentos';
+UPDATE empresas SET segmento = 'outros' WHERE segmento = 'geral';
+```
+
+### `user.company.segment` do pedido virou `useAuth().empresa.segmento`
+
+O pedido descrevia o estado global como `user.company.segment` - essa
+estrutura não existe neste projeto (o padrão real, usado em toda parte,
+é `useAuth().empresa.*` do `AuthContext`, ver `plano`/`valorContribuicao`
+já expostos assim). Não criei uma estrutura paralela só pra bater com o
+nome literal do pedido - `empresa.segmento` já é global, já reage em
+outras telas (é exatamente o mesmo mecanismo que já fazia
+`empresa.plano` funcionar em `Relatorios.jsx`/`UsuariosEquipe.jsx`) e
+`AuthContext.jsx` não precisou de nenhuma mudança (`refreshEmpresa` já
+repassa qualquer campo que `GET /empresa/dados` devolver, sem allowlist
+fixa).
+
+### `PUT /empresa/dados` criado (não existia) - `DadosDaLoja.jsx` deixou de ser mock
+
+Bônus direto do pedido: pra salvar `segmento` de verdade era preciso essa
+rota, que não existia (o botão "Salvar Alterações" de uma tarefa anterior
+já tinha sido deixado clicável mas só com `console.log`, esperando por
+ela). Implementada em `empresa.service.js#atualizarDados` (atualização
+parcial, mesmo padrão de `lancamentos.service.js#update`) -
+`razaoSocial`/`endereco`/`telefone` (que já estavam no formulário)
+ganharam de brinde persistência real junto com `segmento`.
+`documento`/`tipoPessoa` continuam garantidamente não-editáveis (nem que
+venham no body, são ignorados). `DadosDaLoja.jsx` agora chama
+`refreshEmpresa()` do `AuthContext` depois de salvar (mesmo padrão de
+`Assinatura.jsx`) - sem isso, o novo segmento só refletiria em
+Vendas/Estoque após um reload. "Apelido/Fantasia" continua mock (sem
+coluna no schema ainda).
+
+### Venda virou Venda (cabeçalho) + VendaItem - a evolução que já estava prevista
+
+O modelo antigo era literalmente "1 produto por venda" (decisão de
+modelagem registrada há várias tarefas atrás, quando o pedido original
+era singular) - o próprio comentário da época já previa: *"a evolução
+natural é extrair itens_venda... se isso mudar"*. O Histórico de Vendas
+pedido agora ("Produtos, se houver mais de um, liste de forma resumida")
+exige exatamente isso, então a evolução prevista foi implementada:
+
+- `Venda` virou cabeçalho: quem comprou (`clienteId`), quem vendeu
+  (`usuarioId`), quem consumiu internamente (`funcionarioId`, novo), como
+  pagou (`formaPagamento`, novo enum), quando (`data`, agora escolhida no
+  PDV em vez de sempre "agora"), quando foi pago (`dataPagamento`, novo).
+- `VendaItem` (nova tabela, `venda_itens`): produto + quantidade + preço
+  (congelado no momento da compra) + subtotal, N por venda.
+- `FormaPagamento` (novo enum): `dinheiro`/`pix`/`cartao_credito`/
+  `cartao_debito`/`pendente`/`consumo_interno`/`doacao`. Enum de verdade
+  (não String solto) porque o vocabulário TOTAL é fixo - o que muda por
+  empresa é só quais dessas opções aparecem no select do PDV, uma regra
+  de aplicação, não de schema.
+
+**Consumidores existentes conferidos antes de mexer**: `dashboard.service.js`
+não toca `Venda` (usa `Lancamento`); `relatorios.service.js` só lê
+`venda.total`/`venda.data` (ambos continuam no cabeçalho, sem nenhuma
+mudança necessária lá); `seed.js` nunca criou uma `Venda` diretamente. A
+mudança ficou contida em `vendas.service.js`/`vendas.controller.js`.
+
+### Regras de negócio implementadas NO BACKEND, não só escondidas na UI
+
+Pedido explícito tinha 2 "REGRA CONDICIONAL" - implementadas nos dois
+lados:
+- **Frontend** (`Vendas.jsx`): o select de Forma de Pagamento só mostra
+  "Consumo Interno"/"Doação" quando `empresa.segmento === 'alimenticio'`;
+  selecionar "Consumo Interno" revela o select de "Funcionário" (busca
+  `GET /empresa/usuarios`, a mesma lista de equipe do Plano Apoiador).
+- **Backend** (`vendas.service.js#registrarVenda`): valida de novo as
+  duas regras, independente do que o frontend esconde - um request
+  forjado com `forma_pagamento: 'doacao'` pra uma empresa de outro
+  segmento recebe `403`; `forma_pagamento: 'consumo_interno'` sem
+  `funcionario_id` (ou com um id que não pertence à empresa) recebe
+  `400`/`404`. Nunca confiar só na UI pra impor regra de negócio - mesmo
+  princípio já seguido em todo o resto do backend (ex.: `tenantId` nunca
+  vem do body).
+
+**Lançamento automático ficou mais esperto**: antes, toda venda gerava um
+Lançamento `ENTRADA`/`PAGO` incondicionalmente. Agora: formas que
+representam dinheiro à vista (dinheiro/pix/cartão) continuam gerando
+`PAGO`; `'pendente'` gera um Lançamento `PENDENTE` de verdade (antes não
+existia essa possibilidade); `'consumo_interno'`/`'doacao'` **não geram
+nenhum Lançamento** - não é dinheiro entrando no caixa, registrar um
+inflaria o faturamento artificialmente.
+
+### PDV (`Vendas.jsx`) ganhou 3 campos - e ficou mais simples ao mesmo tempo
+
+"Data da Venda" (`CampoData`, padrão hoje) e "Forma de Pagamento" novos,
+mais o "Funcionário" condicional. **Efeito colateral bom**: como o
+backend agora aceita `itens: [...]` num carrinho só, `finalizarVenda`
+deixou de precisar do loop "1 requisição por item, para no primeiro erro"
+que existia só por limitação da API antiga - virou uma única chamada
+`POST /vendas`. Simplifica bastante a lógica de erro parcial que existia
+antes (não tem mais "vendidos > 0 mas alguns itens falharam" pra
+lidar - ou a venda inteira funciona, numa transação atômica, ou nenhuma
+parte dela é registrada).
+
+### Histórico de Vendas: página nova + modal de detalhes
+
+`GET /vendas` (novo - a rota só aceitava `POST` antes) e `GET /vendas/:id`
+(novo) em `vendas.service.js`. `pages/HistoricoVendas.jsx` (rota
+`/historico-vendas`, link na Sidebar logo abaixo de "Vendas") lista mais
+recentes primeiro, com as colunas pedidas. Pontos de tradução de dados
+pro pedido:
+- **Resumo de produtos**: pedido deu o exemplo literal "Pão de batata +
+  2 itens" - implementado como nome do 1º item + contagem dos demais
+  (não a soma das quantidades).
+- **Badge de Status**: cor derivada só de `formaPagamento` (não de um
+  campo `status` próprio, que não existe) - verde pras 4 formas
+  "pagas no ato" + qualquer coisa que não seja pendente/consumo/doação,
+  amarelo só pra `pendente`, cinza pra `consumo_interno`/`doacao`. Mesma
+  classificação (`FORMAS_PAGAS_NO_ATO`) usada no backend pra decidir se
+  gera Lançamento - **duplicada** entre frontend e backend (arquivos
+  diferentes, sem um pacote compartilhado entre API e web neste projeto)
+  - se a lista de formas de pagamento mudar de novo no futuro, precisa
+    atualizar os dois lados.
+- **Data da Venda/Data do Pagamento**: exibidas via `dataCalendario()`
+  (trata como campo "só calendário", mesmo cuidado de fuso horário já
+  documentado em `utils/datas.js`) - coerente com o fato de que
+  `Venda.data` agora quase sempre chega como meia-noite UTC (o PDV manda
+  uma data pura do `CampoData`, sem hora), mesmo o campo no schema sendo
+  um `DateTime` genérico.
+- **Modal de Detalhes** (`ModalDetalhesVenda.jsx`): itens exatos com
+  quantidade/preço/subtotal, mais cliente/vendedor/funcionário quando
+  houver.
+
+### Como aplicar isto de verdade (próximo passo, fora desta sessão)
+
+1. `cd api && npm run prisma:migrate` (gera e aplica a migration de
+   verdade, com o MySQL do `docker compose` rodando) - vai perguntar um
+   nome, algo como `segmento_e_venda_multi_item` serve.
+2. Se já existirem empresas cadastradas com `nicho` preenchido, rodar o
+   `UPDATE` de dados mostrado acima.
+3. Rodar a bateria de testes manual: cadastrar/editar o Segmento em
+   Configurações, conferir que Estoque/ModalProduto reagem (Ficha Técnica
+   aparece só pra "Alimentício"), fazer uma venda com cada forma de
+   pagamento (inclusive tentar "Consumo Interno" numa empresa que NÃO é
+   alimentícia direto pela API, esperando `403`), conferir o Lançamento
+   gerado (ou a ausência dele) em Lançamentos.jsx, e abrir o Histórico de
+   Vendas com pelo menos uma venda de vários itens pra validar o resumo
+   "produto + N itens" e o modal de Detalhes.
+
+### Status de validação
+
+**Backend**: `npx prisma validate` e `npx prisma generate` (ambos
+funcionam sem conexão real ao MySQL, só validam/geram a partir do
+arquivo de schema) rodados com sucesso depois de cada mudança de schema;
+todos os módulos tocados (`vendas.*`, `empresa.*`, `auth.*`,
+`produtos.service.js`, `ingredientes.service.js`) carregados via `node -e`
+sem erro de sintaxe/require, incluindo `routes/index.js` completo.
+**Nenhuma query real foi executada** (exigiria MySQL rodando) - a
+correção das relações Prisma (`VendaVendedor`/`VendaFuncionarioConsumo`,
+a nomeação exigida por 2 relações entre os mesmos 2 models) foi validada
+só estruturalmente pelo `prisma generate`, não por uma consulta de
+verdade.
+
+**Frontend**: `npm run build` limpo e `npm run lint` sem nenhum aviso
+novo nos arquivos tocados (corrigi um `set-state-in-effect` real que o
+lint apontou no meu próprio código em `Vendas.jsx`, ajustando durante o
+render em vez de `useEffect`, mesmo padrão já usado em `Sidebar.jsx`).
+
+**Não testado end-to-end** (exigiria a stack completa rodando) - esta é,
+de longe, a tarefa com mais superfície não verificada contra um banco
+real desta sessão inteira. Recomendo fortemente rodar a bateria de testes
+manual do item "Como aplicar" acima antes de considerar isso pronto para
+qualquer ambiente que não seja só leitura de código.

@@ -21,15 +21,16 @@ const ABAS = [
 
 /**
  * Tela de Estoque: aba "Produtos" (sempre visível, comportamento igual ao
- * de antes) + aba "Ingredientes" (so pra empresas do nicho "alimentos" -
- * AuthContext), que controla matéria-prima e calcula quantas unidades de
- * cada produto ainda dá pra fazer com o estoque atual de insumos. Pra
- * qualquer outro nicho a barra de abas nem aparece (uma unica aba não
- * justifica o componente de abas) - so a tela de sempre.
+ * de antes) + aba "Ingredientes" (so pra empresas do segmento
+ * "alimenticio" - AuthContext), que controla matéria-prima e calcula
+ * quantas unidades de cada produto ainda dá pra fazer com o estoque atual
+ * de insumos. Pra qualquer outro segmento a barra de abas nem aparece
+ * (uma unica aba não justifica o componente de abas) - so a tela de
+ * sempre.
  */
 export default function Estoque() {
   const { empresa } = useAuth();
-  const nichoAlimentos = empresa?.nicho === 'alimentos';
+  const segmentoAlimenticio = empresa?.segmento === 'alimenticio';
 
   const [abaAtiva, setAbaAtiva] = useState('produtos');
   const abaAtual = ABAS.find((aba) => aba.id === abaAtiva) ?? ABAS[0];
@@ -44,7 +45,7 @@ export default function Estoque() {
         <p className="mt-1 text-lg text-slate-500 dark:text-slate-400">{abaAtual.descricao}</p>
       </div>
 
-      {nichoAlimentos && (
+      {segmentoAlimenticio && (
         <div
           role="tablist"
           aria-label="Secoes de estoque"
@@ -71,7 +72,7 @@ export default function Estoque() {
       )}
 
       <div role="tabpanel">
-        {abaAtiva === 'ingredientes' && nichoAlimentos ? <EstoqueIngredientes /> : <EstoqueProdutos />}
+        {abaAtiva === 'ingredientes' && segmentoAlimenticio ? <EstoqueIngredientes /> : <EstoqueProdutos />}
       </div>
     </div>
   );

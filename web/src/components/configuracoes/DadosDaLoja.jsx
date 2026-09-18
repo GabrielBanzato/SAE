@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Lock, CheckCircle2 } from 'lucide-react';
+import { apiFetch } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import TipoPessoaToggle from '../TipoPessoaToggle';
+
+const SEGMENTOS = [
+  { valor: 'alimenticio', rotulo: 'Alimentício' },
+  { valor: 'varejo', rotulo: 'Varejo' },
+  { valor: 'servicos', rotulo: 'Serviços' },
+  { valor: 'outros', rotulo: 'Outros' },
+];
 
 function formatarDocumento(documento, tipoPessoa) {
   if (!documento) return '';
@@ -36,36 +45,44 @@ function Campo({ label, value, onChange, placeholder, disabled = false, dica }) 
 /**
  * Formulario com os dados cadastrais da loja, prefiltrado a partir de
  * GET /empresa/dados. Razao Social/Nome Completo, Apelido/Fantasia,
- * Endereco e Telefone sao editaveis localmente. Tipo de pessoa (PF/PJ) e o
- * documento (CPF/CNPJ) nunca sao editaveis aqui - mudar de PF pra PJ (ou o
- * documento em si) depois do cadastro nao e uma operacao de formulario
- * simples.
+ * Endereco, Telefone e Segmento sao editaveis localmente. Tipo de pessoa
+ * (PF/PJ) e o documento (CPF/CNPJ) nunca sao editaveis aqui - mudar de PF
+ * pra PJ (ou o documento em si) depois do cadastro nao e uma operacao de
+ * formulario simples.
  *
- * "Salvar Alteracoes": nao existe (ainda) uma rota PUT /empresa/dados no
- * backend pra persistir isso de verdade - o clique so faz um
- * `console.log` do payload e mostra "Salvo com sucesso" por alguns
- * segundos (pedido explicito: mock por enquanto, com feedback visual).
- * Quando essa rota existir, e so trocar o `console.log` por um
- * `apiFetch('/empresa/dados', { method: 'PUT', body: ... })` de verdade.
+ * "Salvar Alteracoes" agora e real: `PUT /empresa/dados` (criado nesta
+ * tarefa) persiste razaoSocial/endereco/telefone/segmento de verdade.
+ * `onEmpresaAtualizada` (igual ao padrao ja usado em Assinatura.jsx)
+ * atualiza a copia local em Configuracoes.jsx com a resposta do backend.
  *
- * "Apelido/Fantasia" e um campo novo, sem equivalente em `Empresa` no
- * schema.prisma ainda - por isso nao vem prefiltrado do backend (comeca
- * sempre vazio). Se um dia esse campo virar persistente de verdade, junto
- * com o PUT acima, tambem precisa de uma coluna nova
- * (`nome_fantasia String?`) na tabela `empresas`.
+ * `refreshEmpresa()` do AuthContext e chamado logo em seguida - mesmo
+ * motivo de Assinatura.jsx: a copia de `empresa` cacheada la (usada por
+ * Relatorios.jsx, Estoque.jsx/ModalProduto.jsx pro gate de segmento
+ * "alimenticio", e agora Vendas.jsx pro gate de forma de pagamento) so
+ * atualizaria depois de um novo login/reload sem essa chamada explicita.
+ *
+ * "Apelido/Fantasia" continua sem equivalente em `Empresa` no schema -
+ * unico campo que ainda so atualiza o estado local (nao entra no PUT).
  */
-export default function DadosDaLoja({ empresa }) {
+export default function DadosDaLoja({ empresa, onEmpresaAtualizada }) {
+  const { refreshEmpresa } = useAuth();
+
   const [razaoSocial, setRazaoSocial] = useState('');
   const [apelido, setApelido] = useState('');
   const [endereco, setEndereco] = useState('');
   const [telefone, setTelefone] = useState('');
+  const [segmento, setSegmento] = useState('outros');
+
+  const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
+  const [erro, setErro] = useState('');
 
   useEffect(() => {
     if (empresa) {
       setRazaoSocial(empresa.razaoSocial || '');
       setEndereco(empresa.endereco || '');
       setTelefone(empresa.telefone || '');
+      setSegmento(empresa.segmento || 'outros');
     }
   }, [empresa]);
 
@@ -73,19 +90,25 @@ export default function DadosDaLoja({ empresa }) {
     return null;
   }
 
-  function handleSalvar(event) {
+  async function handleSalvar(event) {
     event.preventDefault();
+    setErro('');
+    setSalvando(true);
 
-    // Mock: sem rota de backend pra isso ainda (ver comentario acima).
-    console.log('[DadosDaLoja] Salvar Alterações (mock):', {
-      razaoSocial,
-      apelido,
-      endereco,
-      telefone,
-    });
-
-    setSalvo(true);
-    setTimeout(() => setSalvo(false), 3000);
+    try {
+      const atualizada = await apiFetch('/empresa/dados', {
+        method: 'PUT',
+        body: JSON.stringify({ razaoSocial, endereco, telefone, segmento }),
+      });
+      onEmpresaAtualizada((atual) => ({ ...atual, ...atualizada }));
+      refreshEmpresa();
+      setSalvo(true);
+      setTimeout(() => setSalvo(false), 3000);
+    } catch (err) {
+      setErro(err.message || 'Não foi possível salvar as alterações agora.');
+    } finally {
+      setSalvando(false);
+    }
   }
 
   return (
@@ -109,7 +132,7 @@ export default function DadosDaLoja({ empresa }) {
             setSalvo(false);
           }}
           placeholder="Como sua loja é conhecida no dia a dia"
-          dica="Opcional - usado em recibos e mensagens, se preenchido."
+          dica="Opcional - usado em recibos e mensagens, se preenchido. Ainda não é salvo (sem campo correspondente no cadastro)."
         />
         <Campo
           label={empresa.tipoPessoa === 'PF' ? 'CPF' : 'CNPJ'}
@@ -135,14 +158,44 @@ export default function DadosDaLoja({ empresa }) {
           }}
           placeholder="Rua, número, bairro, cidade - UF"
         />
+
+        <label className="block">
+          <span className="text-lg font-semibold text-slate-800 dark:text-slate-200">Segmento da Empresa</span>
+          <select
+            value={segmento}
+            onChange={(event) => {
+              setSegmento(event.target.value);
+              setSalvo(false);
+            }}
+            required
+            className="mt-2 w-full rounded-2xl border-2 border-slate-300 bg-white px-4 py-3 text-xl font-medium text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-blue-400"
+          >
+            {SEGMENTOS.map(({ valor, rotulo }) => (
+              <option key={valor} value={valor}>
+                {rotulo}
+              </option>
+            ))}
+          </select>
+          <span className="mt-1 block text-sm text-slate-400 dark:text-slate-500">
+            Empresas do segmento Alimentício ganham opções extras na tela de Vendas (Consumo Interno, Doação) e podem
+            usar Ficha Técnica de ingredientes.
+          </span>
+        </label>
       </div>
+
+      {erro && (
+        <p className="mt-4 rounded-2xl bg-red-50 p-3 text-sm font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">
+          {erro}
+        </p>
+      )}
 
       <div className="mt-6 flex flex-wrap items-center gap-4">
         <button
           type="submit"
-          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 py-3 text-lg font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+          disabled={salvando}
+          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 py-3 text-lg font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Salvar Alterações
+          {salvando ? 'Salvando...' : 'Salvar Alterações'}
         </button>
 
         {salvo && (

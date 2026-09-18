@@ -5,11 +5,14 @@ const SALT_ROUNDS = 10;
 
 const PLANOS_VALIDOS = ['gratuito', 'apoiador'];
 const ROLES_VALIDOS = ['admin', 'gerente', 'vendedor'];
-// Ramos de atuacao suportados - hoje so decide se Produto pode ter Ficha
-// Tecnica de ingredientes vinculada (ver produtos.service.js). Validado
-// aqui na aplicacao porque `Empresa.nicho` e String solto no schema, nao
-// enum (decisao registrada no schema.prisma).
-const NICHOS_VALIDOS = ['geral', 'alimentos'];
+// Segmentos de atuacao suportados (pedido explicito desta tarefa) - decide
+// se Produto pode ter Ficha Tecnica de ingredientes vinculada ("alimenticio",
+// ver produtos.service.js) e quais formas de pagamento aparecem no PDV
+// ("consumo_interno"/"doacao", ver vendas.service.js). Validado aqui na
+// aplicacao porque `Empresa.segmento` e String solto no schema, nao enum
+// (decisao registrada no schema.prisma - mesmo motivo do "nicho" que este
+// campo substituiu).
+const SEGMENTOS_VALIDOS = ['alimenticio', 'varejo', 'servicos', 'outros'];
 
 // Quantos usuarios cada plano pode ter vinculados ao mesmo tenant_id.
 const LIMITE_USUARIOS_POR_PLANO = { gratuito: 2, apoiador: 5 };
@@ -33,7 +36,7 @@ async function obterDados(prisma, tenantId) {
       endereco: true,
       telefone: true,
       plano: true,
-      nicho: true,
+      segmento: true,
       valorContribuicao: true,
       criadoEm: true,
       atualizadoEm: true,
@@ -45,6 +48,51 @@ async function obterDados(prisma, tenantId) {
   }
 
   return empresa;
+}
+
+/**
+ * Atualizacao parcial dos dados cadastrais - so aplica os campos presentes
+ * no body (mesmo padrao de lancamentos.service.js#update/
+ * produtos.service.js#update). `segmento`, quando presente, precisa ser um
+ * dos valores aceitos - os demais campos (razaoSocial/endereco/telefone)
+ * sao texto livre, sem validacao alem de "nao vazio" pra razaoSocial.
+ *
+ * Documento e tipoPessoa NUNCA sao editaveis por aqui (mesma regra ja
+ * aplicada no frontend, DadosDaLoja.jsx - mudar de PF pra PJ ou o proprio
+ * documento depois do cadastro nao e uma operacao de formulario simples) -
+ * mesmo que venham no body, sao ignorados silenciosamente (nao inclusos no
+ * `data` do update).
+ */
+async function atualizarDados(prisma, tenantId, { razaoSocial, endereco, telefone, segmento }) {
+  if (razaoSocial !== undefined && !razaoSocial.trim()) {
+    throw new AppError('razaoSocial nao pode ficar vazio.', 422);
+  }
+  if (segmento !== undefined && !SEGMENTOS_VALIDOS.includes(segmento)) {
+    throw new AppError(`segmento deve ser um dos seguintes: ${SEGMENTOS_VALIDOS.join(', ')}.`, 422);
+  }
+
+  const data = {};
+  if (razaoSocial !== undefined) data.razaoSocial = razaoSocial.trim();
+  if (endereco !== undefined) data.endereco = endereco;
+  if (telefone !== undefined) data.telefone = telefone;
+  if (segmento !== undefined) data.segmento = segmento;
+
+  return prisma.empresa.update({
+    where: { id: tenantId },
+    data,
+    select: {
+      id: true,
+      razaoSocial: true,
+      tipoPessoa: true,
+      documento: true,
+      endereco: true,
+      telefone: true,
+      plano: true,
+      segmento: true,
+      valorContribuicao: true,
+      atualizadoEm: true,
+    },
+  });
 }
 
 /**
@@ -155,12 +203,13 @@ async function atualizarAssinatura(prisma, tenantId, { plano, valorContribuicao 
 
 module.exports = {
   obterDados,
+  atualizarDados,
   listarUsuarios,
   adicionarUsuario,
   atualizarAssinatura,
   PLANOS_VALIDOS,
   ROLES_VALIDOS,
-  NICHOS_VALIDOS,
+  SEGMENTOS_VALIDOS,
   LIMITE_USUARIOS_POR_PLANO,
   VALOR_MINIMO_CONTRIBUICAO,
 };

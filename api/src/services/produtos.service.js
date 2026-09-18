@@ -9,10 +9,10 @@ const AppError = require('../utils/AppError');
  */
 
 // Sempre inclui a Ficha Tecnica (com o Ingrediente de cada linha) em toda
-// resposta de produto - pra empresas fora do nicho "alimentos" isso so
-// sai como um array vazio (nunca populado, ver `validarNichoAlimentos`
+// resposta de produto - pra empresas fora do segmento "alimenticio" isso so
+// sai como um array vazio (nunca populado, ver `validarSegmentoAlimenticio`
 // abaixo), custo praticamente zero de incluir sempre em vez de condicionar
-// a resposta ao nicho da empresa.
+// a resposta ao segmento da empresa.
 const INCLUDE_FICHA_TECNICA = { fichaTecnica: { include: { ingrediente: true } } };
 
 async function list(prisma, tenantId) {
@@ -28,15 +28,18 @@ async function findById(prisma, tenantId, id) {
 }
 
 /**
- * So empresas do nicho "alimentos" (Empresa.nicho) podem vincular
+ * So empresas do segmento "alimenticio" (Empresa.segmento) podem vincular
  * ingredientes a um produto - lanca 403 se o campo `ingredientes` vier no
- * body de uma empresa de outro nicho.
+ * body de uma empresa de outro segmento.
  */
-async function validarNichoAlimentos(prisma, tenantId) {
-  const empresa = await prisma.empresa.findUnique({ where: { id: tenantId }, select: { nicho: true } });
+async function validarSegmentoAlimenticio(prisma, tenantId) {
+  const empresa = await prisma.empresa.findUnique({ where: { id: tenantId }, select: { segmento: true } });
 
-  if (!empresa || empresa.nicho !== 'alimentos') {
-    throw new AppError('Vincular ingredientes a um produto so e permitido para empresas do nicho de alimentos.', 403);
+  if (!empresa || empresa.segmento !== 'alimenticio') {
+    throw new AppError(
+      'Vincular ingredientes a um produto so e permitido para empresas do segmento alimenticio.',
+      403
+    );
   }
 }
 
@@ -87,7 +90,7 @@ async function create(prisma, tenantId, dados) {
   } = dados;
 
   if (ingredientes !== undefined) {
-    await validarNichoAlimentos(prisma, tenantId);
+    await validarSegmentoAlimenticio(prisma, tenantId);
   }
 
   return prisma.$transaction(async (tx) => {
@@ -134,7 +137,7 @@ async function update(prisma, tenantId, id, dados) {
   } = dados;
 
   if (ingredientes !== undefined) {
-    await validarNichoAlimentos(prisma, tenantId);
+    await validarSegmentoAlimenticio(prisma, tenantId);
   }
 
   const data = {};
