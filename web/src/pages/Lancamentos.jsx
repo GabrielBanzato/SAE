@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, Download, Plus, Receipt } from 'lucide-react';
+import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, Download, Pencil, Plus, Receipt } from 'lucide-react';
 import { apiFetch } from '../services/api';
 import { dataCalendario } from '../utils/datas';
 import { useToast } from '../context/ToastContext';
@@ -213,6 +213,7 @@ export default function Lancamentos() {
   const [dataFinal, setDataFinal] = useState('');
 
   const [modalAberto, setModalAberto] = useState(false);
+  const [lancamentoEmEdicao, setLancamentoEmEdicao] = useState(null);
   const [idAtualizando, setIdAtualizando] = useState(null);
   const [erroAtualizacao, setErroAtualizacao] = useState('');
 
@@ -289,13 +290,42 @@ export default function Lancamentos() {
     mostrarToast(`${lancamentosFiltrados.length} lançamento(s) exportado(s) com sucesso.`, 'sucesso');
   }
 
-  async function criarLancamento(payload) {
-    const criado = await apiFetch('/lancamentos', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-    setLancamentos((atual) => [...(atual || []), criado]);
+  function abrirModalNovo() {
+    setLancamentoEmEdicao(null);
+    setModalAberto(true);
+  }
+
+  function abrirModalEdicao(lancamento) {
+    setLancamentoEmEdicao(lancamento);
+    setModalAberto(true);
+  }
+
+  function fecharModal() {
     setModalAberto(false);
+    setLancamentoEmEdicao(null);
+  }
+
+  /**
+   * Create vs Update decidido aqui (pedido explicito) a partir de
+   * `lancamentoEmEdicao`: presente = PUT (edicao), ausente = POST
+   * (criacao) - o modal em si (`ModalLancamento.jsx`) so monta o payload e
+   * devolve, nao sabe nada sobre verbos HTTP.
+   */
+  async function salvarLancamento(payload) {
+    if (lancamentoEmEdicao) {
+      const atualizado = await apiFetch(`/lancamentos/${lancamentoEmEdicao.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+      setLancamentos((atual) => atual.map((item) => (item.id === atualizado.id ? atualizado : item)));
+    } else {
+      const criado = await apiFetch('/lancamentos', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      setLancamentos((atual) => [...(atual || []), criado]);
+    }
+    fecharModal();
   }
 
   async function alternarStatus(lancamento) {
@@ -337,7 +367,7 @@ export default function Lancamentos() {
 
         <button
           type="button"
-          onClick={() => setModalAberto(true)}
+          onClick={abrirModalNovo}
           className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-lg font-bold text-white shadow-lg shadow-blue-600/20 transition-colors hover:bg-blue-700"
         >
           <Plus size={22} aria-hidden="true" />
@@ -452,12 +482,15 @@ export default function Lancamentos() {
                 <th className="px-6 py-4 text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   Status
                 </th>
+                <th className="px-6 py-4 text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Ações
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
               {carregando && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-lg text-slate-500 dark:text-slate-400">
+                  <td colSpan={6} className="px-6 py-8 text-center text-lg text-slate-500 dark:text-slate-400">
                     Carregando lançamentos...
                   </td>
                 </tr>
@@ -465,7 +498,7 @@ export default function Lancamentos() {
 
               {!carregando && lancamentosFiltrados.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-10 text-center">
+                  <td colSpan={6} className="px-6 py-10 text-center">
                     <p className="text-lg font-semibold text-slate-600 dark:text-slate-300">
                       Nenhum lançamento encontrado.
                     </p>
@@ -520,6 +553,17 @@ export default function Lancamentos() {
                           onToggle={() => alternarStatus(lancamento)}
                         />
                       </td>
+                      <td className="px-6 py-4">
+                        <button
+                          type="button"
+                          onClick={() => abrirModalEdicao(lancamento)}
+                          aria-label={`Editar ${lancamento.descricao}`}
+                          title="Editar lançamento"
+                          className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-300"
+                        >
+                          <Pencil size={18} aria-hidden="true" />
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -528,7 +572,9 @@ export default function Lancamentos() {
         </div>
       </div>
 
-      {modalAberto && <ModalLancamento onFechar={() => setModalAberto(false)} onSalvar={criarLancamento} />}
+      {modalAberto && (
+        <ModalLancamento lancamento={lancamentoEmEdicao} onFechar={fecharModal} onSalvar={salvarLancamento} />
+      )}
     </div>
   );
 }

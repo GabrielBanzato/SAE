@@ -50,8 +50,24 @@ const STATUS = [
   { valor: 'PAGO', rotulo: 'Pago', icon: CheckCircle2, corAtivo: 'text-emerald-600 dark:text-green-400' },
 ];
 
-function valoresIniciais() {
-  return { descricao: '', valor: '', tipo: 'SAIDA', dataVencimento: '', status: 'PENDENTE' };
+/**
+ * `lancamento` presente = edicao, prefiltra os campos a partir dele.
+ * `dataVencimento` vem da API como string ISO ("2026-09-17T00:00:00.000Z")
+ * - so pega os 10 primeiros caracteres ("2026-09-17") em vez de passar por
+ * `new Date(...)`, mesmo cuidado ja documentado em utils/datas.js pra
+ * campos "so calendario" (evita qualquer deslocamento de fuso horario).
+ */
+function valoresIniciais(lancamento) {
+  if (!lancamento) {
+    return { descricao: '', valor: '', tipo: 'SAIDA', dataVencimento: '', status: 'PENDENTE' };
+  }
+  return {
+    descricao: lancamento.descricao,
+    valor: String(lancamento.valor),
+    tipo: lancamento.tipo,
+    dataVencimento: lancamento.dataVencimento.slice(0, 10),
+    status: lancamento.status,
+  };
 }
 
 /**
@@ -69,13 +85,25 @@ function rotuloCampoData(tipo, status) {
 }
 
 /**
- * Modal de cadastro manual de lancamento (receita/despesa avulsa) - mesmo
+ * Modal de cadastro/edicao de lancamento (receita/despesa avulsa) - mesmo
  * padrao visual/estrutural do ModalProduto.jsx e ModalClienteRapido.jsx:
- * overlay centralizado, fecha com Escape/clique fora, so cria (nao edita -
- * o pedido desta tarefa foi so "adicionar um lancamento manual").
+ * overlay centralizado, fecha com Escape/clique fora.
+ *
+ * `lancamento` (opcional) decide o modo: presente = edicao (titulo/botao
+ * mudam, campos vem prefiltrados - ver `valoresIniciais` acima), ausente =
+ * criacao (comportamento original desta tarefa anterior). Quem decide se
+ * o `onSalvar` final vira um POST ou um PUT e o componente pai
+ * (Lancamentos.jsx) - este modal so monta o payload e devolve pra ele,
+ * nao sabe nada sobre verbos HTTP.
+ *
+ * Nao tem campo de "Categoria" aqui de proposito: `Lancamento` no
+ * schema.prisma nao tem essa coluna (o filtro por categoria em
+ * Lancamentos.jsx e so uma heuristica de texto sobre a descricao, nao um
+ * dado gravado por lancamento - ver comentario la) - nao ha nada pra
+ * "injetar" nesse campo ao editar, entao ele nao existe neste formulario.
  */
-export default function ModalLancamento({ onFechar, onSalvar }) {
-  const [campos, setCampos] = useState(valoresIniciais);
+export default function ModalLancamento({ lancamento, onFechar, onSalvar }) {
+  const [campos, setCampos] = useState(() => valoresIniciais(lancamento));
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
 
@@ -108,19 +136,35 @@ export default function ModalLancamento({ onFechar, onSalvar }) {
       return;
     }
 
+    const payload = {
+      descricao: campos.descricao.trim(),
+      valor: Number(campos.valor),
+      tipo: campos.tipo,
+      data_vencimento: campos.dataVencimento,
+      status: campos.status,
+    };
+
+    if (lancamento) {
+      // Edicao: so mexe em data_pagamento se o status REALMENTE mudou
+      // nesta edicao (mesma convencao ja usada pelo toggle Pago/Pendente
+      // da tabela, ver Lancamentos.jsx#alternarStatus) - se PAGO continua
+      // PAGO (o usuario so corrigiu a descricao, por exemplo), preserva a
+      // data de pagamento original em vez de sobrescreve-la.
+      if (campos.status === 'PAGO' && lancamento.status !== 'PAGO') {
+        payload.data_pagamento = new Date().toISOString().slice(0, 10);
+      } else if (campos.status === 'PENDENTE' && lancamento.status !== 'PENDENTE') {
+        payload.data_pagamento = null;
+      }
+    } else if (campos.status === 'PAGO') {
+      // Criacao ja como "Pago" sem data de pagamento ficaria estranho no
+      // extrato (pago quando?) - usa a data de vencimento como melhor
+      // estimativa, ja que o formulario nao pede uma data separada pra isso.
+      payload.data_pagamento = campos.dataVencimento;
+    }
+
     setSalvando(true);
     try {
-      await onSalvar({
-        descricao: campos.descricao.trim(),
-        valor: Number(campos.valor),
-        tipo: campos.tipo,
-        data_vencimento: campos.dataVencimento,
-        status: campos.status,
-        // Lancar ja como "Pago" sem data de pagamento ficaria estranho no
-        // extrato (pago quando?) - usa a data de vencimento como melhor
-        // estimativa, ja que o formulario nao pede uma data separada pra isso.
-        ...(campos.status === 'PAGO' ? { data_pagamento: campos.dataVencimento } : {}),
-      });
+      await onSalvar(payload);
     } catch (err) {
       setErro(err.message || 'Não foi possível salvar o lançamento.');
       setSalvando(false);
@@ -142,7 +186,7 @@ export default function ModalLancamento({ onFechar, onSalvar }) {
       >
         <div className="flex items-center justify-between">
           <h2 id="titulo-modal-lancamento" className="text-xl font-extrabold text-slate-900 dark:text-slate-100">
-            Novo Lançamento
+            {lancamento ? 'Editar Lançamento' : 'Novo Lançamento'}
           </h2>
           <button
             type="button"
@@ -195,7 +239,9 @@ export default function ModalLancamento({ onFechar, onSalvar }) {
           </div>
 
           <div>
-            <span className="text-lg font-semibold text-slate-800 dark:text-slate-200">Status inicial</span>
+            <span className="text-lg font-semibold text-slate-800 dark:text-slate-200">
+              {lancamento ? 'Status' : 'Status inicial'}
+            </span>
             <div className="mt-2">
               <Segmentado opcoes={STATUS} valor={campos.status} onChange={(valor) => atualizarCampo('status', valor)} />
             </div>
@@ -220,7 +266,7 @@ export default function ModalLancamento({ onFechar, onSalvar }) {
               disabled={salvando}
               className="rounded-2xl bg-blue-600 px-6 py-3 text-base font-bold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {salvando ? 'Salvando...' : 'Adicionar Lançamento'}
+              {salvando ? 'Salvando...' : lancamento ? 'Salvar Alterações' : 'Adicionar Lançamento'}
             </button>
           </div>
         </form>

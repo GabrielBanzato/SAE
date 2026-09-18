@@ -5801,3 +5801,75 @@ de longe, a tarefa com mais superfície não verificada contra um banco
 real desta sessão inteira. Recomendo fortemente rodar a bateria de testes
 manual do item "Como aplicar" acima antes de considerar isso pronto para
 qualquer ambiente que não seja só leitura de código.
+
+---
+
+## Editar Lançamento (2026-09-22)
+
+### "Categoria" não entrou no modal - não é um campo real
+
+O pedido citava "Categoria" entre os campos a injetar ao editar, mas
+`Lancamento` no `schema.prisma` não tem essa coluna (já documentado 2
+tarefas atrás: o filtro por categoria em `Lancamentos.jsx` é uma
+heurística de palavras-chave sobre a `descricao`, não um dado gravado por
+lançamento). Não há nada pra "injetar" - adicionar um select de Categoria
+no modal que não persiste nada criaria uma experiência quebrada (o
+usuário escolhe uma categoria, salva, reabre pra editar, e o valor já
+sumiu porque nunca existiu de verdade). `ModalLancamento.jsx` ganhou um
+comentário explicando essa ausência de propósito. Editar os outros 5
+campos citados (Descrição, Valor, Tipo, Data, Status) funciona
+normalmente - o backend já tinha `PUT /lancamentos/:id` completo desde
+uma tarefa bem anterior, só faltava o frontend usar.
+
+### `ModalLancamento.jsx` vira create/edit - decisão de quem manda o verbo HTTP
+
+`lancamento` (prop opcional, `null`/ausente = criação) decide o modo:
+título ("Editar Lançamento" vs "Novo Lançamento"), rótulo do botão e
+label "Status" vs "Status inicial" ficam dinâmicos. O modal em si **não
+sabe se vira POST ou PUT** - só monta o payload e chama `onSalvar`; quem
+decide é `Lancamentos.jsx` (`salvarLancamento`), verificando
+`lancamentoEmEdicao` (exatamente como sugerido no pedido) antes de montar
+a URL/verbo. Mantém o modal simples e sem acoplamento a detalhes de rede.
+
+`dataVencimento` prefiltrado com `lancamento.dataVencimento.slice(0, 10)`
+(não `new Date(...)`) - mesmo cuidado de fuso horário já documentado
+várias vezes em `utils/datas.js` pra campos "só calendário".
+
+### Cuidado não pedido explicitamente: `data_pagamento` não pode ser sobrescrita à toa numa edição
+
+Achado ao implementar: a lógica de criação original sempre mandava
+`data_pagamento` = data de vencimento quando o lançamento nascia "Pago".
+Reaproveitar essa mesma regra cegamente numa EDIÇÃO sobrescreveria a data
+de pagamento real de um lançamento já pago sempre que o usuário editasse
+qualquer outro campo (ex.: só corrigir um erro de digitação na
+descrição) - um bug sutil de perda de dado. Corrigido: em modo edição,
+`data_pagamento` só é incluída no payload quando o **status realmente
+muda** nesta edição (PENDENTE→PAGO usa a data de hoje, PAGO→PENDENTE
+limpa a data) - mesma convenção já usada pelo toggle Pago/Pendente da
+própria tabela (`alternarStatus`). Se o status não muda, o campo nem
+entra no PUT (que é parcial), preservando o valor já gravado no banco.
+
+### Coluna "Ações" + botão de editar
+
+Nova `<th>Ações</th>` no fim da tabela (`colSpan` dos estados de
+carregando/vazio ajustado de 5 pra 6). Botão só com ícone `Pencil`
+(lucide-react, "lápis") por linha - reaproveitei literalmente a mesma
+classe de botão-ícone discreto já usada nos "X" de fechar modal em todo o
+app (`rounded-lg p-1.5 text-slate-400 hover:bg-slate-100
+hover:text-slate-600...`), pra manter consistência visual sem inventar um
+estilo novo de botão de ação.
+
+### Status de validação
+
+`npm run build` limpo e `npm run lint` sem nenhum aviso novo em
+`Lancamentos.jsx`/`ModalLancamento.jsx` (o aviso restante em
+`Lancamentos.jsx` é o mesmo padrão `set-state-in-effect` de busca de
+dados já onipresente no projeto, pré-existente). Sem Docker/MySQL nesta
+sessão - **não testado contra o backend real**. Recomendo ao usuário
+validar manualmente: editar um lançamento Pendente sem mudar o status
+(confirmar que continua Pendente, sem status forçado), editar um
+lançamento já Pago só mudando a descrição (confirmar, direto no banco ou
+recarregando a página, que a Data de Recebimento/Pagamento original NÃO
+mudou), e o fluxo completo Pendente→Pago→volta pra Pendente via edição
+(confirmar que a data de pagamento é gravada e depois limpa
+corretamente).
