@@ -2,7 +2,7 @@ const AppError = require('../utils/AppError');
 
 /**
  * Camada de dados de ingredientes (materia-prima de empresas do segmento
- * "alimenticio" - ver Empresa.segmento). Mesmo padrao de isolamento de tenant
+ * "varejo_alimentacao" - ver Empresa.segmento). Mesmo padrao de isolamento de tenant
  * do resto do projeto: `tenantId` explicito em todo `where`, `updateMany`/
  * `deleteMany` com `id` + `empresaId` no WHERE (nunca `update`/`delete`
  * so com `id`).

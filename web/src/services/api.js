@@ -4,6 +4,10 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api.projeto1.com.b
 
 export const TOKEN_KEY = 'sae_token';
 export const USER_KEY = 'sae_usuario';
+// Copia local de `empresa` (inclui `modulos`, ver AuthContext.jsx) -
+// persistida pra rotas/menus dependentes de modulo (App.jsx/Sidebar.jsx)
+// nao precisarem esperar o primeiro GET /empresa/dados depois de um F5.
+export const EMPRESA_KEY = 'sae_empresa';
 
 /**
  * Instancia central do Axios usada por toda a aplicacao (substitui o

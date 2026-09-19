@@ -38,11 +38,11 @@ function valoresIniciais(produto) {
  * Ganhou 2 pecas novas nesta tarefa: o botao "Calculadora de Lucros"
  * (abre `ModalCalculadoraLucros` empilhado por cima, devolve o preco
  * calculado pro formulario) e a secao "Ficha Tecnica / Ingredientes",
- * visivel so quando `empresa.segmento === 'alimenticio'` (AuthContext).
+ * visivel so quando `empresa.segmento === 'varejo_alimentacao'` (AuthContext).
  */
 export default function ModalProduto({ produto, onFechar, onSalvar }) {
   const { empresa } = useAuth();
-  const segmentoAlimenticio = empresa?.segmento === 'alimenticio';
+  const segmentoAlimenticio = empresa?.segmento === 'varejo_alimentacao';
 
   const [campos, setCampos] = useState(() => valoresIniciais(produto));
   const [salvando, setSalvando] = useState(false);
@@ -71,8 +71,8 @@ export default function ModalProduto({ produto, onFechar, onSalvar }) {
   }, [onFechar, modalCalculadoraAberto]);
 
   // So busca a lista de ingredientes cadastrados se a empresa for do
-  // segmento "alimenticio" - pra qualquer outro segmento a secao inteira
-  // nem aparece, entao a chamada seria desperdicada.
+  // segmento "varejo_alimentacao" - pra qualquer outro segmento a secao
+  // inteira nem aparece, entao a chamada seria desperdicada.
   useEffect(() => {
     if (!segmentoAlimenticio) return undefined;
 
@@ -150,7 +150,7 @@ export default function ModalProduto({ produto, onFechar, onSalvar }) {
         estoque_atual: campos.sobDemanda ? 0 : Number(campos.estoqueAtual) || 0,
         estoque_minimo: campos.sobDemanda ? 0 : Number(campos.estoqueMinimo) || 0,
         sob_demanda: campos.sobDemanda,
-        // So manda `ingredientes` pra empresas do segmento "alimenticio" -
+        // So manda `ingredientes` pra empresas do segmento "varejo_alimentacao" -
         // a API rejeita (403) esse campo pra qualquer outro segmento (ver
         // produtos.service.js), entao nem inclui a chave nos demais casos.
         ...(segmentoAlimenticio

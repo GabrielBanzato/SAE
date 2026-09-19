@@ -1,11 +1,28 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import api, { TOKEN_KEY, USER_KEY } from '../services/api';
+import api, { TOKEN_KEY, USER_KEY, EMPRESA_KEY } from '../services/api';
 
 const AuthContext = createContext(null);
 
 function obterUsuarioInicial() {
   try {
     const salvo = localStorage.getItem(USER_KEY);
+    return salvo ? JSON.parse(salvo) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reidrata `empresa` (inclui `modulos`, calculado no backend a partir do
+ * segmento - ver auth.service.js#MAPA_MODULOS) do localStorage antes mesmo
+ * do primeiro GET /empresa/dados resolver. Sem isso, todo F5 numa rota de
+ * modulo (ex.: /estoque) comecaria com `empresa === null` e App.jsx não
+ * saberia ainda se aquele modulo esta liberado - só null (nunca um objeto
+ * "vazio") sinaliza "ainda não sei", ver `RotasDaAplicacao` em App.jsx.
+ */
+function obterEmpresaInicial() {
+  try {
+    const salvo = localStorage.getItem(EMPRESA_KEY);
     return salvo ? JSON.parse(salvo) : null;
   } catch {
     return null;
@@ -26,12 +43,13 @@ function obterUsuarioInicial() {
  */
 export function AuthProvider({ children }) {
   const [usuario, setUsuario] = useState(obterUsuarioInicial);
-  const [empresa, setEmpresa] = useState(null);
+  const [empresa, setEmpresa] = useState(obterEmpresaInicial);
   const [carregando, setCarregando] = useState(false);
 
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
+    localStorage.removeItem(EMPRESA_KEY);
     setUsuario(null);
     setEmpresa(null);
   }, []);
@@ -51,11 +69,17 @@ export function AuthProvider({ children }) {
   const refreshEmpresa = useCallback(async () => {
     if (!usuario) {
       setEmpresa(null);
+      localStorage.removeItem(EMPRESA_KEY);
       return null;
     }
     try {
       const { data } = await api.get('/empresa/dados');
+      // `data` já vem com `modulos` (GET /empresa/dados calcula a partir do
+      // segmento atual - ver empresa.service.js#obterDados) - persistido
+      // aqui pra sobreviver a um F5 sem esperar essa chamada de novo (ver
+      // obterEmpresaInicial acima).
       setEmpresa(data);
+      localStorage.setItem(EMPRESA_KEY, JSON.stringify(data));
       return data;
     } catch {
       return null;
@@ -67,10 +91,21 @@ export function AuthProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [usuario]);
 
+  /**
+   * `resultado.empresa` (login/register) já chega com `modulos` (ver
+   * auth.service.js) - salvo aqui ANTES do primeiro GET /empresa/dados
+   * (disparado logo em seguida pelo efeito acima) resolver, pra App.jsx
+   * já saber quais rotas montar assim que `estaAutenticado` vira `true`,
+   * sem esperar uma segunda ida ao servidor.
+   */
   function persistirSessao(resultado) {
     localStorage.setItem(TOKEN_KEY, resultado.token);
     localStorage.setItem(USER_KEY, JSON.stringify(resultado.usuario));
     setUsuario(resultado.usuario);
+    if (resultado.empresa) {
+      localStorage.setItem(EMPRESA_KEY, JSON.stringify(resultado.empresa));
+      setEmpresa(resultado.empresa);
+    }
   }
 
   const login = useCallback(async (email, senha) => {

@@ -31,6 +31,13 @@ import { useAuth } from '../context/AuthContext';
 /**
  * Menu agrupado em secoes - Dashboard/Modulos/Suporte navegam direto,
  * Operacional/Administracao viram "gavetas" (accordion) com subcategorias.
+ *
+ * `modulo` em cada item precisa bater com uma chave de MAPA_MODULOS
+ * (api/src/services/auth.service.js) e com `ROTAS_POR_MODULO` em App.jsx -
+ * um item só aparece no menu se essa chave estiver em `empresa.modulos`
+ * (ver filtragem no componente `Sidebar` abaixo). Sem `modulo` = sempre
+ * visível, independente de segmento (nenhum item direto abaixo precisa
+ * disso hoje).
  */
 const CATEGORIAS_MENU = [
   {
@@ -38,14 +45,14 @@ const CATEGORIAS_MENU = [
     titulo: 'Operacional',
     icon: Briefcase,
     itens: [
-      { label: 'Vendas', to: '/vendas', icon: ShoppingCart },
-      { label: 'Histórico de Vendas', to: '/historico-vendas', icon: History },
-      { label: 'Produtos', to: '/produtos', icon: Package },
-      { label: 'Precificação', to: '/precificacao', icon: Calculator },
-      { label: 'Estoque', to: '/estoque', icon: Boxes },
-      { label: 'Clientes', to: '/clientes', icon: Users },
-      { label: 'Lançamentos', to: '/lancamentos', icon: Receipt },
-      { label: 'Agenda', to: '/agenda', icon: CalendarDays },
+      { label: 'Vendas', to: '/vendas', icon: ShoppingCart, modulo: 'pdv' },
+      { label: 'Histórico de Vendas', to: '/historico-vendas', icon: History, modulo: 'pdv' },
+      { label: 'Produtos', to: '/produtos', icon: Package, modulo: 'produtos' },
+      { label: 'Precificação', to: '/precificacao', icon: Calculator, modulo: 'precificacao' },
+      { label: 'Estoque', to: '/estoque', icon: Boxes, modulo: 'estoque_avancado' },
+      { label: 'Clientes', to: '/clientes', icon: Users, modulo: 'clientes' },
+      { label: 'Lançamentos', to: '/lancamentos', icon: Receipt, modulo: 'financeiro' },
+      { label: 'Agenda', to: '/agenda', icon: CalendarDays, modulo: 'agenda' },
     ],
   },
   {
@@ -57,8 +64,8 @@ const CATEGORIAS_MENU = [
     // abaixo, perto do toggle de tema), pra nao ter 2 caminhos diferentes
     // levando pra mesma tela.
     itens: [
-      { label: 'Controle Financeiro', to: '/financeiro', icon: Wallet },
-      { label: 'Relatórios', to: '/relatorios', icon: BarChart3 },
+      { label: 'Controle Financeiro', to: '/financeiro', icon: Wallet, modulo: 'financeiro' },
+      { label: 'Relatórios', to: '/relatorios', icon: BarChart3, modulo: 'relatorios' },
     ],
   },
 ];
@@ -136,10 +143,16 @@ function ItemDireto({ label, to, icon: Icon, isExpanded, aoNavegar }) {
  */
 export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFecharNoMobile }) {
   const { theme, toggleTheme } = useTheme();
-  const { logout } = useAuth();
+  const { logout, empresa } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const escuro = theme === 'dark';
+  // `empresa` comeca `null` ate o AuthContext popular (ver
+  // AuthContext.jsx#obterEmpresaInicial/refreshEmpresa) - itens de modulo
+  // ficam ocultos ate esse momento (`[]`), mesma convencao defensiva de
+  // App.jsx#RotasDaAplicacao (evita mostrar um item cujo modulo real ainda
+  // nao se sabe se esta liberado).
+  const modulos = empresa?.modulos ?? [];
 
   const [categoriaAberta, setCategoriaAberta] = useState(() => encontrarCategoriaDaRota(location.pathname));
 
@@ -238,8 +251,14 @@ export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFechar
         <ItemDireto {...ITEM_DASHBOARD} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
 
         {CATEGORIAS_MENU.map(({ chave, titulo, icon: Icon, itens }) => {
+          const itensVisiveis = itens.filter((item) => modulos.includes(item.modulo));
+          // Categoria inteira some se nenhum dos modulos dela estiver
+          // liberado pro segmento desta empresa - uma gaveta vazia (so o
+          // cabecalho, sem nenhum link dentro) seria um beco sem saida.
+          if (itensVisiveis.length === 0) return null;
+
           const aberto = categoriaAberta === chave;
-          const contemAtiva = itens.some((item) => item.to === location.pathname);
+          const contemAtiva = itensVisiveis.some((item) => item.to === location.pathname);
 
           return (
             <div key={chave}>
@@ -276,7 +295,7 @@ export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFechar
                 }`}
               >
                 <div className="flex flex-col gap-1 py-1 pl-4">
-                  {itens.map(({ label, to, icon: SubIcon }) => (
+                  {itensVisiveis.map(({ label, to, icon: SubIcon }) => (
                     <NavLink
                       key={label}
                       to={to}

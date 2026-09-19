@@ -15,7 +15,7 @@ const FORMAS_PAGAMENTO_VALIDAS = [
 ];
 
 // So aparecem no select do PDV (e so sao aceitas pelo backend) pra empresas
-// do segmento "alimenticio" - ver Empresa.segmento.
+// do segmento "varejo_alimentacao" - ver Empresa.segmento.
 const FORMAS_EXCLUSIVAS_ALIMENTICIO = ['consumo_interno', 'doacao'];
 
 // Essas formas representam dinheiro de verdade entrando no caixa no ato da
@@ -71,12 +71,15 @@ async function registrarVenda(
     }
 
     // Regra de negocio 2 (pedido explicito): "Consumo Interno"/"Doacao" so
-    // existem pra empresas do segmento alimenticio - validado aqui no
+    // existem pra empresas do segmento varejo_alimentacao - validado aqui no
     // backend, nao so escondendo a opcao no frontend (um request forjado
     // pra uma empresa de outro segmento nao pode contornar a regra so
     // omitindo essas opcoes na UI).
-    if (FORMAS_EXCLUSIVAS_ALIMENTICIO.includes(forma) && empresa.segmento !== 'alimenticio') {
-      throw new AppError(`forma_pagamento '${forma}' so e permitida para empresas do segmento alimenticio.`, 403);
+    if (FORMAS_EXCLUSIVAS_ALIMENTICIO.includes(forma) && empresa.segmento !== 'varejo_alimentacao') {
+      throw new AppError(
+        `forma_pagamento '${forma}' so e permitida para empresas do segmento varejo_alimentacao.`,
+        403
+      );
     }
 
     // Regra de negocio 2: "Consumo Interno" exige um funcionario (da

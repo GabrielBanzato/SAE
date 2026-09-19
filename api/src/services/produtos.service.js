@@ -9,10 +9,10 @@ const AppError = require('../utils/AppError');
  */
 
 // Sempre inclui a Ficha Tecnica (com o Ingrediente de cada linha) em toda
-// resposta de produto - pra empresas fora do segmento "alimenticio" isso so
-// sai como um array vazio (nunca populado, ver `validarSegmentoAlimenticio`
-// abaixo), custo praticamente zero de incluir sempre em vez de condicionar
-// a resposta ao segmento da empresa.
+// resposta de produto - pra empresas fora do segmento "varejo_alimentacao"
+// isso so sai como um array vazio (nunca populado, ver
+// `validarSegmentoAlimenticio` abaixo), custo praticamente zero de incluir
+// sempre em vez de condicionar a resposta ao segmento da empresa.
 const INCLUDE_FICHA_TECNICA = { fichaTecnica: { include: { ingrediente: true } } };
 
 async function list(prisma, tenantId) {
@@ -28,16 +28,16 @@ async function findById(prisma, tenantId, id) {
 }
 
 /**
- * So empresas do segmento "alimenticio" (Empresa.segmento) podem vincular
- * ingredientes a um produto - lanca 403 se o campo `ingredientes` vier no
- * body de uma empresa de outro segmento.
+ * So empresas do segmento "varejo_alimentacao" (Empresa.segmento) podem
+ * vincular ingredientes a um produto - lanca 403 se o campo `ingredientes`
+ * vier no body de uma empresa de outro segmento.
  */
 async function validarSegmentoAlimenticio(prisma, tenantId) {
   const empresa = await prisma.empresa.findUnique({ where: { id: tenantId }, select: { segmento: true } });
 
-  if (!empresa || empresa.segmento !== 'alimenticio') {
+  if (!empresa || empresa.segmento !== 'varejo_alimentacao') {
     throw new AppError(
-      'Vincular ingredientes a um produto so e permitido para empresas do segmento alimenticio.',
+      'Vincular ingredientes a um produto so e permitido para empresas do segmento varejo_alimentacao.',
       403
     );
   }

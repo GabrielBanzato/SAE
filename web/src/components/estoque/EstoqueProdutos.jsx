@@ -82,7 +82,7 @@ function AjusteEstoque({ produto, atualizando, onAlterar }) {
  * Ferramenta agil de reposicao de PRODUTOS (unidades prontas pra vender) -
  * consome GET /produtos e PATCH /produtos/:id/estoque. Extraido de
  * `pages/Estoque.jsx` pra virar a aba "Produtos" da tela de Estoque quando
- * a empresa tem mais de uma aba (segmento "alimenticio" - ver `EstoqueIngredientes.jsx`
+ * a empresa tem mais de uma aba (segmento "varejo_alimentacao" - ver `EstoqueIngredientes.jsx`
  * pra estoque de materia-prima, uma coisa completamente separada).
  */
 export default function EstoqueProdutos() {

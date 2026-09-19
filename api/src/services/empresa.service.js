@@ -1,18 +1,16 @@
 const bcrypt = require('bcryptjs');
 const AppError = require('../utils/AppError');
+// SEGMENTOS_VALIDOS/modulosDoSegmento moraram aqui ate esta tarefa - agora
+// vivem em auth.service.js, ao lado de MAPA_MODULOS (a fonte da verdade da
+// associacao segmento -> modulos de negocio liberados, usada tanto no
+// cadastro/login quanto aqui). Reexportados abaixo por compatibilidade -
+// nenhum outro arquivo alem deste precisa saber que a definicao migrou.
+const { SEGMENTOS_VALIDOS, modulosDoSegmento } = require('./auth.service');
 
 const SALT_ROUNDS = 10;
 
 const PLANOS_VALIDOS = ['gratuito', 'apoiador'];
 const ROLES_VALIDOS = ['admin', 'gerente', 'vendedor'];
-// Segmentos de atuacao suportados (pedido explicito desta tarefa) - decide
-// se Produto pode ter Ficha Tecnica de ingredientes vinculada ("alimenticio",
-// ver produtos.service.js) e quais formas de pagamento aparecem no PDV
-// ("consumo_interno"/"doacao", ver vendas.service.js). Validado aqui na
-// aplicacao porque `Empresa.segmento` e String solto no schema, nao enum
-// (decisao registrada no schema.prisma - mesmo motivo do "nicho" que este
-// campo substituiu).
-const SEGMENTOS_VALIDOS = ['alimenticio', 'varejo', 'servicos', 'outros'];
 
 // Quantos usuarios cada plano pode ter vinculados ao mesmo tenant_id.
 const LIMITE_USUARIOS_POR_PLANO = { gratuito: 2, apoiador: 5 };
@@ -31,6 +29,7 @@ async function obterDados(prisma, tenantId) {
     select: {
       id: true,
       razaoSocial: true,
+      nomeLoja: true,
       tipoPessoa: true,
       documento: true,
       endereco: true,
@@ -47,7 +46,14 @@ async function obterDados(prisma, tenantId) {
     throw new AppError('Empresa nao encontrada.', 404);
   }
 
-  return empresa;
+  // `modulos` e computado aqui (nao uma coluna do banco) toda vez que os
+  // dados da empresa sao lidos - nao so no login - pra nunca ficar
+  // desatualizado se o segmento mudar depois (ver `atualizarDados` abaixo).
+  // O AuthContext do frontend chama esta rota a cada reidratacao de sessao
+  // e sobrescreve o `empresa` local com a resposta, entao um `modulos`
+  // ausente aqui apagaria (silenciosamente) o valor que o login tinha
+  // acabado de calcular.
+  return { ...empresa, modulos: modulosDoSegmento(empresa.segmento) };
 }
 
 /**
@@ -63,26 +69,32 @@ async function obterDados(prisma, tenantId) {
  * mesmo que venham no body, sao ignorados silenciosamente (nao inclusos no
  * `data` do update).
  */
-async function atualizarDados(prisma, tenantId, { razaoSocial, endereco, telefone, segmento }) {
+async function atualizarDados(prisma, tenantId, { razaoSocial, nomeLoja, endereco, telefone, segmento }) {
   if (razaoSocial !== undefined && !razaoSocial.trim()) {
     throw new AppError('razaoSocial nao pode ficar vazio.', 422);
   }
+  // segmento agora e obrigatorio no cadastro (schema.prisma), mas aqui na
+  // ATUALIZACAO continua podendo ficar de fora do body (so nao pode vir um
+  // valor invalido se vier) - trocar de segmento depois do cadastro e uma
+  // decisao consciente da loja, nao precisa ser repetida em toda edicao.
   if (segmento !== undefined && !SEGMENTOS_VALIDOS.includes(segmento)) {
     throw new AppError(`segmento deve ser um dos seguintes: ${SEGMENTOS_VALIDOS.join(', ')}.`, 422);
   }
 
   const data = {};
   if (razaoSocial !== undefined) data.razaoSocial = razaoSocial.trim();
+  if (nomeLoja !== undefined) data.nomeLoja = nomeLoja.trim() || null;
   if (endereco !== undefined) data.endereco = endereco;
   if (telefone !== undefined) data.telefone = telefone;
   if (segmento !== undefined) data.segmento = segmento;
 
-  return prisma.empresa.update({
+  const empresa = await prisma.empresa.update({
     where: { id: tenantId },
     data,
     select: {
       id: true,
       razaoSocial: true,
+      nomeLoja: true,
       tipoPessoa: true,
       documento: true,
       endereco: true,
@@ -93,6 +105,13 @@ async function atualizarDados(prisma, tenantId, { razaoSocial, endereco, telefon
       atualizadoEm: true,
     },
   });
+
+  // Trocar de segmento aqui muda os modulos liberados na mesma resposta -
+  // essencial pra DadosDaLoja.jsx poder repassar o `empresa` atualizado pro
+  // AuthContext (`onEmpresaAtualizada`/`refreshEmpresa`, ver o componente)
+  // e o App.jsx/Sidebar.jsx refletirem o novo conjunto de rotas/menus sem
+  // precisar de um novo login.
+  return { ...empresa, modulos: modulosDoSegmento(empresa.segmento) };
 }
 
 /**

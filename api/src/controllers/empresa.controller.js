@@ -6,17 +6,18 @@ async function obterDados(request, reply) {
 }
 
 async function atualizarDados(request, reply) {
-  const { razaoSocial, endereco, telefone, segmento } = request.body || {};
+  const { razaoSocial, nomeLoja, endereco, telefone, segmento } = request.body || {};
 
-  const temCampoValido = [razaoSocial, endereco, telefone, segmento].some((valor) => valor !== undefined);
+  const temCampoValido = [razaoSocial, nomeLoja, endereco, telefone, segmento].some((valor) => valor !== undefined);
   if (!temCampoValido) {
-    return reply
-      .code(400)
-      .send({ error: 'Informe ao menos um campo para atualizar: razaoSocial, endereco, telefone, segmento.' });
+    return reply.code(400).send({
+      error: 'Informe ao menos um campo para atualizar: razaoSocial, nomeLoja, endereco, telefone, segmento.',
+    });
   }
 
   const empresa = await empresaService.atualizarDados(request.server.prisma, request.tenantId, {
     razaoSocial,
+    nomeLoja,
     endereco,
     telefone,
     segmento,

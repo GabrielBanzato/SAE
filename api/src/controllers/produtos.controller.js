@@ -24,7 +24,7 @@ function parseId(request, reply) {
  * Valida so o FORMATO de `ingredientes` (array de
  * `{ ingrediente_id, quantidade_usada }`, ambos numeros positivos) - se o
  * ingrediente de fato existe/pertence a este tenant, e se a empresa e do
- * segmento "alimenticio", so a service sabe verificar (precisa do banco).
+ * segmento "varejo_alimentacao", so a service sabe verificar (precisa do banco).
  */
 function erroFormatoIngredientes(ingredientes) {
   if (!Array.isArray(ingredientes)) {

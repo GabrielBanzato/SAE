@@ -1,14 +1,19 @@
 const authService = require('../services/auth.service');
-const { SEGMENTOS_VALIDOS } = require('../services/empresa.service');
+const { SEGMENTOS_VALIDOS } = authService;
 
 const TIPOS_PESSOA_VALIDOS = ['PF', 'PJ'];
 
 async function register(request, reply) {
-  const { nome_empresa, tipo_pessoa, documento, nome_usuario, email, senha, segmento } = request.body || {};
+  const { nome_empresa, tipo_pessoa, documento, nome_usuario, email, senha, segmento, nome_loja } =
+    request.body || {};
 
-  if (!nome_empresa || !tipo_pessoa || !documento || !nome_usuario || !email || !senha) {
+  // `segmento` agora e obrigatorio (schema.prisma nao tem mais
+  // @default("outros")) - decide os modulos de negocio liberados pra essa
+  // empresa (MAPA_MODULOS em auth.service.js), entao o Cadastro.jsx sempre
+  // pede uma escolha explicita, sem fallback implicito.
+  if (!nome_empresa || !tipo_pessoa || !documento || !nome_usuario || !email || !senha || !segmento) {
     return reply.code(400).send({
-      error: 'nome_empresa, tipo_pessoa, documento, nome_usuario, email e senha sao obrigatorios.',
+      error: 'nome_empresa, tipo_pessoa, documento, nome_usuario, email, senha e segmento sao obrigatorios.',
     });
   }
 
@@ -16,11 +21,7 @@ async function register(request, reply) {
     return reply.code(400).send({ error: "tipo_pessoa deve ser 'PF' ou 'PJ'." });
   }
 
-  // Opcional - se nao vier, o schema ja tem @default("outros") no banco.
-  // O frontend de Cadastro ainda nao pede o segmento nesta tela (a tarefa
-  // que introduziu o campo pediu ele em Configuracoes/Dados da Loja, nao
-  // no registro inicial) - fica pronto pra aceitar caso isso mude.
-  if (segmento !== undefined && !SEGMENTOS_VALIDOS.includes(segmento)) {
+  if (!SEGMENTOS_VALIDOS.includes(segmento)) {
     return reply.code(400).send({ error: `segmento deve ser um dos seguintes: ${SEGMENTOS_VALIDOS.join(', ')}.` });
   }
 
@@ -32,6 +33,7 @@ async function register(request, reply) {
     email,
     senha,
     segmento,
+    nome_loja,
   });
 
   return reply.code(201).send(resultado);

@@ -61,7 +61,7 @@ enum TipoTarefa {
 /// Forma de pagamento/saida de uma Venda. Enum (nao String solto) porque o
 /// conjunto TOTAL de valores possiveis e fixo e conhecido - o que MUDA por
 /// empresa e so quais dessas opcoes aparecem no select do PDV
-/// (`consumo_interno`/`doacao` so pra `Empresa.segmento === 'alimenticio'`,
+/// (`consumo_interno`/`doacao` so pra `Empresa.segmento === 'varejo_alimentacao'`,
 /// ver validacao em vendas.service.js), nao o vocabulario em si. Uma
 /// venda com essas 2 formas nao gera Lancamento (nao e dinheiro entrando
 /// no caixa) - ver `registrarVenda` em vendas.service.js.
@@ -96,6 +96,10 @@ enum StatusLancamento {
 model Empresa {
   id                Int          @id @default(autoincrement()) @db.UnsignedInt
   razaoSocial       String       @map("razao_social") @db.VarChar(150)
+  // Apelido/nome fantasia da loja (ex.: usado em recibos e mensagens) -
+  // opcional e distinto de `razaoSocial` (a razao social/nome legal, exigida
+  // no cadastro). Editavel em Configuracoes > Dados da Loja.
+  nomeLoja          String?      @map("nome_loja") @db.VarChar(150)
   tipoPessoa        TipoPessoa   @default(PJ) @map("tipo_pessoa")
   // CPF (11 digitos) ou CNPJ (14 digitos), so numeros, dependendo de
   // `tipoPessoa` - por isso VarChar(14) (tamanho maximo dos dois), nao
@@ -112,21 +116,25 @@ model Empresa {
   // Decimal (nao Float) pelo mesmo motivo de Produto.custo/precoVenda
   // abaixo: dinheiro nunca deve usar ponto flutuante binario.
   valorContribuicao Decimal      @default(0.00) @map("valor_contribuicao") @db.Decimal(10, 2)
-  // Segmento de atuacao da empresa - decide funcionalidades extras (hoje:
-  // so "alimenticio" desbloqueia Ficha Tecnica de ingredientes em Produto,
-  // ver FichaTecnica abaixo, e as formas de pagamento "Consumo Interno"/
-  // "Doacao" em Venda) e efeitos em cascata noutras telas (Vendas/Estoque).
-  // Renomeado de "nicho" (valores antigos "geral"/"alimentos") nesta
-  // tarefa - existiam 2 campos "que ramo e essa empresa" a caminho
-  // (o "nicho" antigo e o "Segmento da Empresa" pedido agora), o que
-  // criaria confusao sobre qual checar em features novas; unificados num
-  // so. String solto (nao enum) pelo mesmo motivo de antes - a validacao
-  // de valores aceitos (`SEGMENTOS_VALIDOS`) fica na aplicacao
-  // (empresa.service.js), nao no banco. Default "outros" (nao existe um
-  // equivalente direto pro antigo "geral" solto entre as 4 opcoes novas -
-  // ver NOTAS_IMPORTANTES.md pra instrucoes de migracao de dados
-  // existentes).
-  segmento          String       @default("outros") @db.VarChar(30)
+  // Segmento de atuacao da empresa - hoje a raiz de DOIS mecanismos
+  // distintos, nao confundir os dois:
+  //   1) Gates de regra de negocio pontuais e ja existentes (ex.: so
+  //      "varejo_alimentacao" desbloqueia Ficha Tecnica de ingredientes em
+  //      Produto, ver FichaTecnica abaixo, e as formas de pagamento
+  //      "Consumo Interno"/"Doacao" em Venda).
+  //   2) SaaS modular (nesta tarefa): decide quais MODULOS/telas de negocio
+  //      ficam disponiveis pra essa empresa (PDV, Estoque Avancado, Agenda
+  //      etc.) - MAPA_MODULOS em auth.service.js e a fonte da verdade dessa
+  //      associacao segmento -> modulos[], consumida por
+  //      GET /empresa/dados e pelo login/register (campo `modulos` no
+  //      objeto `empresa` da resposta). O React (App.jsx/Sidebar.jsx) so
+  //      monta rota/menu pra um modulo se a chave dele estiver nesse array.
+  // String solto (nao enum), mesmo motivo de sempre: o conjunto de valores
+  // aceitos (`SEGMENTOS_VALIDOS`, agora derivado de `Object.keys(MAPA_MODULOS)`
+  // em auth.service.js) pode crescer sem exigir migration. SEM default
+  // proposital (campo obrigatorio) - todo cadastro novo (Cadastro.jsx) exige
+  // escolher um segmento explicitamente, nao ha mais um "outros" implicito.
+  segmento          String       @db.VarChar(30)
   criadoEm          DateTime     @default(now()) @map("criado_em")
   atualizadoEm      DateTime     @default(now()) @updatedAt @map("atualizado_em")
 
@@ -186,7 +194,7 @@ model Produto {
   // comentario no model Venda) - um produto agora aparece em varias
   // vendas atraves dos itens delas, nao mais um FK direto.
   vendaItens   VendaItem[]
-  // So populado (via API) quando a empresa e do segmento "alimenticio" -
+  // So populado (via API) quando a empresa e do segmento "varejo_alimentacao" -
   // ver FichaTecnica abaixo e a validacao em produtos.service.js.
   fichaTecnica FichaTecnica[]
 
@@ -211,7 +219,7 @@ model Venda {
   clienteId      Int?           @map("cliente_id") @db.UnsignedInt
   // Funcionario que CONSUMIU o produto - so preenchido quando
   // `formaPagamento = consumo_interno` (empresas do segmento
-  // "alimenticio", ver Empresa.segmento e a validacao em
+  // "varejo_alimentacao", ver Empresa.segmento e a validacao em
   // vendas.service.js). Restrict (nao SetNull) pelo mesmo motivo de
   // usuario abaixo: preserva o vinculo, nao deixa apagar um usuario que
   // ja consta em consumo interno registrado.
@@ -351,7 +359,7 @@ model Lancamento {
   @@map("lancamentos")
 }
 
-/// Materia-prima de empresas do segmento "alimenticio" (ver Empresa.segmento) -
+/// Materia-prima de empresas do segmento "varejo_alimentacao" (ver Empresa.segmento) -
 /// insumos usados na producao dos produtos, com controle de estoque
 /// proprio, separado do estoque de Produto (que conta unidades PRONTAS
 /// pra vender, nao os ingredientes que as compoem).
@@ -384,7 +392,7 @@ model Ingrediente {
 
 /// Tabela relacional: define quais ingredientes (e em que quantidade) compoem
 /// um Produto - a "receita"/ficha tecnica usada por empresas do segmento
-/// "alimenticio". Sem `empresa_id` proprio (o pedido especificou so
+/// "varejo_alimentacao". Sem `empresa_id` proprio (o pedido especificou so
 /// id/produto_id/ingrediente_id/quantidade_usada) - o isolamento de tenant
 /// e garantido indiretamente, exigindo que tanto `produtoId` quanto
 /// `ingredienteId` pertencam ao `tenantId` do request antes de gravar

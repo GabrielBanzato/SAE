@@ -1,12 +1,23 @@
 import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { Store, FileText, User, Mail, Lock, Eye, EyeOff, UserPlus } from 'lucide-react';
+import { Store, FileText, User, Mail, Lock, Eye, EyeOff, UserPlus, Tag } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import AuthLayout from '../components/AuthLayout';
 import CampoTexto from '../components/CampoTexto';
 import TipoPessoaToggle from '../components/TipoPessoaToggle';
 
 const TAMANHO_DOCUMENTO = { PF: 11, PJ: 14 };
+
+// Chaves precisam bater com MAPA_MODULOS em api/src/services/auth.service.js
+// (fonte da verdade da associacao segmento -> modulos de negocio liberados).
+// Rotulos aqui sao so exibicao - a mesma lista de chaves e reaproveitada em
+// components/configuracoes/DadosDaLoja.jsx (segmento tambem e editavel la).
+const SEGMENTOS = [
+  { valor: 'varejo_alimentacao', rotulo: 'Varejo Alimentício (padaria, mercado, restaurante)' },
+  { valor: 'moda_vestuario', rotulo: 'Moda e Vestuário' },
+  { valor: 'saude_fitness', rotulo: 'Saúde e Fitness' },
+  { valor: 'servicos_automotivos', rotulo: 'Serviços Automotivos' },
+];
 
 function formatarDocumento(digitos, tipoPessoa) {
   if (tipoPessoa === 'PF') {
@@ -28,8 +39,10 @@ export default function Cadastro() {
   const navigate = useNavigate();
 
   const [nomeEmpresa, setNomeEmpresa] = useState('');
+  const [nomeLoja, setNomeLoja] = useState('');
   const [tipoPessoa, setTipoPessoa] = useState('PJ');
   const [documentoDigitos, setDocumentoDigitos] = useState('');
+  const [segmento, setSegmento] = useState('');
   const [nomeUsuario, setNomeUsuario] = useState('');
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
@@ -66,11 +79,22 @@ export default function Cadastro() {
       return;
     }
 
+    // Segmento decide os modulos de negocio liberados pra essa empresa
+    // (MAPA_MODULOS no backend) - obrigatorio, sem fallback implicito. O
+    // <select> abaixo ja tem `required`, mas essa checagem cobre o caso de
+    // alguem burlar o atributo HTML (ex.: devtools).
+    if (!segmento) {
+      setErro('Selecione o segmento de atuação da sua loja.');
+      return;
+    }
+
     try {
       await register({
         nome_empresa: nomeEmpresa.trim(),
+        nome_loja: nomeLoja.trim() || undefined,
         tipo_pessoa: tipoPessoa,
         documento: documentoDigitos,
+        segmento,
         nome_usuario: nomeUsuario.trim(),
         email: email.trim(),
         senha,
@@ -115,6 +139,40 @@ export default function Cadastro() {
             onChange={(event) => handleDocumentoChange(event.target.value)}
             required
           />
+
+          <CampoTexto
+            label="Nome da Loja (opcional)"
+            icon={Store}
+            type="text"
+            placeholder="Como sua loja é conhecida no dia a dia"
+            value={nomeLoja}
+            onChange={(event) => setNomeLoja(event.target.value)}
+          />
+
+          <label className="block">
+            <span className="text-lg font-semibold text-slate-800 dark:text-slate-200">Segmento de Atuação</span>
+            <div className="mt-2 flex items-center gap-3 rounded-2xl border-2 border-slate-300 bg-white px-4 py-3 transition-all focus-within:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:focus-within:border-blue-400">
+              <Tag size={22} className="shrink-0 text-slate-400 dark:text-slate-500" aria-hidden="true" />
+              <select
+                value={segmento}
+                onChange={(event) => setSegmento(event.target.value)}
+                required
+                className="w-full bg-transparent text-lg font-medium text-slate-900 outline-none dark:text-slate-100"
+              >
+                <option value="" disabled>
+                  Selecione...
+                </option>
+                {SEGMENTOS.map(({ valor, rotulo }) => (
+                  <option key={valor} value={valor}>
+                    {rotulo}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <span className="mt-1 block text-sm text-slate-400 dark:text-slate-500">
+              Decide quais telas do sistema ficam disponíveis pra sua loja — dá pra mudar depois em Configurações.
+            </span>
+          </label>
         </section>
 
         <div className="border-t border-slate-200 dark:border-slate-700" />

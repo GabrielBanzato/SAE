@@ -22,7 +22,7 @@ const ABAS = [
 /**
  * Tela de Estoque: aba "Produtos" (sempre visível, comportamento igual ao
  * de antes) + aba "Ingredientes" (so pra empresas do segmento
- * "alimenticio" - AuthContext), que controla matéria-prima e calcula
+ * "varejo_alimentacao" - AuthContext), que controla matéria-prima e calcula
  * quantas unidades de cada produto ainda dá pra fazer com o estoque atual
  * de insumos. Pra qualquer outro segmento a barra de abas nem aparece
  * (uma unica aba não justifica o componente de abas) - so a tela de
@@ -30,7 +30,7 @@ const ABAS = [
  */
 export default function Estoque() {
   const { empresa } = useAuth();
-  const segmentoAlimenticio = empresa?.segmento === 'alimenticio';
+  const segmentoAlimenticio = empresa?.segmento === 'varejo_alimentacao';
 
   const [abaAtiva, setAbaAtiva] = useState('produtos');
   const abaAtual = ABAS.find((aba) => aba.id === abaAtiva) ?? ABAS[0];

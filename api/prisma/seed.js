@@ -14,6 +14,10 @@ async function main() {
       endereco: 'Rua das Flores, 123 - Centro, Sao Paulo - SP',
       telefone: '11987654321',
       plano: 'gratuito',
+      // `segmento` e obrigatorio desde esta tarefa (schema.prisma nao tem
+      // mais @default) - "Padaria Teste" e o cenario canonico de
+      // varejo_alimentacao (ver MAPA_MODULOS em auth.service.js).
+      segmento: 'varejo_alimentacao',
     },
   });
 

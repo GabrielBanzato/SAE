@@ -4,11 +4,15 @@ import { apiFetch } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import TipoPessoaToggle from '../TipoPessoaToggle';
 
+// Chaves precisam bater com MAPA_MODULOS em api/src/services/auth.service.js
+// (decide os modulos de negocio liberados - ver App.jsx/Sidebar.jsx) e com a
+// mesma lista em pages/Cadastro.jsx (segmento tambem e escolhido no cadastro
+// inicial, obrigatorio desde essa tarefa).
 const SEGMENTOS = [
-  { valor: 'alimenticio', rotulo: 'Alimentício' },
-  { valor: 'varejo', rotulo: 'Varejo' },
-  { valor: 'servicos', rotulo: 'Serviços' },
-  { valor: 'outros', rotulo: 'Outros' },
+  { valor: 'varejo_alimentacao', rotulo: 'Varejo Alimentício' },
+  { valor: 'moda_vestuario', rotulo: 'Moda e Vestuário' },
+  { valor: 'saude_fitness', rotulo: 'Saúde e Fitness' },
+  { valor: 'servicos_automotivos', rotulo: 'Serviços Automotivos' },
 ];
 
 function formatarDocumento(documento, tipoPessoa) {
@@ -50,19 +54,23 @@ function Campo({ label, value, onChange, placeholder, disabled = false, dica }) 
  * pra PJ (ou o documento em si) depois do cadastro nao e uma operacao de
  * formulario simples.
  *
- * "Salvar Alteracoes" agora e real: `PUT /empresa/dados` (criado nesta
- * tarefa) persiste razaoSocial/endereco/telefone/segmento de verdade.
+ * "Salvar Alteracoes" agora e real: `PUT /empresa/dados` persiste
+ * razaoSocial/nomeLoja/endereco/telefone/segmento de verdade.
  * `onEmpresaAtualizada` (igual ao padrao ja usado em Assinatura.jsx)
  * atualiza a copia local em Configuracoes.jsx com a resposta do backend.
  *
  * `refreshEmpresa()` do AuthContext e chamado logo em seguida - mesmo
  * motivo de Assinatura.jsx: a copia de `empresa` cacheada la (usada por
  * Relatorios.jsx, Estoque.jsx/ModalProduto.jsx pro gate de segmento
- * "alimenticio", e agora Vendas.jsx pro gate de forma de pagamento) so
- * atualizaria depois de um novo login/reload sem essa chamada explicita.
+ * "varejo_alimentacao", Vendas.jsx pro gate de forma de pagamento, e agora
+ * tambem App.jsx/Sidebar.jsx pro roteamento/menu modular por `modulos`) so
+ * atualizaria depois de um novo login/reload sem essa chamada explicita -
+ * trocar de segmento aqui muda o array `modulos` na mesma resposta do PUT
+ * (ver empresa.service.js#atualizarDados), entao rotas/menus se atualizam
+ * sem precisar de um novo login.
  *
- * "Apelido/Fantasia" continua sem equivalente em `Empresa` no schema -
- * unico campo que ainda so atualiza o estado local (nao entra no PUT).
+ * "Apelido/Fantasia" agora tem equivalente real no schema (`Empresa.nomeLoja`,
+ * campo novo) - persiste de verdade junto com o resto do formulario.
  */
 export default function DadosDaLoja({ empresa, onEmpresaAtualizada }) {
   const { refreshEmpresa } = useAuth();
@@ -71,7 +79,7 @@ export default function DadosDaLoja({ empresa, onEmpresaAtualizada }) {
   const [apelido, setApelido] = useState('');
   const [endereco, setEndereco] = useState('');
   const [telefone, setTelefone] = useState('');
-  const [segmento, setSegmento] = useState('outros');
+  const [segmento, setSegmento] = useState('');
 
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
@@ -80,9 +88,10 @@ export default function DadosDaLoja({ empresa, onEmpresaAtualizada }) {
   useEffect(() => {
     if (empresa) {
       setRazaoSocial(empresa.razaoSocial || '');
+      setApelido(empresa.nomeLoja || '');
       setEndereco(empresa.endereco || '');
       setTelefone(empresa.telefone || '');
-      setSegmento(empresa.segmento || 'outros');
+      setSegmento(empresa.segmento || '');
     }
   }, [empresa]);
 
@@ -98,7 +107,7 @@ export default function DadosDaLoja({ empresa, onEmpresaAtualizada }) {
     try {
       const atualizada = await apiFetch('/empresa/dados', {
         method: 'PUT',
-        body: JSON.stringify({ razaoSocial, endereco, telefone, segmento }),
+        body: JSON.stringify({ razaoSocial, nomeLoja: apelido, endereco, telefone, segmento }),
       });
       onEmpresaAtualizada((atual) => ({ ...atual, ...atualizada }));
       refreshEmpresa();
@@ -132,7 +141,7 @@ export default function DadosDaLoja({ empresa, onEmpresaAtualizada }) {
             setSalvo(false);
           }}
           placeholder="Como sua loja é conhecida no dia a dia"
-          dica="Opcional - usado em recibos e mensagens, se preenchido. Ainda não é salvo (sem campo correspondente no cadastro)."
+          dica="Opcional - usado em recibos e mensagens, se preenchido."
         />
         <Campo
           label={empresa.tipoPessoa === 'PF' ? 'CPF' : 'CNPJ'}
@@ -177,8 +186,9 @@ export default function DadosDaLoja({ empresa, onEmpresaAtualizada }) {
             ))}
           </select>
           <span className="mt-1 block text-sm text-slate-400 dark:text-slate-500">
-            Empresas do segmento Alimentício ganham opções extras na tela de Vendas (Consumo Interno, Doação) e podem
-            usar Ficha Técnica de ingredientes.
+            Decide quais telas do sistema ficam disponíveis pra sua loja. Empresas do segmento Varejo Alimentício
+            ganham opções extras na tela de Vendas (Consumo Interno, Doação) e podem usar Ficha Técnica de
+            ingredientes.
           </span>
         </label>
       </div>

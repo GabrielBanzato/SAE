@@ -23,9 +23,9 @@ const FORMAS_PAGAMENTO_BASE = [
   { valor: 'pendente', rotulo: 'Pendente' },
 ];
 
-// So aparecem no select pra empresas do segmento "alimenticio" (pedido
-// explicito - "Regra Condicional") - o backend tambem valida isso de
-// verdade (vendas.service.js), entao esconder as opcoes aqui e so uma
+// So aparecem no select pra empresas do segmento "varejo_alimentacao"
+// (pedido explicito - "Regra Condicional") - o backend tambem valida isso
+// de verdade (vendas.service.js), entao esconder as opcoes aqui e so uma
 // conveniencia de UX, nao a unica linha de defesa.
 const FORMAS_PAGAMENTO_ALIMENTICIO = [
   { valor: 'consumo_interno', rotulo: 'Consumo Interno' },
@@ -47,7 +47,7 @@ const classesSelect =
  */
 export default function Vendas() {
   const { empresa } = useAuth();
-  const segmentoAlimenticio = empresa?.segmento === 'alimenticio';
+  const segmentoAlimenticio = empresa?.segmento === 'varejo_alimentacao';
 
   const [produtos, setProdutos] = useState(null);
   const [carregandoProdutos, setCarregandoProdutos] = useState(true);
@@ -73,7 +73,7 @@ export default function Vendas() {
     ? [...FORMAS_PAGAMENTO_BASE, ...FORMAS_PAGAMENTO_ALIMENTICIO]
     : FORMAS_PAGAMENTO_BASE;
 
-  // Se a empresa deixar de ser "alimenticio" (ou o formulario mudar de
+  // Se a empresa deixar de ser "varejo_alimentacao" (ou o formulario mudar de
   // segmento noutra aba) enquanto "Consumo Interno"/"Doação" estiver
   // selecionado, volta pro padrao - nao deve sobrar uma opcao invalida
   // selecionada que o backend rejeitaria ao finalizar. Ajuste durante o

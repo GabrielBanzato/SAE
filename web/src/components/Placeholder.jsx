@@ -1,13 +1,18 @@
 /**
- * Esqueleto de tela ainda nao implementada - so titulo, descricao e um
- * icone grande centralizado. Usado pelas paginas novas da Sidebar que
- * ainda nao tem funcionalidade real (Vendas, Produtos, Estoque, Clientes,
- * Lancamentos, Controle Financeiro, Notas) - cada uma e um arquivo proprio
- * em `pages/`, so pra ter uma rota de verdade pro React Router (em vez de
- * todo mundo apontar pro mesmo componente), mas o conteudo visual vem
- * todo daqui.
+ * Esqueleto generico de "tela vazia" - titulo, descricao e um icone grande
+ * centralizado. Nasceu pra telas ainda nao implementadas (uso original,
+ * texto interno fixo "Em construção"), e ganhou nesta tarefa 2 props
+ * opcionais (`corpoTitulo`/`corpoTexto`) pra tambem cobrir o catch-all de
+ * rota modular em App.jsx ("Módulo indisponível" - texto diferente, mesmo
+ * layout): sem elas, o comportamento e identico ao de antes.
  */
-export default function Placeholder({ titulo, icon: Icon, descricao }) {
+export default function Placeholder({
+  titulo,
+  icon: Icon,
+  descricao,
+  corpoTitulo = 'Em construção',
+  corpoTexto = 'Esta tela ainda não tem funcionalidades — por enquanto é só o esqueleto de navegação.',
+}) {
   return (
     <div className="space-y-6">
       <div>
@@ -20,10 +25,8 @@ export default function Placeholder({ titulo, icon: Icon, descricao }) {
 
       <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-slate-300 bg-white p-10 text-center dark:border-slate-700 dark:bg-slate-800">
         {Icon && <Icon size={48} className="text-slate-300 dark:text-slate-600" aria-hidden="true" />}
-        <p className="text-lg font-semibold text-slate-500 dark:text-slate-400">Em construção</p>
-        <p className="max-w-sm text-base text-slate-400 dark:text-slate-500">
-          Esta tela ainda não tem funcionalidades — por enquanto é só o esqueleto de navegação.
-        </p>
+        <p className="text-lg font-semibold text-slate-500 dark:text-slate-400">{corpoTitulo}</p>
+        <p className="max-w-sm text-base text-slate-400 dark:text-slate-500">{corpoTexto}</p>
       </div>
     </div>
   );
