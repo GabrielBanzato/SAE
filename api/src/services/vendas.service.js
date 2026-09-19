@@ -1,4 +1,5 @@
 const AppError = require('../utils/AppError');
+const produtosService = require('./produtos.service');
 
 function arredondar(valor) {
   return Math.round((valor + Number.EPSILON) * 100) / 100;
@@ -37,17 +38,29 @@ const INCLUDE_VENDA_COMPLETA = {
  * Registra uma venda com 1+ itens de forma atomica: valida e da baixa no
  * estoque de cada produto do carrinho, cria o cabecalho da Venda + os
  * VendaItem (ver schema.prisma - "1 produto por venda" foi a decisao
- * original, evoluida nesta tarefa pra suportar carrinho com varios
+ * original, evoluida numa tarefa anterior pra suportar carrinho com varios
  * produtos, exigido pelo Historico de Vendas) e, quando a forma de
  * pagamento representa dinheiro de verdade (a vista) ou uma pendencia real
  * a receber, o Lancamento correspondente no caixa - tudo dentro de uma
- * unica transacao, pra nunca deixar o estoque/caixa dessincronizados do
- * historico de vendas caso algo falhe no meio do processo.
+ * unica transacao (`prisma.$transaction`, ja existia antes desta tarefa),
+ * pra nunca deixar o estoque/caixa dessincronizados do historico de vendas
+ * caso algo falhe no meio do processo.
  *
  * `precoUnitario`/`subtotal`/`total` sao sempre calculados a partir do
  * `produto.precoVenda` atual no banco, nunca aceitos do cliente - do
  * contrario um request forjado poderia registrar uma venda por um preco
  * arbitrario.
+ *
+ * Nesta tarefa, o debito de estoque por item ganhou uma segunda camada:
+ * alem de baixar `Produto.estoqueAtual` (o produto PRONTO, como ja fazia),
+ * agora tambem debita `Ingrediente.estoqueAtual` via
+ * `produtosService.baixarEstoquePorProduto` (a Ficha Tecnica do produto -
+ * no-op pra produto sem receita cadastrada). Diferenca de criterio entre as
+ * duas camadas, de proposito: falta de PRODUTO pronto BLOQUEIA a venda
+ * (`AppError` 422 abaixo - view de negocio: "nao posso vender o que nao
+ * tenho pronto"), falta de INGREDIENTE so gera um aviso na resposta,
+ * sem bloquear (view de negocio: o insumo pode ter chegado e o sistema so
+ * nao foi atualizado ainda - nao trava o lojista no balcao por isso).
  */
 async function registrarVenda(
   fastify,
@@ -197,29 +210,51 @@ async function registrarVenda(
     }
 
     const alertasEstoqueBaixo = [];
+    const alertasIngredientesCriticos = [];
 
     for (const { produto, quantidade } of itensValidados) {
-      if (produto.sobDemanda) continue;
+      if (!produto.sobDemanda) {
+        const novoEstoque = produto.estoqueAtual - quantidade;
+        await tx.produto.update({ where: { id: produto.id }, data: { estoqueAtual: novoEstoque } });
 
-      const novoEstoque = produto.estoqueAtual - quantidade;
-      await tx.produto.update({ where: { id: produto.id }, data: { estoqueAtual: novoEstoque } });
+        if (novoEstoque < produto.estoqueMinimo) {
+          alertasEstoqueBaixo.push({
+            produtoId: produto.id,
+            produtoNome: produto.nome,
+            estoqueAtual: novoEstoque,
+            estoqueMinimo: produto.estoqueMinimo,
+          });
+          // TODO: futuramente substituir por notificacao real (e-mail/push/webhook).
+          fastify.log.warn(
+            { tenantId, produtoId: produto.id, produtoNome: produto.nome, estoqueAtual: novoEstoque },
+            `Alerta de estoque baixo: "${produto.nome}" ficou com ${novoEstoque} unidade(s), abaixo do minimo de ${produto.estoqueMinimo}.`
+          );
+        }
+      }
 
-      if (novoEstoque < produto.estoqueMinimo) {
-        alertasEstoqueBaixo.push({
-          produtoId: produto.id,
-          produtoNome: produto.nome,
-          estoqueAtual: novoEstoque,
-          estoqueMinimo: produto.estoqueMinimo,
-        });
-        // TODO: futuramente substituir por notificacao real (e-mail/push/webhook).
+      // Ficha Tecnica: debita os ingredientes da receita independente de
+      // `sobDemanda` - um produto feito na hora ainda consome insumos reais
+      // do estoque, mesmo sem controle de estoque tradicional pro produto
+      // PRONTO em si. No-op (retorna `[]`) pra produto sem receita.
+      const ingredientesCriticos = await produtosService.baixarEstoquePorProduto(
+        tx,
+        tenantId,
+        produto.id,
+        quantidade
+      );
+
+      if (ingredientesCriticos.length > 0) {
+        alertasIngredientesCriticos.push(
+          ...ingredientesCriticos.map((ingrediente) => ({ ...ingrediente, produtoId: produto.id, produtoNome: produto.nome }))
+        );
         fastify.log.warn(
-          { tenantId, produtoId: produto.id, produtoNome: produto.nome, estoqueAtual: novoEstoque },
-          `Alerta de estoque baixo: "${produto.nome}" ficou com ${novoEstoque} unidade(s), abaixo do minimo de ${produto.estoqueMinimo}.`
+          { tenantId, produtoId: produto.id, produtoNome: produto.nome, ingredientesCriticos },
+          `Estoque de ingrediente(s) da Ficha Tecnica de "${produto.nome}" ficou negativo apos a venda.`
         );
       }
     }
 
-    return { venda, lancamento, alertasEstoqueBaixo };
+    return { venda, lancamento, alertasEstoqueBaixo, alertasIngredientesCriticos };
   });
 }
 

@@ -84,28 +84,37 @@ async function sincronizarFichaTecnica(tx, tenantId, produtoId, ingredientes) {
  * paes vendidos, 0.150 kg de farinha por pao na receita -> debita 0.300 kg
  * do estoque do ingrediente "farinha"). Produto sem Ficha Tecnica (fora do
  * segmento "varejo_alimentacao", ou sem nenhum ingrediente vinculado) e um
- * no-op silencioso, nao um erro.
+ * no-op silencioso, nao um erro - devolve `[]`.
  *
- * PREPARADA mas AINDA NAO CHAMADA por vendas.service.js#registrarVenda -
- * hoje uma venda so debita `Produto.estoqueAtual` (o produto PRONTO), nunca
- * o estoque dos ingredientes que o compoem; ligar isso de verdade (dentro
- * da mesma transacao da venda, com o mesmo cuidado de concorrencia que
- * `SELECT ... FOR UPDATE` ja da ao estoque do produto) fica pra uma proxima
- * tarefa, fora do escopo pedido aqui.
+ * Chamada de dentro da `$transaction` de `vendas.service.js#registrarVenda`
+ * (por isso recebe `prisma` podendo ser tanto o client normal quanto uma
+ * transacao `tx` - a assinatura nao muda nos dois casos). NAO bloqueia a
+ * venda se um ingrediente ficar negativo (decisao de negocio: falta de
+ * ingrediente no controle nao pode travar o lojista no balcao, ele pode
+ * muito bem ter comprado mais insumo e so nao ter atualizado o sistema
+ * ainda) - so devolve, pra quem chamou, a lista dos ingredientes que
+ * ficaram negativos apos o debito, pra virar um aviso na resposta da API.
  *
- * Recebe `prisma` (o client normal OU uma transacao `tx`) de proposito -
- * pra poder ser chamada de dentro da mesma `$transaction` de
- * `registrarVenda` no futuro sem precisar mudar a assinatura. Nao valida
- * `produtoId` contra `tenantId` aqui (quem chamar de dentro de uma
- * transacao de venda ja validada e responsavel por isso), mas o
+ * `decrement` (operacao atomica do Prisma) e usado pro UPDATE em si -
+ * seguro mesmo sob concorrencia, ao contrario de ler o valor atual e
+ * escrever de volta calculado em JS. O SELECT de conferencia depois (pra
+ * saber se ficou negativo) roda dentro da MESMA transacao, entao ja
+ * enxerga o proprio UPDATE que acabou de fazer.
+ *
+ * Nao valida `produtoId` contra `tenantId` aqui (quem chama - dentro de
+ * uma transacao de venda ja validada - e responsavel por isso), mas o
  * `updateMany` do ingrediente sempre filtra por `empresaId: tenantId` +
  * `id`, mesmo padrao de isolamento atomico do resto deste arquivo.
+ *
+ * @returns {Promise<Array<{ingredienteId: number, ingredienteNome: string, estoqueAtual: number}>>}
  */
 async function baixarEstoquePorProduto(prisma, tenantId, produtoId, quantidadeVendida) {
   const itensFichaTecnica = await prisma.fichaTecnica.findMany({
     where: { produtoId },
     select: { ingredienteId: true, quantidadeUsada: true },
   });
+
+  if (itensFichaTecnica.length === 0) return [];
 
   for (const item of itensFichaTecnica) {
     const quantidadeADebitar = item.quantidadeUsada.toNumber() * quantidadeVendida;
@@ -115,6 +124,19 @@ async function baixarEstoquePorProduto(prisma, tenantId, produtoId, quantidadeVe
       data: { estoqueAtual: { decrement: quantidadeADebitar } },
     });
   }
+
+  const ingredientesAtualizados = await prisma.ingrediente.findMany({
+    where: { id: { in: itensFichaTecnica.map((item) => item.ingredienteId) }, empresaId: tenantId },
+    select: { id: true, nome: true, estoqueAtual: true },
+  });
+
+  return ingredientesAtualizados
+    .filter((ingrediente) => ingrediente.estoqueAtual.toNumber() < 0)
+    .map((ingrediente) => ({
+      ingredienteId: ingrediente.id,
+      ingredienteNome: ingrediente.nome,
+      estoqueAtual: ingrediente.estoqueAtual.toNumber(),
+    }));
 }
 
 async function create(prisma, tenantId, dados) {

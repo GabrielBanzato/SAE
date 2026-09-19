@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ShoppingCart, Search, Plus, Minus, Trash2, CircleDollarSign } from 'lucide-react';
 import { apiFetch } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import CampoData from '../components/CampoData';
 import SeletorCliente from '../components/vendas/SeletorCliente';
 import ModalClienteRapido from '../components/clientes/ModalClienteRapido';
@@ -47,6 +48,7 @@ const classesSelect =
  */
 export default function Vendas() {
   const { empresa } = useAuth();
+  const { mostrarToast } = useToast();
   const segmentoAlimenticio = empresa?.segmento === 'varejo_alimentacao';
 
   const [produtos, setProdutos] = useState(null);
@@ -181,7 +183,7 @@ export default function Vendas() {
     setSucessoVenda('');
 
     try {
-      await apiFetch('/vendas', {
+      const resultado = await apiFetch('/vendas', {
         method: 'POST',
         body: JSON.stringify({
           itens: carrinho.map((item) => ({ produto_id: item.produtoId, quantidade: item.quantidade })),
@@ -208,6 +210,23 @@ export default function Vendas() {
       setClienteId('');
       setFuncionarioId('');
       setSucessoVenda('Venda finalizada com sucesso!');
+
+      // Avisos pos-venda (nao bloqueiam nada, so informam): estoque baixo de
+      // produto e/ou de ingrediente da Ficha Tecnica ficaram negativos. A
+      // API sempre devolve os 2 arrays (vazios quando nao ha nada a avisar)
+      // - ver vendas.service.js#registrarVenda.
+      (resultado.alertasEstoqueBaixo || []).forEach((alerta) => {
+        mostrarToast(
+          `Estoque baixo: "${alerta.produtoNome}" ficou com ${alerta.estoqueAtual} un. (mínimo ${alerta.estoqueMinimo}).`,
+          'aviso'
+        );
+      });
+      (resultado.alertasIngredientesCriticos || []).forEach((alerta) => {
+        mostrarToast(
+          `Estoque de "${alerta.ingredienteNome}" ficou negativo (${alerta.estoqueAtual}) após a venda de "${alerta.produtoNome}".`,
+          'aviso'
+        );
+      });
     } catch (err) {
       setErroVenda(err.message || 'Não foi possível finalizar a venda.');
     } finally {
