@@ -78,6 +78,45 @@ async function sincronizarFichaTecnica(tx, tenantId, produtoId, ingredientes) {
   });
 }
 
+/**
+ * Debita do estoque de cada Ingrediente da Ficha Tecnica do produto a
+ * quantidade proporcional a `quantidadeVendida` unidades vendidas (ex.: 2
+ * paes vendidos, 0.150 kg de farinha por pao na receita -> debita 0.300 kg
+ * do estoque do ingrediente "farinha"). Produto sem Ficha Tecnica (fora do
+ * segmento "varejo_alimentacao", ou sem nenhum ingrediente vinculado) e um
+ * no-op silencioso, nao um erro.
+ *
+ * PREPARADA mas AINDA NAO CHAMADA por vendas.service.js#registrarVenda -
+ * hoje uma venda so debita `Produto.estoqueAtual` (o produto PRONTO), nunca
+ * o estoque dos ingredientes que o compoem; ligar isso de verdade (dentro
+ * da mesma transacao da venda, com o mesmo cuidado de concorrencia que
+ * `SELECT ... FOR UPDATE` ja da ao estoque do produto) fica pra uma proxima
+ * tarefa, fora do escopo pedido aqui.
+ *
+ * Recebe `prisma` (o client normal OU uma transacao `tx`) de proposito -
+ * pra poder ser chamada de dentro da mesma `$transaction` de
+ * `registrarVenda` no futuro sem precisar mudar a assinatura. Nao valida
+ * `produtoId` contra `tenantId` aqui (quem chamar de dentro de uma
+ * transacao de venda ja validada e responsavel por isso), mas o
+ * `updateMany` do ingrediente sempre filtra por `empresaId: tenantId` +
+ * `id`, mesmo padrao de isolamento atomico do resto deste arquivo.
+ */
+async function baixarEstoquePorProduto(prisma, tenantId, produtoId, quantidadeVendida) {
+  const itensFichaTecnica = await prisma.fichaTecnica.findMany({
+    where: { produtoId },
+    select: { ingredienteId: true, quantidadeUsada: true },
+  });
+
+  for (const item of itensFichaTecnica) {
+    const quantidadeADebitar = item.quantidadeUsada.toNumber() * quantidadeVendida;
+
+    await prisma.ingrediente.updateMany({
+      where: { id: item.ingredienteId, empresaId: tenantId },
+      data: { estoqueAtual: { decrement: quantidadeADebitar } },
+    });
+  }
+}
+
 async function create(prisma, tenantId, dados) {
   const {
     nome,
@@ -224,4 +263,4 @@ async function remove(prisma, tenantId, id) {
   }
 }
 
-module.exports = { list, findById, create, update, atualizarEstoque, remove };
+module.exports = { list, findById, create, update, atualizarEstoque, remove, baixarEstoquePorProduto };
