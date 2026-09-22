@@ -36,17 +36,24 @@ const InboxUnificado = lazy(() => import('./pages/InboxUnificado'));
 
 /**
  * Rotas de pagina LIGADAS a um modulo de negocio (chave precisa bater com
- * MAPA_MODULOS em api/src/services/auth.service.js, e com os campos
+ * MODULOS_VALIDOS em api/src/services/auth.service.js, e com os campos
  * `modulo` de components/Sidebar.jsx) - só entram na árvore de rotas se a
  * chave estiver em `empresa.modulos` (AuthContext, populado pelo
- * login/registro e por GET /empresa/dados). Dashboard, Configuracoes,
- * Modulos, Suporte e Notas ficam FORA desta lista de proposito - sao
- * acessiveis a qualquer empresa, independente do segmento (ver App.jsx
- * mais abaixo, onde entram direto na árvore).
+ * login/registro e por GET /empresa/dados - fonte da verdade agora e
+ * `Empresa.modulosAtivos`, editavel pela propria empresa em Modulos.jsx,
+ * NAO MAIS calculado do segmento a cada leitura - ver arquitetura modular
+ * de 2026-09-22). Dashboard, Configuracoes, Modulos, Suporte e Notas ficam
+ * FORA desta lista de proposito - sao acessiveis a qualquer empresa,
+ * independente dos modulos ativos (ver App.jsx mais abaixo, onde entram
+ * direto na árvore).
+ *
+ * 'vendas'/'financeiro'/'produtos' sao os modulos BASE (MODULOS_BASE em
+ * auth.service.js) - sempre presentes em `empresa.modulos` pra toda
+ * empresa, nunca aparecem como toggle removível em Modulos.jsx.
  */
 const ROTAS_POR_MODULO = [
-  { modulo: 'pdv', path: '/vendas', element: <Vendas /> },
-  { modulo: 'pdv', path: '/historico-vendas', element: <HistoricoVendas /> },
+  { modulo: 'vendas', path: '/vendas', element: <Vendas /> },
+  { modulo: 'vendas', path: '/historico-vendas', element: <HistoricoVendas /> },
   { modulo: 'produtos', path: '/produtos', element: <Produtos /> },
   { modulo: 'precificacao', path: '/precificacao', element: <CalculadoraPrecificacao /> },
   { modulo: 'estoque_avancado', path: '/estoque', element: <Estoque /> },
@@ -55,12 +62,16 @@ const ROTAS_POR_MODULO = [
   { modulo: 'financeiro', path: '/financeiro', element: <ControleFinanceiro /> },
   { modulo: 'financeiro', path: '/dre', element: <DRE /> },
   { modulo: 'agenda', path: '/agenda', element: <Agenda /> },
-  // Mesmo modulo 'agenda' da Agenda acima (nao um novo, ver
-  // auth.service.js#MAPA_MODULOS) - o Quadro de Tarefas Kanban e um
-  // companheiro de produtividade da Agenda, consolidados na mesma tabela
-  // `Tarefa` (ver schema.prisma) - nao faria sentido liberar um sem o outro.
-  { modulo: 'agenda', path: '/tarefas', element: <QuadroTarefas /> },
+  // Desacoplado de 'agenda' nesta tarefa - o Quadro de Tarefas Kanban virou
+  // um modulo opcional com toggle proprio na App Store (card "Gestão de
+  // Equipe/Kanban"), independente de a empresa usar a Agenda ou nao (mesmo
+  // que as duas ainda compartilhem a tabela `Tarefa`, ver schema.prisma).
+  { modulo: 'tarefas', path: '/tarefas', element: <QuadroTarefas /> },
   { modulo: 'relatorios', path: '/relatorios', element: <Relatorios /> },
+  // Inbox Unificado de WhatsApp - antes sempre acessivel (sem modulo), agora
+  // com toggle proprio na App Store (card "Inbox de Inteligência
+  // Artificial").
+  { modulo: 'ia_whatsapp', path: '/inbox', element: <InboxUnificado /> },
 ];
 
 function CarregandoRota() {
@@ -108,15 +119,11 @@ function RotasDaAplicacao() {
             <Route path="/configuracoes" element={<Configuracoes />} />
             <Route path="/modulos" element={<Modulos />} />
             <Route path="/suporte" element={<Suporte />} />
-            {/* Inbox Unificado de WhatsApp - assim como Modulos/Suporte, fora de
-                ROTAS_POR_MODULO de proposito: nao existe uma chave de segmento
-                pra isso em MAPA_MODULOS (auth.service.js) ainda, entao fica
-                acessivel a qualquer empresa, sem gate nenhum. */}
-            <Route path="/inbox" element={<InboxUnificado />} />
 
             {/* Catch-all: cobre tanto uma URL que nunca existiu quanto uma
-                rota de modulo que existe no app mas nao pra esta empresa
-                (ela simplesmente nao foi registrada acima, entao cai aqui). */}
+                rota de modulo que existe no app mas nao esta ativa pra esta
+                empresa (ela simplesmente nao foi registrada acima, entao
+                cai aqui). */}
             <Route
               path="*"
               element={
@@ -126,9 +133,9 @@ function RotasDaAplicacao() {
                   <Placeholder
                     titulo="Módulo indisponível"
                     icon={Lock}
-                    descricao="Esta funcionalidade não está disponível para o segmento de atuação da sua empresa."
-                    corpoTitulo="Módulo não incluído no seu segmento"
-                    corpoTexto="Fale com o suporte ou ajuste o segmento de atuação em Configurações > Dados da Loja para liberar mais funcionalidades."
+                    descricao="Este módulo está desativado para a sua empresa no momento."
+                    corpoTitulo="Módulo não ativado"
+                    corpoTexto="Ative este módulo na página Módulos para liberar esta funcionalidade."
                   />
                 )
               }
@@ -136,15 +143,15 @@ function RotasDaAplicacao() {
           </Route>
 
           {/* PDV (Frente de Loja): de proposito FORA do `<Route element={<Layout />}>`
-              acima - tela cheia, sem Sidebar (ver pages/PDV.jsx). Mesmo
-              modulo 'pdv' que ja controla `/vendas`/`/historico-vendas` -
-              nao existe uma chave de modulo separada so pra essa tela. Se
-              nao renderizada (modulo ausente), o catch-all `*` da Layout
-              acima ja cobre `/pdv` (com a chrome normal, "Módulo
-              indisponível") - especificidade de rota do React Router
-              sempre prioriza este match exato sobre aquele wildcard quando
-              os dois estao presentes. */}
-          {!carregandoEmpresa && modulos.includes('pdv') && <Route path="/pdv" element={<PDV />} />}
+              acima - tela cheia, sem Sidebar (ver pages/PDV.jsx). Modulo
+              'pdv_touch' (opcional, App Store) - separado de 'vendas' desde
+              a arquitetura modular de 2026-09-22 (antes os dois dividiam a
+              chave 'pdv'). Se nao renderizada (modulo ausente), o catch-all
+              `*` da Layout acima ja cobre `/pdv` (com a chrome normal,
+              "Módulo indisponível") - especificidade de rota do React
+              Router sempre prioriza este match exato sobre aquele wildcard
+              quando os dois estao presentes. */}
+          {!carregandoEmpresa && modulos.includes('pdv_touch') && <Route path="/pdv" element={<PDV />} />}
         </Route>
       </Routes>
     </Suspense>

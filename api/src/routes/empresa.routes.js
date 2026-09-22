@@ -5,6 +5,7 @@ module.exports = async function empresaRoutes(fastify) {
   // global de autenticacao (src/plugins/auth.js), exigindo JWT valido.
   fastify.get('/dados', empresaController.obterDados);
   fastify.put('/dados', empresaController.atualizarDados);
+  fastify.put('/modulos', empresaController.atualizarModulos);
   fastify.get('/usuarios', empresaController.listarUsuarios);
   fastify.post('/usuarios', empresaController.adicionarUsuario);
   fastify.put('/assinatura', empresaController.atualizarAssinatura);

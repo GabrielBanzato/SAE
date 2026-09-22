@@ -13,12 +13,18 @@ function obterUsuarioInicial() {
 }
 
 /**
- * Reidrata `empresa` (inclui `modulos`, calculado no backend a partir do
- * segmento - ver auth.service.js#MAPA_MODULOS) do localStorage antes mesmo
- * do primeiro GET /empresa/dados resolver. Sem isso, todo F5 numa rota de
- * modulo (ex.: /estoque) comecaria com `empresa === null` e App.jsx não
- * saberia ainda se aquele modulo esta liberado - só null (nunca um objeto
- * "vazio") sinaliza "ainda não sei", ver `RotasDaAplicacao` em App.jsx.
+ * Reidrata `empresa` (inclui `modulos` - array de chaves de modulo ativas,
+ * persistido em `Empresa.modulosAtivos` no backend e editavel pela propria
+ * empresa em Modulos.jsx via `PUT /empresa/modulos`, arquitetura modular
+ * de 2026-09-22 - NAO MAIS calculado do segmento a cada leitura, ver
+ * auth.service.js) do localStorage antes mesmo do primeiro
+ * GET /empresa/dados resolver. Sem isso, todo F5 numa rota de modulo (ex.:
+ * /estoque) comecaria com `empresa === null` e App.jsx não saberia ainda se
+ * aquele modulo esta ativo - só null (nunca um objeto "vazio") sinaliza
+ * "ainda não sei", ver `RotasDaAplicacao` em App.jsx. `empresa.modulos` e o
+ * unico lugar que qualquer componente (Sidebar.jsx, App.jsx, Modulos.jsx)
+ * precisa ler pra saber o que esta ligado - nao existe (nem precisa) um
+ * Context separado so pra isso.
  */
 function obterEmpresaInicial() {
   try {

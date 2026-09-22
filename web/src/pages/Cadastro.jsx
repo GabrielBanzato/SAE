@@ -8,10 +8,13 @@ import TipoPessoaToggle from '../components/TipoPessoaToggle';
 
 const TAMANHO_DOCUMENTO = { PF: 11, PJ: 14 };
 
-// Chaves precisam bater com MAPA_MODULOS em api/src/services/auth.service.js
-// (fonte da verdade da associacao segmento -> modulos de negocio liberados).
-// Rotulos aqui sao so exibicao - a mesma lista de chaves e reaproveitada em
-// components/configuracoes/DadosDaLoja.jsx (segmento tambem e editavel la).
+// Chaves precisam bater com SEGMENTOS_VALIDOS/MAPA_MODULOS em
+// api/src/services/auth.service.js (MAPA_MODULOS agora so decide o
+// conjunto INICIAL de modulos no cadastro - depois disso a empresa liga/
+// desliga cada um na pagina Modulos, ver arquitetura modular de
+// 2026-09-22). Rotulos aqui sao so exibicao - a mesma lista de chaves e
+// reaproveitada em components/configuracoes/DadosDaLoja.jsx (segmento
+// tambem e editavel la).
 const SEGMENTOS = [
   { valor: 'varejo_alimentacao', rotulo: 'Varejo Alimentício (padaria, mercado, restaurante)' },
   { valor: 'moda_vestuario', rotulo: 'Moda e Vestuário' },
@@ -79,10 +82,11 @@ export default function Cadastro() {
       return;
     }
 
-    // Segmento decide os modulos de negocio liberados pra essa empresa
-    // (MAPA_MODULOS no backend) - obrigatorio, sem fallback implicito. O
-    // <select> abaixo ja tem `required`, mas essa checagem cobre o caso de
-    // alguem burlar o atributo HTML (ex.: devtools).
+    // Segmento decide o conjunto INICIAL de modulos liberados pra essa
+    // empresa (MAPA_MODULOS no backend, so usado no cadastro - ver
+    // auth.service.js) - obrigatorio, sem fallback implicito. O <select>
+    // abaixo ja tem `required`, mas essa checagem cobre o caso de alguem
+    // burlar o atributo HTML (ex.: devtools).
     if (!segmento) {
       setErro('Selecione o segmento de atuação da sua loja.');
       return;
@@ -170,7 +174,8 @@ export default function Cadastro() {
               </select>
             </div>
             <span className="mt-1 block text-sm text-slate-400 dark:text-slate-500">
-              Decide quais telas do sistema ficam disponíveis pra sua loja — dá pra mudar depois em Configurações.
+              Decide o conjunto inicial de módulos liberado pra sua loja — dá pra ligar/desligar cada um depois na
+              página Módulos.
             </span>
           </label>
         </section>

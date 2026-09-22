@@ -36,12 +36,14 @@ import { useAuth } from '../context/AuthContext';
  * Menu agrupado em secoes - Dashboard/Modulos/Suporte navegam direto,
  * Operacional/Administracao viram "gavetas" (accordion) com subcategorias.
  *
- * `modulo` em cada item precisa bater com uma chave de MAPA_MODULOS
+ * `modulo` em cada item precisa bater com uma chave de MODULOS_VALIDOS
  * (api/src/services/auth.service.js) e com `ROTAS_POR_MODULO` em App.jsx -
  * um item só aparece no menu se essa chave estiver em `empresa.modulos`
- * (ver filtragem no componente `Sidebar` abaixo). Sem `modulo` = sempre
- * visível, independente de segmento (nenhum item direto abaixo precisa
- * disso hoje).
+ * (ver filtragem no componente `Sidebar` abaixo). Fonte da verdade agora e
+ * `Empresa.modulosAtivos`, editavel pela propria empresa em Modulos.jsx
+ * (arquitetura modular de 2026-09-22) - NAO MAIS calculada do segmento.
+ * Sem `modulo` = sempre visível, independente dos modulos ativos (nenhum
+ * item direto abaixo precisa disso hoje).
  */
 const CATEGORIAS_MENU = [
   {
@@ -49,17 +51,23 @@ const CATEGORIAS_MENU = [
     titulo: 'Operacional',
     icon: Briefcase,
     itens: [
-      { label: 'Vendas', to: '/vendas', icon: ShoppingCart, modulo: 'pdv' },
-      { label: 'Histórico de Vendas', to: '/historico-vendas', icon: History, modulo: 'pdv' },
+      // 'vendas' e modulo BASE (MODULOS_BASE em auth.service.js) - sempre
+      // presente em `empresa.modulos`, nunca aparece como toggle removível
+      // em Modulos.jsx.
+      { label: 'Vendas', to: '/vendas', icon: ShoppingCart, modulo: 'vendas' },
+      { label: 'Histórico de Vendas', to: '/historico-vendas', icon: History, modulo: 'vendas' },
       { label: 'Produtos', to: '/produtos', icon: Package, modulo: 'produtos' },
       { label: 'Precificação', to: '/precificacao', icon: Calculator, modulo: 'precificacao' },
       { label: 'Estoque', to: '/estoque', icon: Boxes, modulo: 'estoque_avancado' },
       { label: 'Clientes', to: '/clientes', icon: Users, modulo: 'clientes' },
       { label: 'Lançamentos', to: '/lancamentos', icon: Receipt, modulo: 'financeiro' },
       { label: 'Agenda', to: '/agenda', icon: CalendarDays, modulo: 'agenda' },
-      // Mesmo modulo 'agenda' - Quadro Kanban e o companheiro de
-      // produtividade da Agenda (mesma tabela `Tarefa`, ver App.jsx).
-      { label: 'Tarefas', to: '/tarefas', icon: Kanban, modulo: 'agenda' },
+      // Desacoplado de 'agenda' nesta tarefa - toggle proprio na App Store
+      // (card "Gestão de Equipe/Kanban"), ver App.jsx.
+      { label: 'Tarefas', to: '/tarefas', icon: Kanban, modulo: 'tarefas' },
+      // Antes sempre visivel (sem `modulo`) - agora com toggle proprio na
+      // App Store (card "Inbox de Inteligência Artificial").
+      { label: 'Inbox WhatsApp', to: '/inbox', icon: MessageCircle, modulo: 'ia_whatsapp' },
     ],
   },
   {
@@ -79,18 +87,14 @@ const CATEGORIAS_MENU = [
 ];
 
 const ITEM_DASHBOARD = { label: 'Dashboard', to: '/', icon: LayoutDashboard };
-// PDV Rápido: mesmo modulo 'pdv' que ja controla Vendas/Histórico de Vendas
-// (ver ROTAS_POR_MODULO em App.jsx) - filtrado junto com o resto do menu
-// (ver `modulos.includes(item.modulo)` abaixo), mas fica FORA de
-// `CATEGORIAS_MENU` porque nao e um item de accordion: e um atalho direto
-// e em destaque pro caixa rapido de balcao (rota sem Sidebar, ver
+// PDV Rápido: modulo 'pdv_touch' (opcional, App Store - card "Frente de
+// Loja (PDV)") - separado de 'vendas' desde a arquitetura modular de
+// 2026-09-22 (antes os dois dividiam a chave 'pdv'). Filtrado junto com o
+// resto do menu (ver `modulos.includes(item.modulo)` abaixo), mas fica
+// FORA de `CATEGORIAS_MENU` porque nao e um item de accordion: e um atalho
+// direto e em destaque pro caixa rapido de balcao (rota sem Sidebar, ver
 // pages/PDV.jsx), nao mais uma tela "administrativa" pra esconder numa gaveta.
-const ITEM_PDV = { label: 'PDV Rápido', to: '/pdv', icon: Zap, modulo: 'pdv' };
-// Inbox Unificado de WhatsApp: sem campo `modulo` (mesmo motivo de
-// ITEM_MODULOS/ITEM_SUPORTE abaixo) - nao existe chave de segmento pra isso
-// em MAPA_MODULOS ainda, entao fica sempre visivel, independente de
-// segmento/empresa.
-const ITEM_INBOX = { label: 'Inbox WhatsApp', to: '/inbox', icon: MessageCircle };
+const ITEM_PDV = { label: 'PDV Rápido', to: '/pdv', icon: Zap, modulo: 'pdv_touch' };
 const ITEM_MODULOS = { label: 'Módulos', to: '/modulos', icon: LayoutGrid };
 const ITEM_SUPORTE = { label: 'Suporte', to: '/suporte', icon: LifeBuoy };
 
@@ -270,7 +274,7 @@ export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFechar
       >
         <ItemDireto {...ITEM_DASHBOARD} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
 
-        {modulos.includes('pdv') && (
+        {modulos.includes('pdv_touch') && (
           <NavLink
             to={ITEM_PDV.to}
             onClick={onFecharNoMobile}
@@ -354,7 +358,6 @@ export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFechar
           );
         })}
 
-        <ItemDireto {...ITEM_INBOX} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
         <ItemDireto {...ITEM_MODULOS} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
         <ItemDireto {...ITEM_SUPORTE} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
       </nav>

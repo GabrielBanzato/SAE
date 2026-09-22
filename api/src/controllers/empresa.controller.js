@@ -25,6 +25,18 @@ async function atualizarDados(request, reply) {
   return reply.send(empresa);
 }
 
+/** PUT /empresa/modulos - liga/desliga modulos de negocio (Modulos.jsx, a "App Store" do SaaS). */
+async function atualizarModulos(request, reply) {
+  const { modulos } = request.body || {};
+
+  if (modulos === undefined) {
+    return reply.code(400).send({ error: 'modulos e obrigatorio.' });
+  }
+
+  const resultado = await empresaService.atualizarModulos(request.server.prisma, request.tenantId, modulos);
+  return reply.send(resultado);
+}
+
 async function listarUsuarios(request, reply) {
   const usuarios = await empresaService.listarUsuarios(request.server.prisma, request.tenantId);
   return reply.send(usuarios);
@@ -61,4 +73,11 @@ async function atualizarAssinatura(request, reply) {
   return reply.send(empresa);
 }
 
-module.exports = { obterDados, atualizarDados, listarUsuarios, adicionarUsuario, atualizarAssinatura };
+module.exports = {
+  obterDados,
+  atualizarDados,
+  atualizarModulos,
+  listarUsuarios,
+  adicionarUsuario,
+  atualizarAssinatura,
+};

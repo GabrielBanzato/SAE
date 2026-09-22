@@ -6316,3 +6316,180 @@ independente de quem é o responsável); a migração de dados de produção
 (`status_concluida` -> `status`) mencionada acima **não foi feita** aqui,
 só sinalizada - precisa rodar antes de qualquer `db push`/deploy em
 produção se já existirem tarefas reais lá.
+
+---
+
+## Arquitetura Modular SaaS - módulos ligados/desligados pela própria empresa (último passo do roadmap) (2026-09-22)
+
+### A mudança de fundo: `segmento` deixou de decidir os módulos - virou só o ponto de partida
+
+Até esta tarefa, `empresa.modulos` (o array consumido por `App.jsx`/
+`Sidebar.jsx` pra montar rotas/menu) era **recalculado em toda leitura**
+(`GET /empresa/dados`, login) a partir do `segmento` da empresa, via
+`modulosDoSegmento()` (`MAPA_MODULOS` em `auth.service.js`) - documentado
+explicitamente assim na tarefa "SaaS Modular" de 2026-09-17/18. O pedido
+desta tarefa era o oposto: a **empresa** decide, via uma tela de toggles
+("App Store", `Modulos.jsx`), quais módulos ficam ativos - o `segmento`
+não pode mais ser a fonte da verdade, porque trocar de segmento em
+Configurações não pode mais resetar silenciosamente os módulos que a
+equipe escolheu.
+
+**Decisão de arquitetura**: `Empresa` ganhou `modulosAtivos` (`Json?`,
+`@default("[\"vendas\", \"financeiro\", \"produtos\"]")`, ver
+schema.prisma) - um array de chaves de módulo **persistido**, não mais
+calculado. `modulosDoSegmento()`/`MAPA_MODULOS` sobrevivem, mas com papel
+reduzido: usados **só em `register()`**, pra popular `modulosAtivos` com
+um conjunto inicial sensato baseado no segmento escolhido no cadastro.
+Dali em diante os dois campos evoluem **independentes** -
+`empresa.service.js#atualizarDados` (que muda o `segmento`) parou de
+tocar em `modulosAtivos`; quem muda `modulosAtivos` agora é só
+`atualizarModulos()`, chamada por `PUT /empresa/modulos`
+(`Modulos.jsx`). `segmento` continua existindo e continua importante -
+só que agora serve **exclusivamente** pras regras de negócio pontuais que
+já usava antes de mais nada (Ficha Técnica de ingredientes, formas de
+pagamento Consumo Interno/Doação - ambas ainda checam
+`segmento === 'varejo_alimentacao'` direto, sem relação nenhuma com
+módulos).
+
+### Catálogo de módulos: base (fixos) vs. opcionais (toggle) vs. opcionais "legados" (ainda só via segmento)
+
+`MODULOS_BASE = ['vendas', 'financeiro', 'produtos']` (auth.service.js) -
+sempre presentes em `modulosAtivos` de toda empresa, sem exceção;
+`empresa.service.js#atualizarModulos` **força** esses 3 de volta no array
+mesmo que o body não mande ou mande sem eles (`[...new
+Set([...MODULOS_BASE, ...modulos])]`) - reforça no backend o que
+`Modulos.jsx` já nem oferece como toggle removível. Validado manualmente:
+mandar `{ modulos: ['produtos', 'clientes'] }` (sem `vendas`/`financeiro`)
+volta com os 3 de qualquer jeito.
+
+Separado do resto do catálogo por uma decisão que exigiu um refactor
+pequeno mas real: **a chave `'pdv'` cobria DUAS telas ao mesmo tempo**
+(Vendas/Histórico de Vendas normais E o PDV Rápido em tela cheia) - como
+o pedido listava "Vendas" como módulo BASE e "PDV Touch"/"Frente de Loja
+(PDV)" como módulo OPCIONAL com card próprio, as duas não podiam
+continuar dividindo a mesma chave. Resolvido renomeando `'pdv'` pra
+`'vendas'` (agora em `MODULOS_BASE`, gateia só `/vendas`/
+`/historico-vendas`) e criando `'pdv_touch'` novo (gateia só `/pdv`, o
+componente `ITEM_PDV` de destaque na Sidebar) - `MAPA_MODULOS` de cada
+segmento foi atualizado pra incluir os dois (nenhuma empresa cadastrada
+antes perde acesso ao PDV Touch por causa do rename, já que todo segmento
+que tinha `'pdv'` antes ganhou `'vendas'` + `'pdv_touch'` juntos no lugar).
+
+Mesma lógica pro Quadro de Tarefas: até ontem (`NOTAS_IMPORTANTES.md`,
+entrada de 2026-09-22 mais cedo) `/tarefas` dividia a chave `'agenda'`
+com a Agenda, decisão registrada como "consolidação" na época. O pedido
+desta tarefa listava "Quadro de Tarefas"/"Gestão de Equipe/Kanban" como
+card **próprio** na App Store - desacoplado agora: chave nova `'tarefas'`,
+independente de `'agenda'` (as duas ainda compartilham a tabela `Tarefa`
+no banco, só o *módulo/toggle* que virou independente).
+
+O Inbox Unificado de WhatsApp (`/inbox`) **não tinha nenhum gate de
+módulo até esta tarefa** (decisão registrada como "sempre acessível" na
+entrada de 2026-09-22 mais cedo, por falta de uma chave em
+`MAPA_MODULOS`) - ganhou a chave `'ia_whatsapp'` agora, com card próprio
+("Inbox de Inteligência Artificial"). Como não existia antes, **não** foi
+adicionada a `MAPA_MODULOS` de nenhum segmento - toda empresa (inclusive
+as já cadastradas antes desta tarefa, quando o banco tiver dados reais)
+começa com esse módulo **desligado**, precisa ativar manualmente em
+Módulos. Decisão deliberada: é um recurso que depende de credenciais de
+IA configuradas (`AI_API_KEY`) - não faz sentido nascer ligado.
+
+Os módulos opcionais que já existiam antes desta tarefa e **não** foram
+citados no pedido como card da App Store (`precificacao`,
+`estoque_avancado`, `agenda`, `relatorios`) continuam funcionando
+exatamente como sempre - ainda entram em `modulosAtivos` pelo
+`MAPA_MODULOS` do cadastro, só não têm toggle próprio em `Modulos.jsx`
+ainda. Decisão de escopo (não um esquecimento): o pedido deu "ex:" antes
+da lista de 4 módulos, sinalizando exemplo, não lista fechada - mas
+implementar toggle pra TODOS os módulos do catálogo (8 chaves antigas +
+os 4 novos) seria um escopo bem maior que o pedido explícito, então só os
+4 citados ganharam card real. Pendência sinalizada abaixo.
+
+### `atualizarModulos`: valida, protege a base, substitui o array inteiro
+
+`PUT /empresa/modulos` (`{ modulos: [...] }`) → `empresaService.atualizarModulos`:
+rejeita (422) qualquer chave fora de `MODULOS_VALIDOS` (catálogo
+completo - os 3 base + os 4 com toggle + os 4 legados, 11 chaves ao
+todo); força `MODULOS_BASE` de volta (ver acima); **substitui o array
+inteiro** (não faz merge parcial) - decisão simples porque o frontend
+(`Modulos.jsx#alternarModulo`) já manda sempre o conjunto completo
+desejado (estado atual + o toggle que acabou de mudar), então um PATCH
+parcial no backND seria complexidade sem necessidade real.
+
+### Webhook do WhatsApp agora respeita o módulo desligado, não só o toggle por atendimento
+
+Achado ao revisar `whatsapp.service.js#processarMensagemRecebida`: o
+toggle "Bot de IA Ativo" por atendimento (`Atendimento.iaAtiva`, Inbox
+Unificado de 2026-09-22 mais cedo) e o novo módulo `ia_whatsapp` por
+empresa são dois níveis de liga/desliga diferentes - sem checar os dois,
+desativar o módulo inteiro em `Modulos.jsx` esconderia o link da
+Sidebar, mas o webhook continuaria chamando a IA e respondendo mensagens
+em segundo plano (confuso pra quem está testando "eu desliguei, por que
+ainda está respondendo?"). Corrigido: `iaModuloAtivo =
+empresa.modulosAtivos.includes('ia_whatsapp')` - falso equivale a
+`iaAtiva: false` pra QUALQUER atendimento dessa empresa (a mensagem do
+cliente continua sendo salva, só a resposta automática para).
+
+### Textos desatualizados corrigidos (não é só código - a UI mentia)
+
+Como `segmento` deixou de decidir módulos, 3 lugares no frontend ficariam
+factualmente ERRADOS se não fossem ajustados: `Cadastro.jsx` ("Decide
+quais telas do sistema ficam disponíveis... dá pra mudar depois em
+Configurações" → agora aponta pra página Módulos), `DadosDaLoja.jsx`
+(mesmo texto, mesmo ajuste - e o comentário JSDoc do componente, que
+dizia "trocar de segmento aqui muda o array `modulos` na mesma resposta
+do PUT", virou o oposto do comportamento real) e o `Placeholder` de
+"Módulo indisponível" em `App.jsx` (dizia "ajuste o segmento de atuação
+... para liberar mais funcionalidades" - agora aponta pra Módulos, não
+mais pra Configurações > Dados da Loja).
+
+### Status de validação
+
+Backend testado de ponta a ponta contra o MySQL local (`node
+src/server.js`): `POST /auth/register` com segmento `moda_vestuario`
+confirmando os módulos iniciais certos (`vendas`/`pdv_touch`/`produtos`/
+`precificacao`/`estoque_avancado`/`clientes`/`financeiro`/`relatorios` -
+sem `agenda`/`tarefas`, que esse segmento não tem); `PUT /empresa/modulos`
+ativando `ia_whatsapp` (aceito); tentativa de remover `financeiro`
+(voltou forçado, confirmando a proteção de `MODULOS_BASE`); chave
+inválida (`422` como esperado); `GET /empresa/dados` refletindo o último
+PUT; `PUT /empresa/dados` trocando segmento pra `varejo_alimentacao`
+**sem** alterar `modulos` (confirmando a independência dos dois campos);
+webhook do WhatsApp com `ia_whatsapp` desligado (não chamou IA,
+`respondidoPelaIa: false`) e ligado (tentou chamar, `500` esperado sem
+`AI_API_KEY` real - mesma assinatura de erro já validada na tarefa do
+Inbox). `npx prisma format`/`db push` e o boot completo do Fastify
+confirmados sem erro.
+
+Frontend: `npm run lint` (oxlint) sem erro novo, `npm run build` (Vite)
+sem erro. Testado visualmente de ponta a ponta com Playwright headless
+(mesmo procedimento das tarefas anteriores de hoje - `web/.env` trocado
+temporariamente, revertido ao final): login, conferido que a Sidebar
+mostrava "PDV Rápido" mas NÃO "Inbox WhatsApp"/"Tarefas" (estado inicial
+do segmento `moda_vestuario`); na página Módulos, ativado "Inbox de
+Inteligência Artificial" e "Gestão de Equipe/Kanban", desativado "Frente
+de Loja (PDV)"; conferido que a Sidebar **já** refletia os 3 toggles sem
+nenhum F5 (via `refreshEmpresa()` chamado depois de cada PUT bem-sucedido)
+- "PDV Rápido" sumiu, "Inbox WhatsApp"/"Tarefas" apareceram; navegação
+direta pra `/inbox` carregou a página normalmente (módulo ativo);
+navegação direta pra `/pdv` mostrou o `Placeholder` "Módulo indisponível"
+(módulo desativado, confirmando que o catch-all de rota também respeita
+o novo estado, não só a Sidebar). `console --errors` vazio em todas as
+capturas. Empresa/usuário de teste apagados do banco local ao final
+(`empresaId` 21 e 22, 2 rodadas).
+
+**Pendências conhecidas, fora do escopo desta tarefa**: só 4 dos 8+
+módulos opcionais têm card/toggle real na App Store (ver decisão de
+escopo acima) - `precificacao`/`estoque_avancado`/`agenda`/`relatorios`
+continuam só via `MAPA_MODULOS` do cadastro, sem jeito de ligar/desligar
+depois sem chamar `PUT /empresa/modulos` direto (fora da UI); sem
+autorização por `role` (mesma lacuna de sempre - qualquer usuário
+autenticado liga/desliga módulos da empresa inteira, não só admin); a
+migração de dados de produção pendente da tarefa do Kanban
+(`status_concluida` → `status`) **continua pendente**, e agora tem uma
+segunda pendência parecida: se já existir uma empresa real em produção
+(criada antes desta tarefa), ela vai ter `modulosAtivos = null` até
+alguém salvar algo em Módulos ou os campos serem migrados manualmente -
+o fallback `modulosAtivos ?? modulosDoSegmento(segmento)` (auth.service.js/
+empresa.service.js) cobre esse caso automaticamente, mas vale confirmar
+com um teste real contra produção antes de considerar encerrado lá.

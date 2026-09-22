@@ -116,25 +116,35 @@ model Empresa {
   // Decimal (nao Float) pelo mesmo motivo de Produto.custo/precoVenda
   // abaixo: dinheiro nunca deve usar ponto flutuante binario.
   valorContribuicao Decimal      @default(0.00) @map("valor_contribuicao") @db.Decimal(10, 2)
-  // Segmento de atuacao da empresa - hoje a raiz de DOIS mecanismos
-  // distintos, nao confundir os dois:
-  //   1) Gates de regra de negocio pontuais e ja existentes (ex.: so
-  //      "varejo_alimentacao" desbloqueia Ficha Tecnica de ingredientes em
-  //      Produto, ver FichaTecnica abaixo, e as formas de pagamento
-  //      "Consumo Interno"/"Doacao" em Venda).
-  //   2) SaaS modular (nesta tarefa): decide quais MODULOS/telas de negocio
-  //      ficam disponiveis pra essa empresa (PDV, Estoque Avancado, Agenda
-  //      etc.) - MAPA_MODULOS em auth.service.js e a fonte da verdade dessa
-  //      associacao segmento -> modulos[], consumida por
-  //      GET /empresa/dados e pelo login/register (campo `modulos` no
-  //      objeto `empresa` da resposta). O React (App.jsx/Sidebar.jsx) so
-  //      monta rota/menu pra um modulo se a chave dele estiver nesse array.
-  // String solto (nao enum), mesmo motivo de sempre: o conjunto de valores
-  // aceitos (`SEGMENTOS_VALIDOS`, agora derivado de `Object.keys(MAPA_MODULOS)`
-  // em auth.service.js) pode crescer sem exigir migration. SEM default
+  // Segmento de atuacao da empresa - gate de regras de negocio pontuais
+  // (ex.: so "varejo_alimentacao" desbloqueia Ficha Tecnica de ingredientes
+  // em Produto, ver FichaTecnica abaixo, e as formas de pagamento "Consumo
+  // Interno"/"Doacao" em Venda). NAO decide mais quais modulos/telas ficam
+  // disponiveis (ver `modulosAtivos` abaixo, arquitetura modular de
+  // 2026-09-22) - so serve de PONTO DE PARTIDA pros modulos no cadastro
+  // (`modulosDoSegmento(segmento)` em auth.service.js#register), depois
+  // disso os dois campos evoluem de forma independente. String solto (nao
+  // enum), mesmo motivo de sempre: o conjunto de valores aceitos
+  // (`SEGMENTOS_VALIDOS`, derivado de `Object.keys(MAPA_MODULOS)` em
+  // auth.service.js) pode crescer sem exigir migration. SEM default
   // proposital (campo obrigatorio) - todo cadastro novo (Cadastro.jsx) exige
   // escolher um segmento explicitamente, nao ha mais um "outros" implicito.
   segmento          String       @db.VarChar(30)
+  // Arquitetura Modular SaaS (2026-09-22, ultimo passo do roadmap):
+  // catalogo de chaves de modulo (String[], as mesmas chaves ja usadas por
+  // `ROTAS_POR_MODULO` em web/src/App.jsx e pelos campos `modulo` de
+  // web/src/components/Sidebar.jsx) que a EMPRESA (nao mais o segmento)
+  // decide ligar/desligar via GET/PUT /empresa/modulos (Modulos.jsx, a
+  // "App Store" do SaaS). Json (nao uma tabela relacional `empresas_modulos`)
+  // pelo mesmo motivo ja registrado pra `MAPA_MODULOS`: o catalogo e
+  // pequeno, JSON evita uma tabela + N queries so pra ler um array curto de
+  // strings. Populado no cadastro com `modulosDoSegmento(segmento)` (ver
+  // register() em auth.service.js) - so o valor INICIAL, mutavel dali em
+  // diante pela empresa. `Json?` (nao `Json` obrigatorio) so por seguranca
+  // de schema (linhas antigas sem o campo preenchido) - a aplicacao sempre
+  // trata `null` como "usa o default de modulos base", nunca deixa a API
+  // devolver `null` pro frontend (ver empresa.service.js).
+  modulosAtivos     Json?        @default("[\"vendas\", \"financeiro\", \"produtos\"]") @map("modulos_ativos")
   criadoEm          DateTime     @default(now()) @map("criado_em")
   atualizadoEm      DateTime     @default(now()) @updatedAt @map("atualizado_em")
 

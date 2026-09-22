@@ -8,59 +8,115 @@ const SALT_ROUNDS = 10;
 const TAMANHO_DOCUMENTO = { PF: 11, PJ: 14 };
 
 /**
- * SaaS modular: cada chave e um "segmento de atuacao" que a empresa escolhe
- * no cadastro (Cadastro.jsx) ou depois em Configuracoes > Dados da Loja - o
- * valor associado e a lista de MODULOS de negocio liberados pra essa
- * empresa. O frontend (App.jsx/Sidebar.jsx) so monta a rota/o item de menu
- * de um modulo se a chave dele estiver presente no array `modulos` (devolvido
- * dentro de `empresa` no JSON de login/registro e de GET /empresa/dados -
- * ver `modulosDoSegmento` abaixo e empresa.service.js).
+ * Arquitetura Modular SaaS (2026-09-22, ultimo passo do roadmap) - quem
+ * decide quais MODULOS/telas de negocio ficam disponiveis pra uma empresa
+ * e o campo `Empresa.modulosAtivos` (Json, ver schema.prisma), editavel
+ * pela propria empresa em Modulos.jsx ("App Store", `PUT /empresa/modulos`
+ * -> `empresaService.atualizarModulos`) - NAO MAIS o `segmento` sozinho.
  *
- * Este dicionario e a UNICA fonte da verdade da associacao segmento->modulos
- * (nao existe tabela relacional "empresas_modulos" no banco, por decisao de
- * projeto - orquestracao em memoria no backend e suficiente pro tamanho
- * atual do catalogo de modulos). `SEGMENTOS_VALIDOS` (usado pra validar o
- * `segmento` recebido no cadastro/atualizacao) e derivado das chaves deste
- * mapa, nunca mantido como uma segunda lista solta - evita as duas listas
- * saírem de sincronia entre si.
+ * `MAPA_MODULOS` abaixo sobrevive com um papel mais estreito: e usado
+ * SOMENTE em `register()`, pra calcular o conjunto INICIAL de
+ * `modulosAtivos` a partir do segmento escolhido no cadastro (um ponto de
+ * partida sensato pro tipo de negocio) - depois do cadastro, os dois
+ * campos evoluem independentes (trocar de segmento em Configuracoes nao
+ * mexe mais em `modulosAtivos`, ver empresa.service.js#atualizarDados).
+ * `SEGMENTOS_VALIDOS` (valida o `segmento` recebido no cadastro/
+ * atualizacao) continua derivado das chaves deste mapa.
  *
- * Chaves de modulo usadas hoje (precisam bater com `ROTAS_POR_MODULO` em
+ * Chaves de modulo (precisam bater com `ROTAS_POR_MODULO` em
  * web/src/App.jsx e com os campos `modulo` de web/src/components/Sidebar.jsx):
- * 'pdv', 'produtos', 'precificacao', 'estoque_avancado', 'clientes',
- * 'financeiro', 'agenda', 'relatorios'. Dashboard, Configuracoes, Modulos,
- * Suporte e Notas ficam de fora deste mapa de proposito - sao paginas
- * sempre acessiveis, independentes de segmento.
+ * - Base (`MODULOS_BASE` abaixo) - sempre presentes em `modulosAtivos` de
+ *   toda empresa, nunca aparecem como toggle na App Store, nem podem ser
+ *   removidos via `atualizarModulos` (reforcado no service): 'vendas',
+ *   'financeiro', 'produtos'.
+ * - Opcionais com toggle real na App Store (Modulos.jsx): 'pdv_touch' (PDV
+ *   Rapido/Frente de Loja em tela cheia - ANTES chamado soh de 'pdv', que
+ *   cobria Vendas+PDV Touch juntos; separado nesta tarefa pra Vendas virar
+ *   base e PDV Touch virar opcional de verdade), 'clientes' (CRM/Perfil
+ *   360), 'ia_whatsapp' (Inbox Unificado de WhatsApp), 'tarefas' (Quadro
+ *   de Tarefas Kanban - ANTES compartilhava a chave 'agenda' com a Agenda,
+ *   desacoplado nesta tarefa pra virar um toggle independente).
+ * - Opcionais legados (ainda liberados via `modulosDoSegmento` no
+ *   cadastro, mas sem card proprio na App Store ainda - fora do escopo
+ *   desta tarefa, ver NOTAS_IMPORTANTES.md): 'precificacao',
+ *   'estoque_avancado', 'agenda', 'relatorios'.
+ * Dashboard, Configuracoes, Modulos e Suporte ficam de fora deste mapa de
+ * proposito - sao paginas sempre acessiveis, independentes de modulo.
  */
 const MAPA_MODULOS = {
   // Ex.: padarias, mercados, restaurantes - precisa do catalogo completo,
   // inclusive controle de estoque fino (perecivel) e Ficha Tecnica de
   // ingredientes (gate a parte, ver Empresa.segmento no schema.prisma).
   varejo_alimentacao: [
-    'pdv',
+    'vendas',
+    'pdv_touch',
     'produtos',
     'precificacao',
     'estoque_avancado',
     'clientes',
     'financeiro',
     'agenda',
+    'tarefas',
     'relatorios',
   ],
   // Ex.: lojas de roupa/calcados/acessorios - varejo com estoque por
   // grade (tamanho/cor), mas sem a rotina de agendamento de um prestador
   // de servico.
-  moda_vestuario: ['pdv', 'produtos', 'precificacao', 'estoque_avancado', 'clientes', 'financeiro', 'relatorios'],
+  moda_vestuario: [
+    'vendas',
+    'pdv_touch',
+    'produtos',
+    'precificacao',
+    'estoque_avancado',
+    'clientes',
+    'financeiro',
+    'relatorios',
+  ],
   // Ex.: personal trainers, estudios, clinicas pequenas - foco em
   // clientes/agenda (a rotina e "hora marcada", nao "balcao"); ainda vende
   // produtos (suplementos, planos) mas sem o peso de um controle de
   // estoque avancado.
-  saude_fitness: ['pdv', 'produtos', 'clientes', 'agenda', 'financeiro', 'relatorios'],
+  saude_fitness: ['vendas', 'pdv_touch', 'produtos', 'clientes', 'agenda', 'tarefas', 'financeiro', 'relatorios'],
   // Ex.: oficinas mecanicas - servico agendado (ordem de servico) +
   // pecas/produtos vendidos junto, sem necessidade de um modulo de
   // precificacao/estoque tao fino quanto o varejo.
-  servicos_automotivos: ['pdv', 'produtos', 'clientes', 'agenda', 'financeiro', 'relatorios'],
+  servicos_automotivos: [
+    'vendas',
+    'pdv_touch',
+    'produtos',
+    'clientes',
+    'agenda',
+    'tarefas',
+    'financeiro',
+    'relatorios',
+  ],
 };
 
 const SEGMENTOS_VALIDOS = Object.keys(MAPA_MODULOS);
+
+// Sempre presentes em `modulosAtivos`, pra toda empresa - o menu principal
+// "extremamente limpo" pedido nesta tarefa parte do princípio de que essas
+// 3 telas nunca somem, entao nem valia a pena virar um toggle removivel.
+// Reforcado em empresa.service.js#atualizarModulos (nunca aceita um
+// array sem os 3).
+const MODULOS_BASE = ['vendas', 'financeiro', 'produtos'];
+
+// Catalogo completo de chaves aceitas por `atualizarModulos` - inclui os
+// modulos com toggle na App Store E os legados (ainda vinculados so ao
+// segmento no cadastro, ver comentario de MAPA_MODULOS acima) - um valor
+// fora desta lista e rejeitado (422), protege contra a empresa "inventar"
+// uma chave que nao corresponde a nenhuma rota/menu real.
+const MODULOS_VALIDOS = [
+  ...MODULOS_BASE,
+  'pdv_touch',
+  'clientes',
+  'ia_whatsapp',
+  'tarefas',
+  'precificacao',
+  'estoque_avancado',
+  'agenda',
+  'relatorios',
+];
 
 /** Lista de modulos liberados para um segmento - `[]` (nao erro) para um segmento desconhecido, defensivo. */
 function modulosDoSegmento(segmento) {
@@ -105,6 +161,13 @@ async function register(
 
   const senhaHash = await bcrypt.hash(senha, SALT_ROUNDS);
 
+  // Ponto de partida dos modulos desta empresa - calculado UMA VEZ aqui, a
+  // partir do segmento escolhido no cadastro, e persistido de verdade em
+  // `modulosAtivos` (nao mais recalculado a cada leitura, ver
+  // empresa.service.js#obterDados). Dali em diante e a propria empresa quem
+  // decide, via Modulos.jsx.
+  const modulosIniciais = modulosDoSegmento(segmento);
+
   const { empresa, usuario } = await prisma.$transaction(async (tx) => {
     const empresa = await tx.empresa.create({
       // `segmento` agora e obrigatorio (schema.prisma nao tem mais
@@ -116,6 +179,7 @@ async function register(
         documento,
         segmento,
         nomeLoja: nome_loja || null,
+        modulosAtivos: modulosIniciais,
       },
     });
 
@@ -145,13 +209,14 @@ async function register(
       tipoPessoa: empresa.tipoPessoa,
       documento: empresa.documento,
       segmento: empresa.segmento,
-      // Modulos de negocio liberados pra essa empresa, calculados AGORA a
-      // partir do segmento escolhido no cadastro - nunca guardados no JWT
-      // (payload do token continua so com sub/empresa_id/role, ver
-      // `gerarToken` acima), so no corpo desta resposta. O frontend
-      // (AuthContext#persistirSessao) guarda este array em `empresa.modulos`
-      // pra decidir quais rotas/itens de menu montar (ver App.jsx/Sidebar.jsx).
-      modulos: modulosDoSegmento(empresa.segmento),
+      // Modulos de negocio liberados pra essa empresa - o valor persistido
+      // em `modulosAtivos` (nao mais recalculado do segmento a cada
+      // resposta). Nunca guardados no JWT (payload do token continua so
+      // com sub/empresa_id/role, ver `gerarToken` acima), so no corpo desta
+      // resposta. O frontend (AuthContext#persistirSessao) guarda este
+      // array em `empresa.modulos` pra decidir quais rotas/itens de menu
+      // montar (ver App.jsx/Sidebar.jsx).
+      modulos: modulosIniciais,
     },
     usuario: {
       id: usuario.id,
@@ -176,12 +241,13 @@ async function register(
 async function login(fastify, { email, senha }) {
   const { prisma } = fastify;
 
-  // `include: { empresa: ... }` so pra ler o `segmento` dela - precisamos
-  // saber quais modulos essa empresa tem liberados pra montar a resposta
-  // abaixo (nao seria possivel calcular `modulos` so com o `usuario`).
+  // `include: { empresa: ... }` so pra ler `modulosAtivos`/`segmento` dela -
+  // precisamos montar a resposta abaixo (nao seria possivel so com o
+  // `usuario`). `segmento` continua selecionado so pro fallback defensivo
+  // de `modulosAtivos` nulo (ver comentario abaixo).
   const usuario = await prisma.usuario.findFirst({
     where: { email },
-    include: { empresa: { select: { segmento: true } } },
+    include: { empresa: { select: { segmento: true, modulosAtivos: true } } },
   });
   if (!usuario) {
     return null;
@@ -200,12 +266,16 @@ async function login(fastify, { email, senha }) {
     // dados cadastrais da empresa (razaoSocial, plano etc.) o frontend ja
     // busca em seguida via GET /empresa/dados (AuthContext#refreshEmpresa,
     // disparado automaticamente a cada login/reidratacao). Essa rota
-    // tambem devolve `modulos` (ver empresa.service.js#obterDados) usando
-    // o MESMO `modulosDoSegmento` - login so adianta esse dado pra nao
-    // esperar essa segunda chamada terminar antes de decidir quais
-    // rotas/menus montar.
+    // tambem devolve `modulos` (ver empresa.service.js#obterDados) - login
+    // so adianta esse dado pra nao esperar essa segunda chamada terminar
+    // antes de decidir quais rotas/menus montar.
+    //
+    // Fallback pra `modulosDoSegmento` so protege linhas antigas sem
+    // `modulosAtivos` preenchido (nunca deveria acontecer pra uma empresa
+    // criada depois desta tarefa, ja que `register` sempre popula o
+    // campo) - nao e o caminho normal.
     empresa: {
-      modulos: modulosDoSegmento(usuario.empresa.segmento),
+      modulos: usuario.empresa.modulosAtivos ?? modulosDoSegmento(usuario.empresa.segmento),
     },
     usuario: {
       id: usuario.id,
@@ -216,4 +286,4 @@ async function login(fastify, { email, senha }) {
   };
 }
 
-module.exports = { register, login, MAPA_MODULOS, SEGMENTOS_VALIDOS, modulosDoSegmento };
+module.exports = { register, login, MAPA_MODULOS, SEGMENTOS_VALIDOS, MODULOS_BASE, MODULOS_VALIDOS, modulosDoSegmento };

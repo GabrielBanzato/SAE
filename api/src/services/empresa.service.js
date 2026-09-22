@@ -1,11 +1,10 @@
 const bcrypt = require('bcryptjs');
 const AppError = require('../utils/AppError');
-// SEGMENTOS_VALIDOS/modulosDoSegmento moraram aqui ate esta tarefa - agora
-// vivem em auth.service.js, ao lado de MAPA_MODULOS (a fonte da verdade da
-// associacao segmento -> modulos de negocio liberados, usada tanto no
-// cadastro/login quanto aqui). Reexportados abaixo por compatibilidade -
-// nenhum outro arquivo alem deste precisa saber que a definicao migrou.
-const { SEGMENTOS_VALIDOS, modulosDoSegmento } = require('./auth.service');
+// SEGMENTOS_VALIDOS/modulosDoSegmento/MODULOS_BASE/MODULOS_VALIDOS moram em
+// auth.service.js, ao lado de MAPA_MODULOS (a fonte da verdade do catalogo
+// de modulos). Reexportados abaixo por compatibilidade - nenhum outro
+// arquivo alem deste precisa saber que a definicao mora la.
+const { SEGMENTOS_VALIDOS, MODULOS_BASE, MODULOS_VALIDOS, modulosDoSegmento } = require('./auth.service');
 
 const SALT_ROUNDS = 10;
 
@@ -36,6 +35,7 @@ async function obterDados(prisma, tenantId) {
       telefone: true,
       plano: true,
       segmento: true,
+      modulosAtivos: true,
       valorContribuicao: true,
       criadoEm: true,
       atualizadoEm: true,
@@ -46,14 +46,17 @@ async function obterDados(prisma, tenantId) {
     throw new AppError('Empresa nao encontrada.', 404);
   }
 
-  // `modulos` e computado aqui (nao uma coluna do banco) toda vez que os
-  // dados da empresa sao lidos - nao so no login - pra nunca ficar
-  // desatualizado se o segmento mudar depois (ver `atualizarDados` abaixo).
-  // O AuthContext do frontend chama esta rota a cada reidratacao de sessao
-  // e sobrescreve o `empresa` local com a resposta, entao um `modulos`
-  // ausente aqui apagaria (silenciosamente) o valor que o login tinha
-  // acabado de calcular.
-  return { ...empresa, modulos: modulosDoSegmento(empresa.segmento) };
+  // `modulos` (exposto ao frontend, ver App.jsx/Sidebar.jsx) vem direto do
+  // campo persistido `modulosAtivos` - deixou de ser recalculado do
+  // segmento a cada leitura (arquitetura modular de 2026-09-22, ver
+  // auth.service.js). O AuthContext do frontend chama esta rota a cada
+  // reidratacao de sessao e sobrescreve o `empresa` local com a resposta,
+  // entao um `modulos` ausente aqui apagaria (silenciosamente) o que o
+  // login/Modulos.jsx tinham acabado de definir - por isso o `select`
+  // acima sempre inclui `modulosAtivos`, e o fallback abaixo (so pra linhas
+  // antigas sem o campo preenchido) nunca deixa `modulos` sair `null`.
+  const { modulosAtivos, ...dadosPublicos } = empresa;
+  return { ...dadosPublicos, modulos: modulosAtivos ?? modulosDoSegmento(empresa.segmento) };
 }
 
 /**
@@ -101,17 +104,54 @@ async function atualizarDados(prisma, tenantId, { razaoSocial, nomeLoja, enderec
       telefone: true,
       plano: true,
       segmento: true,
+      modulosAtivos: true,
       valorContribuicao: true,
       atualizadoEm: true,
     },
   });
 
-  // Trocar de segmento aqui muda os modulos liberados na mesma resposta -
-  // essencial pra DadosDaLoja.jsx poder repassar o `empresa` atualizado pro
-  // AuthContext (`onEmpresaAtualizada`/`refreshEmpresa`, ver o componente)
-  // e o App.jsx/Sidebar.jsx refletirem o novo conjunto de rotas/menus sem
-  // precisar de um novo login.
-  return { ...empresa, modulos: modulosDoSegmento(empresa.segmento) };
+  // Trocar de segmento AQUI NAO mexe mais em `modulosAtivos` (arquitetura
+  // modular de 2026-09-22, ver auth.service.js) - segmento agora so gateia
+  // regras de negocio pontuais (Ficha Tecnica, Consumo Interno/Doacao).
+  // `modulos` ainda vai na resposta (mesmo padrao de sempre, pro
+  // DadosDaLoja.jsx repassar pro AuthContext via `refreshEmpresa`) - so que
+  // agora e o valor persistido, nao mais recalculado do novo segmento.
+  const { modulosAtivos, ...dadosPublicos } = empresa;
+  return { ...dadosPublicos, modulos: modulosAtivos ?? modulosDoSegmento(empresa.segmento) };
+}
+
+/**
+ * Liga/desliga modulos de negocio (Modulos.jsx, a "App Store" do SaaS) -
+ * substitui o array inteiro pelo recebido (nao um merge parcial: o
+ * frontend sempre manda o conjunto completo desejado, ja calculado a
+ * partir do estado atual + o toggle que acabou de mudar).
+ *
+ * `MODULOS_BASE` (Vendas/Financeiro/Produtos) e forcado a sempre estar
+ * presente, mesmo que o body nao mande ou mande sem eles - reforca no
+ * backend o que a UI (Modulos.jsx) ja nao oferece como toggle, protege
+ * contra uma chamada direta a API tentando desligar o essencial.
+ */
+async function atualizarModulos(prisma, tenantId, modulos) {
+  if (!Array.isArray(modulos)) {
+    throw new AppError('modulos deve ser uma lista de chaves de modulo.', 422);
+  }
+
+  const invalidos = modulos.filter((chave) => !MODULOS_VALIDOS.includes(chave));
+  if (invalidos.length > 0) {
+    throw new AppError(`modulos contem chaves invalidas: ${invalidos.join(', ')}.`, 422);
+  }
+
+  // Set (nao array) so pra deduplicar antes de persistir - o body pode
+  // repetir uma chave sem intencao (ex.: MODULOS_BASE mandado + ja presente).
+  const modulosFinais = [...new Set([...MODULOS_BASE, ...modulos])];
+
+  const empresa = await prisma.empresa.update({
+    where: { id: tenantId },
+    data: { modulosAtivos: modulosFinais },
+    select: { id: true, modulosAtivos: true },
+  });
+
+  return { modulos: empresa.modulosAtivos };
 }
 
 /**
@@ -223,6 +263,7 @@ async function atualizarAssinatura(prisma, tenantId, { plano, valorContribuicao 
 module.exports = {
   obterDados,
   atualizarDados,
+  atualizarModulos,
   listarUsuarios,
   adicionarUsuario,
   atualizarAssinatura,

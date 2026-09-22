@@ -4,10 +4,12 @@ import { apiFetch } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import TipoPessoaToggle from '../TipoPessoaToggle';
 
-// Chaves precisam bater com MAPA_MODULOS em api/src/services/auth.service.js
-// (decide os modulos de negocio liberados - ver App.jsx/Sidebar.jsx) e com a
-// mesma lista em pages/Cadastro.jsx (segmento tambem e escolhido no cadastro
-// inicial, obrigatorio desde essa tarefa).
+// Chaves precisam bater com SEGMENTOS_VALIDOS em
+// api/src/services/auth.service.js e com a mesma lista em pages/Cadastro.jsx
+// (segmento tambem e escolhido no cadastro inicial, obrigatorio desde essa
+// tarefa). Nao decide mais os modulos ativos (ver App.jsx/Sidebar.jsx/
+// pages/Modulos.jsx) - so regras de negocio pontuais (Ficha Tecnica,
+// Consumo Interno/Doacao).
 const SEGMENTOS = [
   { valor: 'varejo_alimentacao', rotulo: 'Varejo Alimentício' },
   { valor: 'moda_vestuario', rotulo: 'Moda e Vestuário' },
@@ -62,12 +64,13 @@ function Campo({ label, value, onChange, placeholder, disabled = false, dica }) 
  * `refreshEmpresa()` do AuthContext e chamado logo em seguida - mesmo
  * motivo de Assinatura.jsx: a copia de `empresa` cacheada la (usada por
  * Relatorios.jsx, Estoque.jsx/ModalProduto.jsx pro gate de segmento
- * "varejo_alimentacao", Vendas.jsx pro gate de forma de pagamento, e agora
- * tambem App.jsx/Sidebar.jsx pro roteamento/menu modular por `modulos`) so
- * atualizaria depois de um novo login/reload sem essa chamada explicita -
- * trocar de segmento aqui muda o array `modulos` na mesma resposta do PUT
- * (ver empresa.service.js#atualizarDados), entao rotas/menus se atualizam
- * sem precisar de um novo login.
+ * "varejo_alimentacao", Vendas.jsx pro gate de forma de pagamento) so
+ * atualizaria depois de um novo login/reload sem essa chamada explicita.
+ * Trocar de segmento aqui NAO mexe mais no array `modulos` (arquitetura
+ * modular de 2026-09-22 - ver empresa.service.js#atualizarDados) - segmento
+ * agora so afeta regras de negocio pontuais (Ficha Tecnica, Consumo
+ * Interno/Doacao); pra ligar/desligar telas do sistema, use a pagina
+ * Modulos.
  *
  * "Apelido/Fantasia" agora tem equivalente real no schema (`Empresa.nomeLoja`,
  * campo novo) - persiste de verdade junto com o resto do formulario.
@@ -186,9 +189,8 @@ export default function DadosDaLoja({ empresa, onEmpresaAtualizada }) {
             ))}
           </select>
           <span className="mt-1 block text-sm text-slate-400 dark:text-slate-500">
-            Decide quais telas do sistema ficam disponíveis pra sua loja. Empresas do segmento Varejo Alimentício
-            ganham opções extras na tela de Vendas (Consumo Interno, Doação) e podem usar Ficha Técnica de
-            ingredientes.
+            Empresas do segmento Varejo Alimentício ganham opções extras na tela de Vendas (Consumo Interno, Doação)
+            e podem usar Ficha Técnica de ingredientes. Para ligar/desligar telas do sistema, use a página Módulos.
           </span>
         </label>
       </div>

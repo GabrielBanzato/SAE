@@ -66,7 +66,7 @@ async function processarMensagemRecebida(prisma, empresaId, { from, text }) {
     throw new AppError('from e text sao obrigatorios.', 400);
   }
 
-  const empresa = await prisma.empresa.findUnique({ where: { id: empresaId } });
+  const empresa = await prisma.empresa.findUnique({ where: { id: empresaId }, select: { modulosAtivos: true } });
   if (!empresa) {
     throw new AppError('Empresa nao encontrada.', 404);
   }
@@ -76,7 +76,14 @@ async function processarMensagemRecebida(prisma, empresaId, { from, text }) {
 
   await registrarMensagem(prisma, atendimento.id, REMETENTE.CLIENTE, text);
 
-  if (!atendimento.iaAtiva) {
+  // Modulo 'ia_whatsapp' desligado (Modulos.jsx - arquitetura modular de
+  // 2026-09-22) equivale a `iaAtiva: false` pra QUALQUER atendimento desta
+  // empresa: a mensagem do cliente continua sendo guardada (nunca se perde
+  // um webhook recebido), so a resposta automatica para - mesmo efeito do
+  // toggle "Bot de IA Ativo" por atendimento, so que no nivel da empresa
+  // inteira.
+  const iaModuloAtivo = (empresa.modulosAtivos || []).includes('ia_whatsapp');
+  if (!atendimento.iaAtiva || !iaModuloAtivo) {
     return { atendimento, respondidoPelaIa: false };
   }
 
