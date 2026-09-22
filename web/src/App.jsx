@@ -31,6 +31,7 @@ const Relatorios = lazy(() => import('./pages/Relatorios'));
 const Configuracoes = lazy(() => import('./pages/Configuracoes'));
 const Modulos = lazy(() => import('./pages/Modulos'));
 const Suporte = lazy(() => import('./pages/Suporte'));
+const InboxUnificado = lazy(() => import('./pages/InboxUnificado'));
 
 /**
  * Rotas de pagina LIGADAS a um modulo de negocio (chave precisa bater com
@@ -101,6 +102,11 @@ function RotasDaAplicacao() {
             <Route path="/configuracoes" element={<Configuracoes />} />
             <Route path="/modulos" element={<Modulos />} />
             <Route path="/suporte" element={<Suporte />} />
+            {/* Inbox Unificado de WhatsApp - assim como Modulos/Suporte, fora de
+                ROTAS_POR_MODULO de proposito: nao existe uma chave de segmento
+                pra isso em MAPA_MODULOS (auth.service.js) ainda, entao fica
+                acessivel a qualquer empresa, sem gate nenhum. */}
+            <Route path="/inbox" element={<InboxUnificado />} />
 
             {/* Catch-all: cobre tanto uma URL que nunca existiu quanto uma
                 rota de modulo que existe no app mas nao pra esta empresa

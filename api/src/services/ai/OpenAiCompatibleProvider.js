@@ -40,8 +40,16 @@ class OpenAiCompatibleProvider extends AiProvider {
 
     const baseURL = process.env.AI_BASE_URL || undefined;
 
+    // Fallback sempre presente (nao so no ramo Ollama) - o SDK da OpenAI
+    // lanca na hora de CONSTRUIR o client se `apiKey` vier `undefined`
+    // (nao so quando chamado). Como este provedor e instanciado 1 vez no
+    // module-load de services/ai/index.js, um `.env` sem AI_API_KEY (comum
+    // em dev, ver .env.example) derrubaria o boot inteiro da API assim que
+    // qualquer rota importasse services/ai - mesmo sem nunca chamar
+    // generateResponse de verdade. Com o fallback, o erro real (401 da
+    // OpenAI por chave invalida) so aparece na hora de uma chamada de fato.
     this.client = new OpenAI({
-      apiKey: process.env.AI_API_KEY || (baseURL ? 'ollama-nao-valida-chave' : undefined),
+      apiKey: process.env.AI_API_KEY || (baseURL ? 'ollama-nao-valida-chave' : 'chave-nao-configurada'),
       baseURL,
     });
 

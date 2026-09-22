@@ -17,6 +17,7 @@ import {
   Building2,
   LayoutGrid,
   LifeBuoy,
+  MessageCircle,
   Sun,
   Moon,
   ChevronLeft,
@@ -81,6 +82,11 @@ const ITEM_DASHBOARD = { label: 'Dashboard', to: '/', icon: LayoutDashboard };
 // e em destaque pro caixa rapido de balcao (rota sem Sidebar, ver
 // pages/PDV.jsx), nao mais uma tela "administrativa" pra esconder numa gaveta.
 const ITEM_PDV = { label: 'PDV Rápido', to: '/pdv', icon: Zap, modulo: 'pdv' };
+// Inbox Unificado de WhatsApp: sem campo `modulo` (mesmo motivo de
+// ITEM_MODULOS/ITEM_SUPORTE abaixo) - nao existe chave de segmento pra isso
+// em MAPA_MODULOS ainda, entao fica sempre visivel, independente de
+// segmento/empresa.
+const ITEM_INBOX = { label: 'Inbox WhatsApp', to: '/inbox', icon: MessageCircle };
 const ITEM_MODULOS = { label: 'Módulos', to: '/modulos', icon: LayoutGrid };
 const ITEM_SUPORTE = { label: 'Suporte', to: '/suporte', icon: LifeBuoy };
 
@@ -344,6 +350,7 @@ export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFechar
           );
         })}
 
+        <ItemDireto {...ITEM_INBOX} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
         <ItemDireto {...ITEM_MODULOS} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
         <ItemDireto {...ITEM_SUPORTE} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
       </nav>

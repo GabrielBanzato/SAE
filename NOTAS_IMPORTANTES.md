@@ -5976,3 +5976,183 @@ mesmo drift (schema.prisma novo, banco desatualizado) - precisa rodar o
 mesmo `npx prisma db push` (ou uma migration de verdade) com o
 `DATABASE_URL` de produção antes de considerar isso resolvido lá. Docker
 Desktop ficou rodando ao final desta sessão (estava parado antes).
+
+---
+
+## Inbox Unificado de WhatsApp com handoff IA <-> Humano (Passo 6 do roadmap) (2026-09-22)
+
+### O que já existia vs. o que faltava
+
+A arquitetura de providers (`AiProvider`/`WhatsAppProvider`, Strategy/Adapter,
+ver a entrada "Arquitetura backend do módulo 'IA no WhatsApp'" de
+2026-09-16) já estava pronta, mas **nada a consumia ainda** -
+`services/ai`/`services/whatsapp` não apareciam em nenhuma rota
+(`routes/index.js`) nem em nenhum model do Prisma. Esta tarefa fechou esse
+ciclo: schema novo (`Atendimento`/`Mensagem`), o serviço que liga webhook +
+IA + WhatsApp + persistência, e a tela de atendimento (Inbox) no frontend.
+
+### Schema: `Atendimento` e `Mensagem`
+
+Seguido o mesmo padrão de todo o resto do `schema.prisma` (camelCase +
+`@map`/`@@map` pra snake_case, `Int @db.UnsignedInt` como PK, índices
+nomeados `idx_<tabela>_...`): `Atendimento` (`empresaId`, `clienteId`,
+`status` String solto default `"ABERTO"` - mesmo motivo de
+`Cliente.statusCrm`/`Empresa.segmento`, o conjunto de valores mora na
+aplicação, não no banco -, `iaAtiva` Boolean default `true`, `dataCriacao`)
+e `Mensagem` (`atendimentoId`, `remetente` String solto - `"CLIENTE"`/
+`"BOT"`/`"HUMANO"` -, `conteudo` `@db.Text` - sem limite curto de
+propósito, resposta de IA pode ser longa -, `timestamp`). `Atendimento.cliente`
+usa `onDelete: Restrict` (mesmo motivo de `Venda.clienteId` - preserva
+histórico de conversa, não deixa apagar um cliente com atendimento
+registrado); `Mensagem.atendimento` usa `Cascade` (mensagem não existe sem
+o atendimento-pai). Índice composto
+`@@index([empresaId, clienteId, status])` em `Atendimento` porque é
+exatamente a consulta que o webhook faz a cada mensagem recebida ("existe
+um atendimento ABERTO pra este cliente desta empresa?").
+
+Rodado `npx prisma db push --accept-data-loss` no banco local (mesma
+decisão já registrada nas entradas de 2026-09-17/18 - `migrate dev` recusou
+por causa do mesmo drift antigo que já existia nesse banco, pedindo reset
+destrutivo). Sem perda de dado real (só as 2 tabelas novas sendo criadas).
+**Mesma pendência de sempre**: se existir um banco de produção separado,
+precisa do mesmo `db push` (ou uma migration formal) lá antes do deploy -
+ver a entrada de 2026-09-18 pro mesmo aviso já dado sobre `segmento`.
+
+### Backend é Fastify, não Express - webhook público identificado pela URL
+
+O pedido original mencionava "webhooks" e "rotas" em termos genéricos, mas
+o projeto usa **Fastify** (não Express) - segui o padrão exato já
+estabelecido (`clientes.routes.js`/`.controller.js`/`.service.js`,
+`AppError` pra erro de negócio, `request.server.prisma`/`request.tenantId`
+vindos do plugin de auth). Três arquivos novos:
+`services/whatsapp.service.js` (regra de negócio), `controllers/whatsapp.controller.js`,
+`routes/whatsapp.routes.js` (registrado em `routes/index.js` com prefixo
+`/whatsapp`).
+
+**Decisão não trivial, registrada aqui de propósito**: como identificar o
+tenant (`empresaId`) de uma mensagem recebida via webhook? O app inteiro é
+multi-tenant, mas `getWhatsAppProvider()` (fábrica em
+`services/whatsapp/index.js`) é global - decidida por uma única variável de
+ambiente (`WHATSAPP_PROVIDER`), sem nenhum conceito de "sessão de WhatsApp
+por empresa" ainda (as duas classes concretas, `BaileysProvider`/
+`MetaApiProvider`, continuam mocks/TODO). Não existe hoje nenhum jeito de
+uma mensagem recebida "saber" de qual empresa ela é. Resolvido da forma
+mais simples e sem inventar schema novo: a rota pública recebe o tenant na
+própria URL (`POST /whatsapp/webhook/:empresaId`, `config: { public: true }`
+- pula o hook global de JWT, senão a Meta/Baileys nunca conseguiria chamar
+essa rota). **Isso é uma simplificação deliberada pra fechar esta tarefa,
+não a solução final**: numa integração real, cada empresa que ativasse o
+módulo precisaria de sua própria sessão Baileys (QR Code próprio) ou
+credenciais Meta próprias (`META_PHONE_NUMBER_ID` por empresa, não uma
+única variável global) - e o `empresaId` viria de olhar qual sessão/número
+recebeu a mensagem, não de um parâmetro na URL que qualquer um pode chamar
+sem autenticação nenhuma hoje (webhook público sem validação de assinatura
+- a Meta de verdade assina o payload com `META_APP_SECRET`, isso NÃO foi
+implementado aqui, é só TODO no `MetaApiProvider`). Sinalizando pra próxima
+sessão que for conectar um provedor de verdade.
+
+Fluxo implementado em `processarMensagemRecebida`
+(`whatsapp.service.js`): acha (ou cria) o `Cliente` pelo `telefone`, acha
+(ou abre) o `Atendimento` `ABERTO` dele, grava a mensagem como `CLIENTE`.
+Se `iaAtiva`, chama `generateResponse` (AiProvider), grava a resposta como
+`BOT` e manda de volta via `provider.sendMessage()`; se não, só guarda e
+para (a equipe assume a partir dali). 4 endpoints autenticados: listar
+atendimentos `ABERTO`s (ordenados pela mensagem mais recente, calculado em
+memória - sem uma coluna "última atividade" dedicada, `include` +
+`take: 1` no relacionamento `mensagens` já resolve sem N+1), listar
+mensagens de um atendimento, enviar mensagem manual (grava `HUMANO` +
+dispara de verdade via `sendMessage`), e `PATCH .../ia-ativa` (alterna o
+handoff).
+
+### Bug pré-existente encontrado ao ligar o fio: boot da API quebrava sem `AI_API_KEY`
+
+Ao fazer `whatsapp.service.js` importar `services/ai` pela primeira vez em
+qualquer rota real, o boot inteiro da API passou a falhar
+(`OpenAIError: Missing credentials`) - `services/ai/index.js` instancia o
+`OpenAiCompatibleProvider` **uma vez, no module-load** (comentário no
+próprio arquivo explica a escolha: evitar reinstanciar o client em toda
+chamada), e o SDK da OpenAI lança na hora de **construir** o client se
+`apiKey` vier `undefined` - não só quando ele é de fato usado. Isso nunca
+tinha sido percebido porque, até esta tarefa, nenhuma rota importava
+`services/ai` (arquitetura "pronta mas não plugada", ver entrada de
+2026-09-16). Corrigido em
+`services/ai/OpenAiCompatibleProvider.js`: o fallback que já existia pro
+ramo Ollama (`'ollama-nao-valida-chave'`, quando `AI_BASE_URL` está
+setada) passou a valer também quando `AI_BASE_URL` está vazia
+(`'chave-nao-configurada'`) - a API sobe normalmente mesmo com
+`AI_API_KEY` vazia no `.env` (comum em dev, ver `.env.example`), e o erro
+real (401 da OpenAI) só aparece na hora de uma chamada de verdade, não no
+boot. Validado batendo o webhook sem chave configurada: request completa
+com `500` (esperado, sem IA real disponível) em vez de derrubar o processo
+inteiro.
+
+### Frontend: nova página sem gate de módulo, sidebar com item sempre visível
+
+`web/src/pages/InboxUnificado.jsx` - layout de duas colunas (lista de
+atendimentos + chat), seguindo os mesmos padrões já usados no resto do
+app (`apiFetch`, Tailwind puro, `lucide-react`, `useEffect` com flag
+`ativo`). Diferença notável de `Clientes.jsx`/outras telas: aqui tem
+**polling** (`setInterval` a cada 5s, tanto na lista de atendimentos quanto
+nas mensagens do atendimento aberto) - não existe WebSocket nem
+Server-Sent Events na API, então "tempo real" aqui é simulado; se o volume
+de mensagens crescer isso deveria virar um WebSocket de verdade. Balão
+verde (`BOT`/`HUMANO`, "a empresa") à direita, branco/cinza (`CLIENTE`) à
+esquerda - com uma tag "IA" pequena nos balões `BOT` pra equipe distinguir
+resposta automática de resposta manual sem precisar adivinhar. Toggle "Bot
+de IA Ativo" no cabeçalho do chat (`PATCH .../ia-ativa`), input de texto na
+base (`POST .../mensagens`).
+
+**Decisão de roteamento**: `/inbox` ficou **fora** de `ROTAS_POR_MODULO`
+(`App.jsx`) - não existe (nem foi pedido) uma chave nova em `MAPA_MODULOS`
+(`auth.service.js`) pra gatear esse módulo por segmento de empresa, então a
+rota e o item da Sidebar (`ITEM_INBOX`, sem campo `modulo`) ficam **sempre
+visíveis**, mesmo padrão já usado por `ITEM_MODULOS`/`ITEM_SUPORTE`. Se no
+futuro "IA no WhatsApp" virar um addon pago de verdade (a vitrine mock em
+`Modulos.jsx` já sugere isso, com preço e modalidades), essa decisão
+precisa ser revisitada - hoje qualquer empresa logada acessa `/inbox`
+sem checagem nenhuma de plano/módulo contratado.
+
+### Status de validação
+
+Backend testado de ponta a ponta contra o MySQL local rodando de verdade
+(`node src/server.js`): `POST /auth/register` (empresa de teste),
+`POST /whatsapp/webhook/:empresaId` (cria `Cliente`+`Atendimento`+
+`Mensagem CLIENTE`, tenta a IA e falha com 401 - esperado, sem
+`AI_API_KEY` real configurada, comportamento correto), `GET /whatsapp/atendimentos`
+(retorna o atendimento com `ultimaMensagem` certa), `PATCH .../ia-ativa`
+(`iaAtiva: false` - confirmado que uma 2ª mensagem no webhook depois disso
+NÃO chama a IA, só grava e retorna `respondidoPelaIa: false`),
+`POST .../mensagens` (grava `HUMANO`, tenta `sendMessage` - só loga, mock),
+`GET .../mensagens` (ordem cronológica certa: `CLIENTE`, `CLIENTE`,
+`HUMANO`). `npx prisma format` e `node -e "buildApp().ready(...)"` (boot
+completo do Fastify com todas as rotas registradas) confirmados sem erro.
+
+Frontend: `npm run lint` (oxlint) sem nenhum erro novo (só o mesmo aviso
+`set-state-in-effect` de sempre, mesma classe de todas as outras telas com
+busca de dados via `useEffect`), `npm run build` (Vite) confirmado gerando
+um chunk próprio pra `InboxUnificado` (code splitting funcionando). Testado
+visualmente de ponta a ponta com Playwright headless (dev server real,
+`npm run dev`, contra a API local - `web/.env` trocado temporariamente pra
+`http://localhost:3000` só pro teste, revertido pro valor de produção
+(`https://api.projeto1.com.br`) logo em seguida, já que esse arquivo não é
+versionado): login via UI, navegação pelo item "Inbox WhatsApp" da
+Sidebar, estado vazio ("Nenhum atendimento aberto no momento"), webhook
+disparado por fora criando um atendimento que aparece na lista após
+recarregar, balão do cliente renderizado à esquerda em branco/cinza,
+toggle "Bot de IA Ativo" alternando visualmente (verde ligado -> cinza
+desligado) com a tag "HUMANO" aparecendo na lista, envio de mensagem
+manual renderizando balão verde à direita. `console --errors` do browser
+vazio em todas as capturas. Empresa/usuário/cliente/atendimento/mensagens
+de teste apagados do banco local ao final (2 rodadas de teste, `empresaId`
+17 e 18) - banco local voltado ao estado vazio de antes.
+
+**Pendências conhecidas, fora do escopo desta tarefa** (sinalizando pra
+quem for continuar o Passo 6): nenhuma sessão real de WhatsApp existe
+ainda (Baileys/Meta continuam mock) - o teste acima só valida o caminho
+"webhook HTTP recebe `{from, text}` e reage certo", não uma integração de
+verdade; sem WebSocket, o Inbox depende de polling; sem validação de
+assinatura no webhook da Meta (`META_APP_SECRET`); sem multi-tenant real
+de sessão WhatsApp (ver decisão do `empresaId` na URL, acima); sem
+autorização por `role` (qualquer usuário autenticado da empresa liga/desliga
+a IA e manda mensagem manual - mesma lacuna já documentada no dossiê de
+infraestrutura pro resto do app).

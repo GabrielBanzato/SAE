@@ -145,6 +145,7 @@ model Empresa {
   clientes     Cliente[]
   lancamentos  Lancamento[]
   ingredientes Ingrediente[]
+  atendimentos Atendimento[]
 
   @@map("empresas")
 }
@@ -304,8 +305,9 @@ model Cliente {
   dataCadastro DateTime @default(now()) @map("data_cadastro")
   atualizadoEm DateTime @default(now()) @updatedAt @map("atualizado_em")
 
-  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  vendas  Venda[]
+  empresa      Empresa       @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  vendas       Venda[]
+  atendimentos Atendimento[]
 
   @@index([empresaId], map: "idx_clientes_empresa_id")
   @@map("clientes")
@@ -408,6 +410,66 @@ model Ingrediente {
   @@index([empresaId], map: "idx_ingredientes_empresa_id")
   @@index([empresaId, nome], map: "idx_ingredientes_empresa_nome")
   @@map("ingredientes")
+}
+
+/// Status do Atendimento (conversa de WhatsApp com um Cliente) - String solto
+/// (nao enum), mesmo motivo de Cliente.statusCrm/Empresa.segmento: o
+/// conjunto aceito (`STATUS_ATENDIMENTO_VALIDOS` em atendimentos.service.js)
+/// mora na aplicacao, nao no banco.
+///
+/// Inbox Unificado de WhatsApp: cada numero de telefone que conversa com a
+/// empresa tem no maximo 1 Atendimento ABERTO por vez (webhook procura um
+/// aberto existente antes de criar outro, ver whatsapp.service.js) - o
+/// historico de conversas encerradas fica preservado como Atendimentos
+/// FECHADOs, nao apagado nem reaproveitado.
+model Atendimento {
+  id          Int      @id @default(autoincrement()) @db.UnsignedInt
+  empresaId   Int      @map("empresa_id") @db.UnsignedInt
+  clienteId   Int      @map("cliente_id") @db.UnsignedInt
+  status      String   @default("ABERTO") @db.VarChar(10)
+  // Handoff IA -> Humano: true = o AiProvider responde automaticamente a
+  // cada mensagem recebida (ver whatsapp.service.js#processarMensagemRecebida);
+  // a equipe pode desligar na tela do Inbox pra assumir a conversa sozinha,
+  // sem a IA interferir nas proximas mensagens desse cliente.
+  iaAtiva     Boolean  @default(true) @map("ia_ativa")
+  dataCriacao DateTime @default(now()) @map("data_criacao")
+
+  empresa   Empresa    @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  // Restrict (nao Cascade) - mesmo motivo ja usado em Venda.clienteId:
+  // preserva o historico de conversas, nao permite apagar um cliente que ja
+  // tem atendimento registrado.
+  cliente   Cliente    @relation(fields: [clienteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  mensagens Mensagem[]
+
+  @@index([empresaId], map: "idx_atendimentos_empresa_id")
+  // Consulta do webhook a cada mensagem recebida: "existe um atendimento
+  // ABERTO pra este cliente desta empresa?" (WHERE empresa_id = ? AND
+  // cliente_id = ? AND status = 'ABERTO').
+  @@index([empresaId, clienteId, status], map: "idx_atendimentos_empresa_cliente_status")
+  @@map("atendimentos")
+}
+
+/// Mensagem individual dentro de um Atendimento - `remetente` distingue quem
+/// escreveu (CLIENTE = mensagem recebida via WhatsApp, BOT = resposta gerada
+/// pelo AiProvider, HUMANO = mensagem manual enviada pela equipe no Inbox).
+/// String solto (nao enum), mesmo motivo de Atendimento.status.
+model Mensagem {
+  id            Int      @id @default(autoincrement()) @db.UnsignedInt
+  atendimentoId Int      @map("atendimento_id") @db.UnsignedInt
+  remetente     String   @db.VarChar(10)
+  // Texto livre da mensagem - sem limite curto de proposito (respostas da
+  // IA podem ser longas); mesma escolha ja usada em Lancamento.descricao
+  // pra campos de texto sem tamanho previsivel.
+  conteudo      String   @db.Text
+  timestamp     DateTime @default(now())
+
+  // Cascade: uma mensagem nao tem sentido sem o atendimento-pai.
+  atendimento Atendimento @relation(fields: [atendimentoId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  // Consulta principal da tela de chat: "mensagens deste atendimento em
+  // ordem cronologica" (WHERE atendimento_id = ? ORDER BY timestamp).
+  @@index([atendimentoId, timestamp], map: "idx_mensagens_atendimento_timestamp")
+  @@map("mensagens")
 }
 
 /// Tabela relacional: define quais ingredientes (e em que quantidade) compoem
