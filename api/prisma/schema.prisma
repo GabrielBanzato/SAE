@@ -286,12 +286,21 @@ model VendaItem {
 /// identificada (opcional - ver Venda.clienteId). CRUD "basico" por
 /// enquanto: so criar e listar (clientes.controller.js) - editar/excluir
 /// ficam pra uma proxima tarefa.
+/// Cadastro de clientes + CRM basico (Perfil 360). CRUD completo desde esta
+/// tarefa (criar/listar/atualizar - excluir continua fora de escopo, ver
+/// clientes.service.js). `statusCrm` classifica o cliente no funil de
+/// vendas (Lead/Em Negociacao/Cliente Ativo/Inativo) - editavel pela
+/// equipe no Perfil 360 (ver ModalPerfil360.jsx no frontend). String solto
+/// (nao enum), mesmo motivo de `Empresa.segmento`: a validacao do
+/// conjunto aceito mora na aplicacao (`STATUS_CRM_VALIDOS` em
+/// clientes.service.js), nao no banco.
 model Cliente {
   id           Int      @id @default(autoincrement()) @db.UnsignedInt
   empresaId    Int      @map("empresa_id") @db.UnsignedInt
   nome         String   @db.VarChar(120)
   telefone     String?  @db.VarChar(20)
   email        String?  @db.VarChar(150)
+  statusCrm    String   @default("Lead") @map("status_crm") @db.VarChar(20)
   dataCadastro DateTime @default(now()) @map("data_cadastro")
   atualizadoEm DateTime @default(now()) @updatedAt @map("atualizado_em")
 

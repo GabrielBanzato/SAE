@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Users, Plus, Phone, Mail } from 'lucide-react';
+import { Users, Plus, Phone, Mail, Eye } from 'lucide-react';
 import { apiFetch } from '../services/api';
 import ModalClienteRapido from '../components/clientes/ModalClienteRapido';
+import ModalPerfil360 from '../components/clientes/ModalPerfil360';
 
 // `dataCadastro` e um timestamp de verdade (`@default(now())` no Prisma,
 // nao uma data escolhida em formulario) - ao contrario de dataVencimento/
@@ -47,13 +48,14 @@ function Contato({ telefone, email }) {
  * mesmo ModalClienteRapido do PDV, ja movido pra `components/clientes/`
  * pra ficar num lugar compartilhado entre as duas telas.
  *
- * "Total Comprado" fica como coluna fixa em "Em breve" - a API ainda nao
- * tem um jeito de agregar o historico de vendas por cliente (Venda.total
- * existe, mas nao ha endpoint de soma por cliente ainda). A coluna ja
- * existe no layout pra nao precisar redesenhar a tabela quando esse dado
- * real chegar, seguindo o mesmo padrao de "em breve" ja usado noutras
- * telas do app (Configuracoes, por exemplo) em vez de inventar um numero
- * (ex.: R$ 0,00, que pareceria um dado real e errado).
+ * "Total Comprado" (que ficava fixo em "Em breve" - a API nao tinha um
+ * jeito de agregar o historico de vendas por cliente ainda) virou o botao
+ * "Ver Perfil 360": em vez de calcular e exibir o LTV de CADA cliente
+ * direto na tabela (N+1 chamadas a GET /clientes/:id/perfil-360 so pra
+ * montar a lista, uma por linha), o calculo fica sob demanda, buscado so
+ * quando a equipe realmente abre o perfil de um cliente especifico - mesmo
+ * padrao "busca sob clique" ja usado noutras telas do app (ex.: abas de
+ * Configuracoes.jsx).
  */
 export default function Clientes() {
   const [clientes, setClientes] = useState(null);
@@ -61,6 +63,7 @@ export default function Clientes() {
   const [erro, setErro] = useState('');
 
   const [modalAberto, setModalAberto] = useState(false);
+  const [clienteSelecionadoId, setClienteSelecionadoId] = useState(null);
 
   useEffect(() => {
     let ativo = true;
@@ -136,7 +139,7 @@ export default function Clientes() {
                   Data de Cadastro
                 </th>
                 <th className="px-6 py-4 text-right text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Total Comprado
+                  <span className="sr-only">Ações</span>
                 </th>
               </tr>
             </thead>
@@ -175,12 +178,14 @@ export default function Clientes() {
                       {formatarData(cliente.dataCadastro)}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <span
-                        className="text-sm font-medium text-slate-400 dark:text-slate-500"
-                        title="Em breve: histórico de vendas por cliente"
+                      <button
+                        type="button"
+                        onClick={() => setClienteSelecionadoId(cliente.id)}
+                        className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
                       >
-                        Em breve
-                      </span>
+                        <Eye size={16} aria-hidden="true" />
+                        Ver Perfil 360
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -191,6 +196,10 @@ export default function Clientes() {
 
       {modalAberto && (
         <ModalClienteRapido onFechar={() => setModalAberto(false)} onSalvar={cadastrarCliente} />
+      )}
+
+      {clienteSelecionadoId !== null && (
+        <ModalPerfil360 clienteId={clienteSelecionadoId} onFechar={() => setClienteSelecionadoId(null)} />
       )}
     </div>
   );
