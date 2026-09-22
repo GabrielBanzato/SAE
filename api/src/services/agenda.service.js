@@ -37,6 +37,12 @@ function lancamentoParaEvento(lancamento) {
  * necessária aqui, diferente do Lancamento acima. `Tarefa` ainda não tem
  * um campo de valor monetário no schema (ver schema.prisma), por isso
  * `valor` sai sempre `null` para esses eventos.
+ *
+ * `statusConcluida` (Boolean, contrato que Agenda.jsx ja consome) e
+ * derivado de `Tarefa.status` (String - A_FAZER/EM_ANDAMENTO/CONCLUIDO,
+ * ver tarefas.service.js e o Quadro de Tarefas Kanban) - so `CONCLUIDO`
+ * conta como concluida aqui, `EM_ANDAMENTO` ainda aparece como pendente na
+ * Agenda (mesma UI de "Dar baixa" ja existente).
  */
 function tarefaParaEvento(tarefa) {
   return {
@@ -46,7 +52,7 @@ function tarefaParaEvento(tarefa) {
     descricao: tarefa.descricao ?? '',
     dataVencimento: tarefa.dataVencimento.toISOString(),
     tipo: tarefa.tipo,
-    statusConcluida: tarefa.statusConcluida,
+    statusConcluida: tarefa.status === 'CONCLUIDO',
     valor: null,
   };
 }

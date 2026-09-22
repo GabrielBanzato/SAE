@@ -27,6 +27,7 @@ const ControleFinanceiro = lazy(() => import('./pages/ControleFinanceiro'));
 const DRE = lazy(() => import('./pages/DRE'));
 const Notas = lazy(() => import('./pages/Notas'));
 const Agenda = lazy(() => import('./pages/Agenda'));
+const QuadroTarefas = lazy(() => import('./pages/QuadroTarefas'));
 const Relatorios = lazy(() => import('./pages/Relatorios'));
 const Configuracoes = lazy(() => import('./pages/Configuracoes'));
 const Modulos = lazy(() => import('./pages/Modulos'));
@@ -54,6 +55,11 @@ const ROTAS_POR_MODULO = [
   { modulo: 'financeiro', path: '/financeiro', element: <ControleFinanceiro /> },
   { modulo: 'financeiro', path: '/dre', element: <DRE /> },
   { modulo: 'agenda', path: '/agenda', element: <Agenda /> },
+  // Mesmo modulo 'agenda' da Agenda acima (nao um novo, ver
+  // auth.service.js#MAPA_MODULOS) - o Quadro de Tarefas Kanban e um
+  // companheiro de produtividade da Agenda, consolidados na mesma tabela
+  // `Tarefa` (ver schema.prisma) - nao faria sentido liberar um sem o outro.
+  { modulo: 'agenda', path: '/tarefas', element: <QuadroTarefas /> },
   { modulo: 'relatorios', path: '/relatorios', element: <Relatorios /> },
 ];
 

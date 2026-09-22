@@ -6156,3 +6156,163 @@ de sessão WhatsApp (ver decisão do `empresaId` na URL, acima); sem
 autorização por `role` (qualquer usuário autenticado da empresa liga/desliga
 a IA e manda mensagem manual - mesma lacuna já documentada no dossiê de
 infraestrutura pro resto do app).
+
+---
+
+## Módulo de Produtividade: Quadro de Tarefas Kanban (penúltimo passo do roadmap) (2026-09-22)
+
+### Consolidação, não tabela nova: `Tarefa` já existia (motor da Agenda) e agora serve aos dois
+
+O pedido dizia explicitamente "o sistema já possui indícios de uma tabela
+de tarefas, vamos consolidar isso" - de fato, `model Tarefa` já existia no
+schema desde a tarefa "SaaS Modular" (2026-09-17/18) e, diferente do que o
+comentário antigo dizia ("só o schema existe, GET /agenda ainda mockado"),
+**já estava sendo consultada de verdade** por `agenda.service.js#listarEventosDoMes`
+(`GET /agenda/:mes_ano`, usado por `Agenda.jsx`) - só não tinha nenhuma
+rota de **escrita** própria (só create/edit de Lançamento existia; criar
+um Lembrete na Agenda só mexia em estado local do React, comentário
+explícito em `ModalLembrete.jsx`: "Sem POST /tarefas no backend ainda").
+
+Optei por **não duplicar a tabela** (ex.: criar `TarefaKanban` separada) -
+o pedido pediu consolidação, e uma tarefa do Kanban sem prazo é
+conceitualmente idêntica a um "lembrete solto" da Agenda (`TipoTarefa.lembrete`,
+o único dos 4 valores do enum que não vem de Lançamento/Venda). Dividir a
+mesma tabela entre as duas features evita: 2 modelos com o mesmo formato,
+2 rotas de CRUD quase idênticas, e o retrabalho de "portar" tarefas de um
+lado pro outro no futuro.
+
+### O que mudou no schema - e o cuidado pra não quebrar a Agenda que já funcionava
+
+`Tarefa` ganhou `status` (String solto default `"A_FAZER"`, valores
+`A_FAZER`/`EM_ANDAMENTO`/`CONCLUIDO` validados em `tarefas.service.js`,
+mesmo padrão de `Cliente.statusCrm`) **no lugar** do antigo `statusConcluida`
+(Boolean) - e `responsavelId` (`Int?`, relação `Restrict` com `Usuario`,
+mesmo motivo de `Venda.clienteId`/`funcionarioId`: preserva o vínculo,
+não deixa apagar um usuário que ainda tem tarefa atribuída). `dataVencimento`
+virou opcional (`DateTime?`) - uma tarefa do Kanban pode não ter prazo;
+`tipo` (enum `TipoTarefa`, já existia) ganhou `@default(lembrete)`, porque
+toda tarefa criada pelo Kanban não vai mandar esse campo.
+
+**Risco real que eu precisei resolver**: `agenda.service.js#tarefaParaEvento`
+lia `tarefa.statusConcluida` direto e chamava `tarefa.dataVencimento.toISOString()`
+sem checar null - trocar o campo/tipo sem ajustar esse arquivo quebraria a
+Agenda (500 em runtime pra qualquer mês com uma Tarefa, ou pelo menos o
+"Dar baixa" mostrando sempre pendente). Corrigido ali: `statusConcluida`
+agora é **derivado** (`tarefa.status === 'CONCLUIDO'`), preservando o
+contrato de evento que `Agenda.jsx` já consome sem tocar em nenhuma linha
+do frontend da Agenda. `dataVencimento.toISOString()` não precisou de
+proteção contra null - a query já filtra por intervalo de data
+(`{ gte, lt }`), e uma comparação de range do MySQL com `NULL` nunca é
+verdadeira, então tarefas sem prazo já são excluídas automaticamente dessa
+consulta, sem nenhuma mudança de código necessária ali.
+
+Rodado `npx prisma db push --accept-data-loss` no banco local (mesmo
+padrão de sempre) - **perda de dado real desta vez**: a coluna
+`status_concluida` (Boolean) foi apagada em troca da nova `status`
+(String); como a tabela `tarefas` estava vazia no banco local no momento
+(confirmado antes de rodar), não houve linha nenhuma pra se preocupar
+aqui, mas **isso precisa de atenção em produção** se existirem tarefas já
+cadastradas lá - a migração correta seria um `UPDATE tarefas SET status =
+IF(status_concluida, 'CONCLUIDO', 'A_FAZER')` rodado ANTES do `db push`
+(ou de uma migration formal), pra não perder silenciosamente o estado de
+conclusão de tarefas reais.
+
+### Backend: mesmo padrão Fastify de sempre, filtro duplo em `list`
+
+`api/src/services/tarefas.service.js`/`controllers/tarefas.controller.js`/`routes/tarefas.routes.js`
+- CRUD completo (`list`/`create`/`update`/`remove`), registrado em
+`routes/index.js` com prefixo `/tarefas`. `list` aceita `?status=` e
+`?responsavel_id=` (ambos opcionais, comináveis) - exatamente o pedido
+("permitindo filtrar por status e responsavelId"). `create`/`update`
+validam `responsavelId` contra `prisma.usuario.findFirst({ id,
+empresaId })` antes de gravar - sem isso, um usuário mal-intencionado
+poderia atribuir uma tarefa a um `id` de usuário de OUTRO tenant (o
+Prisma não erraria, só gravaria um FK "órfão" do ponto de vista de
+isolamento multi-tenant). `update` é o mesmo endpoint usado tanto pra
+editar título/descrição quanto pra "mover o card" no Kanban (só manda
+`status` no body) - não criei uma rota `PATCH /tarefas/:id/status`
+separada, o `PUT` parcial já cobria o caso sem duplicar lógica.
+
+### Frontend: sem lib de drag-and-drop, `/tarefas` reaproveita o módulo `'agenda'`
+
+`web/src/pages/QuadroTarefas.jsx` (+ `components/tarefas/ModalNovaTarefa.jsx`)
+- 3 colunas fixas, cada card com 2 setas (◀/▶, desabilitadas nas pontas)
+que chamam `PUT /tarefas/:id` com o novo status - **atualização otimista**
+(move o card na hora, reverte com mensagem de erro se a API falhar) pra
+sensação de resposta instantânea, mesmo espírito do "Dar baixa" já usado
+em `Agenda.jsx`. Sem `@dnd-kit`/`react-beautiful-dnd` (pedido explícito
+"evitar bibliotecas complexas de drag-and-drop") - as 2 setas cobrem o
+mesmo caso de uso pra um quadro pequeno de equipe, sem dependência nova
+no Vite. Botão de excluir (`Trash2`) em cada card com `window.confirm`
+antes de chamar `DELETE /tarefas/:id` - único `confirm()` nativo do app
+até agora (nenhuma outra tela tinha um botão de excluir até esta tarefa,
+nem Lançamentos, que já tem a rota no backend há mais tempo) - adicionado
+porque excluir uma tarefa é irreversível e é a primeira vez que essa ação
+existe na UI.
+
+**Decisão de módulo**: `/tarefas` foi registrada com o **mesmo** `modulo:
+'agenda'` já usado por `/agenda` (`ROTAS_POR_MODULO` em `App.jsx`,
+`CATEGORIAS_MENU` em `Sidebar.jsx`) - não criei uma chave nova em
+`MAPA_MODULOS` (`auth.service.js`). Justificativa: as duas telas
+literalmente compartilham a mesma tabela `Tarefa` agora (ver acima) - não
+faria sentido uma empresa ter o Kanban sem a Agenda ou vice-versa. Efeito
+colateral esperado: empresas do segmento `moda_vestuario` (único dos 4
+sem o módulo `'agenda'` em `MAPA_MODULOS`) não veem "Tarefas" no menu,
+mesma cobertura que já não viam "Agenda".
+
+Select de "Responsável" (no modal de criação e no filtro do quadro) usa
+`GET /empresa/usuarios` (rota que já existia, `empresa.controller.js`) -
+não criei nenhum endpoint novo só pra listar a equipe.
+
+### `api.js` do frontend: sem funções nomeadas por endpoint, de propósito
+
+O pedido mencionava "registe os endpoints no ficheiro
+`web/src/services/api.js`" - conferido antes de mexer: esse arquivo **não
+tem, e nunca teve**, funções nomeadas por rota (`criarTarefa()`,
+`listarClientes()` etc.) - é só a instância do Axios + o wrapper
+`apiFetch(path, options)`, e toda página (`Clientes.jsx`, `Agenda.jsx`, o
+Inbox de 2026-09-22 mais cedo) chama `apiFetch('/rota', {...})` direto.
+Segui esse padrão real em vez do texto literal do pedido - criar uma
+camada de wrappers só pra `/tarefas` quebraria a consistência com as
+outras ~15 páginas do app sem nenhum ganho real, e a próxima pessoa a
+mexer no Kanban esperaria encontrar o mesmo padrão do resto do app.
+
+### Status de validação
+
+Backend testado de ponta a ponta contra o MySQL local (`node
+src/server.js`): criar tarefa sem prazo/responsável (cai nos defaults:
+`status: 'A_FAZER'`, `tipo: 'lembrete'`), criar tarefa com `data_vencimento`
++ `responsavelId` válido, listar sem filtro, mover status via `PUT`
+(`A_FAZER` -> `EM_ANDAMENTO`), filtrar por `?status=`/`?responsavel_id=`
+(inclusive `status` inválido retornando `400` como esperado), `DELETE`
+(`204`, e a tarefa some da listagem seguinte) - e, crucialmente,
+`GET /agenda/09-2026` **depois** da migração de schema, confirmando que a
+tarefa com `data_vencimento` aparece lá com `statusConcluida: false`
+corretamente derivado (a integração com a Agenda não quebrou). `npx prisma
+format` e o boot completo do Fastify (`buildApp().ready(...)`) confirmados
+sem erro.
+
+Frontend: `npm run lint` (oxlint) sem erro novo (só o mesmo aviso
+`set-state-in-effect` de sempre), `npm run build` (Vite) gerando chunk
+próprio pra `QuadroTarefas`. Testado visualmente de ponta a ponta com
+Playwright headless (mesmo procedimento do Inbox mais cedo hoje -
+`web/.env` trocado temporariamente pra `http://localhost:3000`, revertido
+ao final): login, abrir a gaveta "Operacional" na Sidebar, navegar por
+"Tarefas", criar 2 tarefas (uma sem responsável, outra com), mover um
+card de "A Fazer" pra "Em Andamento" pela seta (confirmado que persistiu
+de verdade - o card continuou na coluna nova mesmo depois de um refetch
+disparado pelo filtro), e filtrar por responsável (lista reduzida
+corretamente pra só a tarefa daquele usuário). `console --errors` vazio em
+todas as capturas. Empresa/usuários/tarefas de teste apagados do banco
+local ao final (`empresaId` 19 e 20, 2 rodadas - uma via `curl`/Invoke-RestMethod,
+outra via Playwright).
+
+**Pendências conhecidas, fora do escopo desta tarefa**: sem posição/ordem
+manual dentro de uma coluna (`orderBy: criadoEm asc` fixo - um card novo
+sempre entra no fim da coluna, sem reordenar por arrastar); sem
+autorização por `role` (mesma lacuna já registrada em outras tarefas -
+qualquer usuário autenticado da empresa move/exclui qualquer tarefa,
+independente de quem é o responsável); a migração de dados de produção
+(`status_concluida` -> `status`) mencionada acima **não foi feita** aqui,
+só sinalizada - precisa rodar antes de qualquer `db push`/deploy em
+produção se já existirem tarefas reais lá.

@@ -11,6 +11,7 @@ import {
   Receipt,
   Wallet,
   CalendarDays,
+  Kanban,
   BarChart3,
   Settings,
   Briefcase,
@@ -56,6 +57,9 @@ const CATEGORIAS_MENU = [
       { label: 'Clientes', to: '/clientes', icon: Users, modulo: 'clientes' },
       { label: 'Lançamentos', to: '/lancamentos', icon: Receipt, modulo: 'financeiro' },
       { label: 'Agenda', to: '/agenda', icon: CalendarDays, modulo: 'agenda' },
+      // Mesmo modulo 'agenda' - Quadro Kanban e o companheiro de
+      // produtividade da Agenda (mesma tabela `Tarefa`, ver App.jsx).
+      { label: 'Tarefas', to: '/tarefas', icon: Kanban, modulo: 'agenda' },
     ],
   },
   {

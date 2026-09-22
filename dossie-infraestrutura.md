@@ -111,6 +111,18 @@ O `docker-compose.yml` atual do repositório já monta a variável corretamente 
 
 **Lição pra qualquer client de SDK externo instanciado no module-load**: nunca deixar um campo obrigatório do construtor cair em `undefined` só porque a env var correspondente está vazia em dev — ou o client falha construção assim que QUALQUER código importar o módulo, mesmo sem usá-lo, e o efeito colateral (processo inteiro não sobe) é desproporcional à causa (uma chamada de IA que nem foi tentada ainda).
 
+### 2.5 Pendência de deploy: migrar `tarefas.status_concluida` (Boolean) → `status` (String) antes de aplicar em produção (2026-09-22)
+
+O Módulo de Produtividade (Quadro de Tarefas Kanban, ver `NOTAS_IMPORTANTES.md` entrada de 2026-09-22) trocou `Tarefa.statusConcluida` (Boolean) por `Tarefa.status` (String — `A_FAZER`/`EM_ANDAMENTO`/`CONCLUIDO`). Aplicado com `npx prisma db push --accept-data-loss` no banco **local**, sem problema porque a tabela `tarefas` estava vazia no momento. **Se o banco de produção já tiver tarefas reais cadastradas, rodar o mesmo `db push` sem mais nada vai apagar silenciosamente o estado de conclusão de cada uma** (`status_concluida` some, `status` nasce todo com o default `A_FAZER`, mesmo pra tarefas que já estavam concluídas).
+
+**Antes de aplicar este schema em produção**, rodar primeiro (com o banco de produção em `status_concluida` ainda presente):
+
+```sql
+UPDATE tarefas SET status = IF(status_concluida, 'CONCLUIDO', 'A_FAZER');
+```
+
+(A coluna `status` só existe depois que o `db push`/migration já rodou — ou seja, a ordem certa é: 1) aplicar o schema novo com a coluna `status` já criada (ela nasce com o default `A_FAZER` pra tudo), 2) **antes** de derrubar a coluna antiga `status_concluida`, rodar o `UPDATE` acima pra corrigir as linhas que já estavam concluídas, 3) só então considerar a migração terminada. Se o `db push` já tiver rodado tudo de uma vez (schema E drop da coluna antiga juntos, como aconteceu no ambiente local), não há mais como recuperar o valor antigo — faça backup do banco antes.) Mesma lição já registrada na seção 2.3 sobre a migração `nicho`→`segmento`: **toda vez que um campo de schema muda de tipo/significado, o `db push` sozinho nunca migra o *dado* — só a estrutura.**
+
 ---
 
 ## 3. Configurações de Ambiente (`.env`)

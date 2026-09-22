@@ -160,12 +160,13 @@ model Usuario {
   criadoEm     DateTime    @default(now()) @map("criado_em")
   atualizadoEm DateTime    @default(now()) @updatedAt @map("atualizado_em")
 
-  empresa          Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  empresa           Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   // 2 relacoes distintas com Venda (quem vendeu vs. quem consumiu
   // internamente) - precisam de nome pra o Prisma saber diferenciar qual
   // FK cada uma representa (ver Venda.usuarioId/funcionarioId acima).
-  vendas           Venda[] @relation("VendaVendedor")
-  consumosInternos Venda[] @relation("VendaFuncionarioConsumo")
+  vendas            Venda[]  @relation("VendaVendedor")
+  consumosInternos  Venda[]  @relation("VendaFuncionarioConsumo")
+  tarefasAtribuidas Tarefa[]
 
   // Email e unico apenas DENTRO da mesma empresa, nao globalmente - dois
   // tenants diferentes podem ter usuarios com o mesmo e-mail.
@@ -313,29 +314,54 @@ model Cliente {
   @@map("clientes")
 }
 
-/// Motor da Agenda (hub que unifica vendas, contas a pagar/receber e
-/// lembretes soltos num unico calendario). Por enquanto so o schema existe
-/// - a rota GET /agenda/:mes_ano ainda devolve dados MOCKADOS (ver
-/// agenda.controller.js), nao consulta esta tabela; nenhuma rota de
-/// escrita (criar/editar/concluir Tarefa) foi criada ainda.
+/// Tabela dupla-funcao: (1) alimenta a Agenda (agenda.service.js - so as
+/// tarefas COM `dataVencimento` preenchida entram no calendario, filtradas
+/// por intervalo de data) e (2) e a unidade do Quadro de Tarefas Kanban
+/// (modulo de Produtividade, ver tarefas.service.js). As duas features
+/// dividem a mesma tabela de proposito ("consolidar", pedido explicito
+/// desta tarefa) - uma tarefa do Kanban sem data de vencimento so nao
+/// aparece na Agenda (a query dela exclui `dataVencimento` nula
+/// naturalmente), sem precisar de 2 tabelas separadas.
+///
+/// `status` (String solto, mesmo motivo de Cliente.statusCrm/
+/// Atendimento.status - o conjunto valido, A_FAZER/EM_ANDAMENTO/CONCLUIDO,
+/// mora em `tarefas.service.js`, nao no banco) substituiu o antigo
+/// `statusConcluida` Boolean nesta tarefa - `agenda.service.js#tarefaParaEvento`
+/// foi ajustado pra derivar `statusConcluida: status === 'CONCLUIDO'`,
+/// preservando o contrato de evento que Agenda.jsx ja consome, sem quebrar
+/// nada la.
 model Tarefa {
-  id              Int        @id @default(autoincrement()) @db.UnsignedInt
-  empresaId       Int        @map("empresa_id") @db.UnsignedInt
-  titulo          String     @db.VarChar(150)
+  id             Int        @id @default(autoincrement()) @db.UnsignedInt
+  empresaId      Int        @map("empresa_id") @db.UnsignedInt
+  titulo         String     @db.VarChar(150)
   // Opcional: nem todo evento (ex.: uma venda) precisa de detalhamento extra.
-  descricao       String?    @db.VarChar(500)
-  dataVencimento  DateTime   @map("data_vencimento")
-  tipo            TipoTarefa
-  statusConcluida Boolean    @default(false) @map("status_concluida")
-  criadoEm        DateTime   @default(now()) @map("criado_em")
-  atualizadoEm    DateTime   @default(now()) @updatedAt @map("atualizado_em")
+  descricao      String?    @db.VarChar(500)
+  // Opcional (diferente de Lancamento.dataVencimento, sempre obrigatoria) -
+  // uma tarefa do Kanban pode nao ter prazo definido.
+  dataVencimento DateTime?  @map("data_vencimento")
+  // Default 'lembrete' - toda tarefa criada pelo Quadro Kanban (sem passar
+  // `tipo` explicito) cai nesse valor, o unico dos 4 que representa um item
+  // "solto" (os outros 3 vem de Lancamento/Venda, ver agenda.service.js).
+  tipo           TipoTarefa @default(lembrete)
+  status         String     @default("A_FAZER") @db.VarChar(20)
+  responsavelId  Int?       @map("responsavel_id") @db.UnsignedInt
+  criadoEm       DateTime   @default(now()) @map("criado_em")
+  atualizadoEm   DateTime   @default(now()) @updatedAt @map("atualizado_em")
 
-  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  empresa     Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  // Restrict (nao SetNull) - mesmo motivo ja usado em Venda.clienteId/
+  // funcionarioId: preserva o historico de quem era responsavel, nao deixa
+  // apagar um usuario que ainda tem tarefa atribuida a ele.
+  responsavel Usuario? @relation(fields: [responsavelId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@index([empresaId], map: "idx_tarefas_empresa_id")
   // Consulta real de toda tela de Agenda: "tarefas desta empresa neste mes"
   // (WHERE empresa_id = ? AND data_vencimento BETWEEN ? AND ?).
   @@index([empresaId, dataVencimento], map: "idx_tarefas_empresa_data")
+  // Consulta do Quadro Kanban: "tarefas desta empresa, filtrando por status
+  // e/ou responsavel" (tarefas.service.js).
+  @@index([empresaId, status], map: "idx_tarefas_empresa_status")
+  @@index([empresaId, responsavelId], map: "idx_tarefas_empresa_responsavel")
   @@map("tarefas")
 }
 
