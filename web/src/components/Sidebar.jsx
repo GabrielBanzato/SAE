@@ -25,6 +25,7 @@ import {
   LogOut,
   X,
   Zap,
+  FileBarChart,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -66,6 +67,7 @@ const CATEGORIAS_MENU = [
     // levando pra mesma tela.
     itens: [
       { label: 'Controle Financeiro', to: '/financeiro', icon: Wallet, modulo: 'financeiro' },
+      { label: 'DRE', to: '/dre', icon: FileBarChart, modulo: 'financeiro' },
       { label: 'Relatórios', to: '/relatorios', icon: BarChart3, modulo: 'relatorios' },
     ],
   },

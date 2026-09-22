@@ -50,6 +50,23 @@ const STATUS = [
   { valor: 'PAGO', rotulo: 'Pago', icon: CheckCircle2, corAtivo: 'text-emerald-600 dark:text-green-400' },
 ];
 
+// Chaves precisam bater com CATEGORIAS_VALIDAS em
+// api/src/services/lancamentos.service.js (a mesma lista tambem decide o
+// "balde" do DRE - Receita/Custo Variavel/Custo Fixo/Dedução - ver
+// BUCKET_DRE_POR_CATEGORIA la). Opcoes nao mudam com `tipo` de proposito
+// (mantido simples) - o usuario e livre pra categorizar como quiser, o
+// backend so valida que a chave existe, nao que faz sentido pro tipo
+// escolhido.
+const CATEGORIAS = [
+  { valor: 'vendas', rotulo: 'Vendas' },
+  { valor: 'fornecedores', rotulo: 'Fornecedores/Compras' },
+  { valor: 'aluguel', rotulo: 'Aluguel' },
+  { valor: 'salarios', rotulo: 'Salários' },
+  { valor: 'impostos', rotulo: 'Impostos e Taxas' },
+  { valor: 'contas_servicos', rotulo: 'Contas e Serviços' },
+  { valor: 'outros', rotulo: 'Outros' },
+];
+
 /**
  * `lancamento` presente = edicao, prefiltra os campos a partir dele.
  * `dataVencimento` vem da API como string ISO ("2026-09-17T00:00:00.000Z")
@@ -59,7 +76,7 @@ const STATUS = [
  */
 function valoresIniciais(lancamento) {
   if (!lancamento) {
-    return { descricao: '', valor: '', tipo: 'SAIDA', dataVencimento: '', status: 'PENDENTE' };
+    return { descricao: '', valor: '', tipo: 'SAIDA', dataVencimento: '', status: 'PENDENTE', categoria: 'outros' };
   }
   return {
     descricao: lancamento.descricao,
@@ -67,6 +84,7 @@ function valoresIniciais(lancamento) {
     tipo: lancamento.tipo,
     dataVencimento: lancamento.dataVencimento.slice(0, 10),
     status: lancamento.status,
+    categoria: lancamento.categoria ?? 'outros',
   };
 }
 
@@ -96,11 +114,11 @@ function rotuloCampoData(tipo, status) {
  * (Lancamentos.jsx) - este modal so monta o payload e devolve pra ele,
  * nao sabe nada sobre verbos HTTP.
  *
- * Nao tem campo de "Categoria" aqui de proposito: `Lancamento` no
- * schema.prisma nao tem essa coluna (o filtro por categoria em
- * Lancamentos.jsx e so uma heuristica de texto sobre a descricao, nao um
- * dado gravado por lancamento - ver comentario la) - nao ha nada pra
- * "injetar" nesse campo ao editar, entao ele nao existe neste formulario.
+ * Ganhou o campo "Categoria" nesta tarefa - `Lancamento` agora tem uma
+ * coluna real (`categoria`, ver schema.prisma) que alimenta o DRE
+ * (relatorios.service.js#gerarDRE) e o filtro de Lancamentos.jsx, que
+ * deixou de ser uma heuristica de texto sobre a descricao pra virar um
+ * dado escolhido aqui na hora do cadastro.
  */
 export default function ModalLancamento({ lancamento, onFechar, onSalvar }) {
   const [campos, setCampos] = useState(() => valoresIniciais(lancamento));
@@ -142,6 +160,7 @@ export default function ModalLancamento({ lancamento, onFechar, onSalvar }) {
       tipo: campos.tipo,
       data_vencimento: campos.dataVencimento,
       status: campos.status,
+      categoria: campos.categoria,
     };
 
     if (lancamento) {
@@ -246,6 +265,24 @@ export default function ModalLancamento({ lancamento, onFechar, onSalvar }) {
               <Segmentado opcoes={STATUS} valor={campos.status} onChange={(valor) => atualizarCampo('status', valor)} />
             </div>
           </div>
+
+          <label className="block">
+            <span className="text-lg font-semibold text-slate-800 dark:text-slate-200">Categoria</span>
+            <select
+              value={campos.categoria}
+              onChange={(event) => atualizarCampo('categoria', event.target.value)}
+              className="mt-2 w-full rounded-2xl border-2 border-slate-300 bg-white px-4 py-3 text-lg font-medium text-slate-900 outline-none transition-all focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-blue-400"
+            >
+              {CATEGORIAS.map(({ valor, rotulo }) => (
+                <option key={valor} value={valor}>
+                  {rotulo}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-sm text-slate-400 dark:text-slate-500">
+              Usada no DRE pra separar receitas de custos variáveis/fixos.
+            </span>
+          </label>
 
           {erro && (
             <p className="rounded-2xl bg-red-50 p-3 text-sm font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">

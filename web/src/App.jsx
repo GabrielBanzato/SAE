@@ -24,6 +24,7 @@ const Estoque = lazy(() => import('./pages/Estoque'));
 const Clientes = lazy(() => import('./pages/Clientes'));
 const Lancamentos = lazy(() => import('./pages/Lancamentos'));
 const ControleFinanceiro = lazy(() => import('./pages/ControleFinanceiro'));
+const DRE = lazy(() => import('./pages/DRE'));
 const Notas = lazy(() => import('./pages/Notas'));
 const Agenda = lazy(() => import('./pages/Agenda'));
 const Relatorios = lazy(() => import('./pages/Relatorios'));
@@ -50,6 +51,7 @@ const ROTAS_POR_MODULO = [
   { modulo: 'clientes', path: '/clientes', element: <Clientes /> },
   { modulo: 'financeiro', path: '/lancamentos', element: <Lancamentos /> },
   { modulo: 'financeiro', path: '/financeiro', element: <ControleFinanceiro /> },
+  { modulo: 'financeiro', path: '/dre', element: <DRE /> },
   { modulo: 'agenda', path: '/agenda', element: <Agenda /> },
   { modulo: 'relatorios', path: '/relatorios', element: <Relatorios /> },
 ];

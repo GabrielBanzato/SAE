@@ -67,40 +67,22 @@ function rotuloStatusConcluido(lancamento) {
 }
 
 /**
- * Filtro por Categoria: `Lancamento` no schema.prisma NAO tem uma coluna
- * `categoria` (conferido antes de implementar) - so existem
- * descricao/valor/tipo/datas/status. Sem um campo real pra filtrar,
- * cada categoria aqui e uma lista de palavras-chave batida contra
- * `descricao` (case-insensitive) - uma heuristica no frontend, nao uma
- * categorizacao de verdade. Documentado tambem na resposta ao usuario: se
- * precisar de categorizacao confiavel, o caminho correto e adicionar uma
- * coluna `categoria` no backend (o usuario escolheria a categoria no
- * `ModalLancamento.jsx` na hora de cadastrar, em vez de adivinhar depois
- * pelo texto da descricao).
+ * Filtro por Categoria: `Lancamento.categoria` agora e uma coluna real
+ * (adicionada nesta tarefa, ver schema.prisma) - ate aqui era so uma
+ * heuristica de palavras-chave batida contra `descricao` (documentada
+ * assim numa tarefa anterior, por falta do campo). Chaves precisam bater
+ * com CATEGORIAS_VALIDAS em api/src/services/lancamentos.service.js e com
+ * a mesma lista em ModalLancamento.jsx (onde o usuario escolhe a categoria
+ * no cadastro, em vez de o sistema adivinhar depois).
  */
 const CATEGORIAS = [
-  { valor: 'vendas', rotulo: 'Vendas', palavrasChave: ['venda'] },
-  {
-    valor: 'fornecedores',
-    rotulo: 'Fornecedores/Compras',
-    palavrasChave: ['fornecedor', 'compra', 'insumo', 'materia-prima', 'matéria-prima', 'materia prima'],
-  },
-  { valor: 'aluguel', rotulo: 'Aluguel', palavrasChave: ['aluguel'] },
-  {
-    valor: 'salarios',
-    rotulo: 'Salários',
-    palavrasChave: ['salario', 'salário', 'folha', 'pro-labore', 'pró-labore'],
-  },
-  {
-    valor: 'impostos',
-    rotulo: 'Impostos e Taxas',
-    palavrasChave: ['imposto', 'taxa', 'tributo', 'simples nacional', 'das'],
-  },
-  {
-    valor: 'contas_servicos',
-    rotulo: 'Contas e Serviços',
-    palavrasChave: ['agua', 'água', 'luz', 'energia', 'internet', 'telefone', 'servico', 'serviço'],
-  },
+  { valor: 'vendas', rotulo: 'Vendas' },
+  { valor: 'fornecedores', rotulo: 'Fornecedores/Compras' },
+  { valor: 'aluguel', rotulo: 'Aluguel' },
+  { valor: 'salarios', rotulo: 'Salários' },
+  { valor: 'impostos', rotulo: 'Impostos e Taxas' },
+  { valor: 'contas_servicos', rotulo: 'Contas e Serviços' },
+  { valor: 'outros', rotulo: 'Outros' },
 ];
 
 const STATUS_OPCOES = [
@@ -243,7 +225,6 @@ export default function Lancamentos() {
   const lancamentosFiltrados = useMemo(() => {
     if (!lancamentos) return [];
 
-    const categoria = CATEGORIAS.find((item) => item.valor === filtroCategoria);
     const inicio = dataInicial ? dataCalendario(dataInicial) : null;
     const fim = dataFinal ? dataCalendario(dataFinal) : null;
 
@@ -254,10 +235,7 @@ export default function Lancamentos() {
       if (filtroStatus === 'PENDENTE' && (item.status !== 'PENDENTE' || estaAtrasado(item))) return false;
       if (filtroStatus === 'VENCIDO' && !estaAtrasado(item)) return false;
 
-      if (categoria) {
-        const descricao = item.descricao.toLowerCase();
-        if (!categoria.palavrasChave.some((palavra) => descricao.includes(palavra))) return false;
-      }
+      if (filtroCategoria !== 'todas' && item.categoria !== filtroCategoria) return false;
 
       const vencimento = dataCalendario(item.dataVencimento);
       if (inicio && vencimento < inicio) return false;

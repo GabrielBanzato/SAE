@@ -1,8 +1,9 @@
 const lancamentosService = require('../services/lancamentos.service');
+const { CATEGORIAS_VALIDAS } = lancamentosService;
 
 const TIPOS_VALIDOS = ['ENTRADA', 'SAIDA'];
 const STATUS_VALIDOS = ['PENDENTE', 'PAGO'];
-const CAMPOS_ATUALIZAVEIS = ['descricao', 'valor', 'tipo', 'data_vencimento', 'data_pagamento', 'status'];
+const CAMPOS_ATUALIZAVEIS = ['descricao', 'valor', 'tipo', 'data_vencimento', 'data_pagamento', 'status', 'categoria'];
 
 function parseId(request, reply) {
   const id = Number(request.params.id);
@@ -13,8 +14,42 @@ function parseId(request, reply) {
   return id;
 }
 
+/** "MM-AAAA" -> `{ ano, mesNumero }`, ou `null` se o formato/mes for invalido - mesma convencao de agenda.controller.js. */
+function parseMesAno(mesAno) {
+  const match = /^(\d{2})-(\d{4})$/.exec(mesAno || '');
+  if (!match) return null;
+
+  const mesNumero = Number(match[1]);
+  const ano = Number(match[2]);
+  if (mesNumero < 1 || mesNumero > 12) return null;
+
+  return { ano, mesNumero };
+}
+
+/**
+ * `?status=PAGO|PENDENTE` e/ou `?mes_ano=MM-AAAA` (ambos opcionais) -
+ * filtragem sob demanda, sem quebrar quem ja chama `GET /lancamentos` sem
+ * nenhum parametro (Lancamentos.jsx/ControleFinanceiro.jsx continuam
+ * buscando tudo e filtrando no proprio frontend, decisao ja documentada
+ * la - isso aqui e pra outros consumidores, ver relatorios.service.js).
+ */
 async function list(request, reply) {
-  const lancamentos = await lancamentosService.list(request.server.prisma, request.tenantId);
+  const { status, mes_ano: mesAno } = request.query || {};
+
+  if (status !== undefined && !STATUS_VALIDOS.includes(status)) {
+    return reply.code(400).send({ error: `status deve ser um dos seguintes: ${STATUS_VALIDOS.join(', ')}.` });
+  }
+
+  let ano, mesNumero;
+  if (mesAno !== undefined) {
+    const parsed = parseMesAno(mesAno);
+    if (!parsed) {
+      return reply.code(400).send({ error: 'mes_ano deve estar no formato MM-AAAA (ex.: 09-2026).' });
+    }
+    ({ ano, mesNumero } = parsed);
+  }
+
+  const lancamentos = await lancamentosService.list(request.server.prisma, request.tenantId, { status, ano, mesNumero });
   return reply.send(lancamentos);
 }
 
@@ -30,7 +65,7 @@ async function getById(request, reply) {
 }
 
 async function create(request, reply) {
-  const { descricao, valor, tipo, data_vencimento: dataVencimento, status } = request.body || {};
+  const { descricao, valor, tipo, data_vencimento: dataVencimento, status, categoria } = request.body || {};
 
   if (!descricao || valor === undefined || valor === null || valor === '') {
     return reply.code(400).send({ error: 'descricao e valor sao obrigatorios.' });
@@ -43,6 +78,9 @@ async function create(request, reply) {
   }
   if (status !== undefined && !STATUS_VALIDOS.includes(status)) {
     return reply.code(400).send({ error: `status deve ser um dos seguintes: ${STATUS_VALIDOS.join(', ')}.` });
+  }
+  if (categoria !== undefined && !CATEGORIAS_VALIDAS.includes(categoria)) {
+    return reply.code(400).send({ error: `categoria deve ser uma das seguintes: ${CATEGORIAS_VALIDAS.join(', ')}.` });
   }
 
   const lancamento = await lancamentosService.create(request.server.prisma, request.tenantId, request.body);
@@ -65,6 +103,9 @@ async function update(request, reply) {
   }
   if (body.status !== undefined && !STATUS_VALIDOS.includes(body.status)) {
     return reply.code(400).send({ error: `status deve ser um dos seguintes: ${STATUS_VALIDOS.join(', ')}.` });
+  }
+  if (body.categoria !== undefined && !CATEGORIAS_VALIDAS.includes(body.categoria)) {
+    return reply.code(400).send({ error: `categoria deve ser uma das seguintes: ${CATEGORIAS_VALIDAS.join(', ')}.` });
   }
 
   const lancamento = await lancamentosService.update(request.server.prisma, request.tenantId, id, body);

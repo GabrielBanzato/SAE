@@ -354,6 +354,17 @@ model Lancamento {
   // (status muda pra PAGO nesse momento).
   dataPagamento  DateTime?        @map("data_pagamento")
   status         StatusLancamento @default(PENDENTE)
+  // Bucket do DRE (Demonstrativo do Resultado do Exercicio) - separa
+  // Receitas/Custos Variaveis/Custos Fixos/Deducoes (impostos). String
+  // solto (nao enum), mesmo motivo de Empresa.segmento/Cliente.statusCrm: a
+  // validacao do conjunto aceito mora na aplicacao
+  // (`CATEGORIAS_VALIDAS`/`BUCKET_DRE_POR_CATEGORIA` em
+  // lancamentos.service.js, reaproveitado por relatorios.service.js#gerarDRE),
+  // nao no banco. Substitui a heuristica de palavras-chave que o frontend
+  // usava ate esta tarefa pra "adivinhar" a categoria a partir da
+  // `descricao` (ver historico do filtro em Lancamentos.jsx) - agora e um
+  // dado real, escolhido pelo usuario no cadastro (ModalLancamento.jsx).
+  categoria      String           @default("outros") @db.VarChar(30)
   criadoEm       DateTime         @default(now()) @map("criado_em")
   atualizadoEm   DateTime         @default(now()) @updatedAt @map("atualizado_em")
 

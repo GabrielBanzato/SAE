@@ -17,4 +17,43 @@ async function dre(request, reply) {
   return reply.send(dados);
 }
 
-module.exports = { resumo, dre };
+/** "MM-AAAA" -> `{ ano, mesNumero }`, ou `null` se invalido - mesma convencao de agenda.controller.js/lancamentos.controller.js. */
+function parseMesAno(mesAno) {
+  const match = /^(\d{2})-(\d{4})$/.exec(mesAno || '');
+  if (!match) return null;
+
+  const mesNumero = Number(match[1]);
+  const ano = Number(match[2]);
+  if (mesNumero < 1 || mesNumero > 12) return null;
+
+  return { ano, mesNumero };
+}
+
+/** GET /relatorios/dre-mensal/:mes_ano - DRE em escadinha pro mes escolhido (nao so o atual). Mesmo gate de plano de `dre` acima. */
+async function dreMensal(request, reply) {
+  const parsed = parseMesAno(request.params.mes_ano);
+  if (!parsed) {
+    return reply.code(400).send({ error: 'mes_ano deve estar no formato MM-AAAA (ex.: 09-2026).' });
+  }
+
+  const dados = await relatoriosService.gerarDRE(request.server.prisma, request.tenantId, parsed.ano, parsed.mesNumero);
+  return reply.send(dados);
+}
+
+/** GET /relatorios/fluxo-caixa/:mes_ano - saldo atual + a receber/a pagar pendente do mes. Disponivel pra qualquer plano. */
+async function fluxoCaixa(request, reply) {
+  const parsed = parseMesAno(request.params.mes_ano);
+  if (!parsed) {
+    return reply.code(400).send({ error: 'mes_ano deve estar no formato MM-AAAA (ex.: 09-2026).' });
+  }
+
+  const dados = await relatoriosService.obterFluxoCaixa(
+    request.server.prisma,
+    request.tenantId,
+    parsed.ano,
+    parsed.mesNumero
+  );
+  return reply.send(dados);
+}
+
+module.exports = { resumo, dre, dreMensal, fluxoCaixa };
