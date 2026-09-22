@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -14,16 +13,14 @@ import {
   Kanban,
   BarChart3,
   Settings,
-  Briefcase,
-  Building2,
   LayoutGrid,
   LifeBuoy,
   MessageCircle,
+  ScrollText,
   Sun,
   Moon,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
   LogOut,
   X,
   Zap,
@@ -33,76 +30,68 @@ import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 
 /**
- * Menu agrupado em secoes - Dashboard/Modulos/Suporte navegam direto,
- * Operacional/Administracao viram "gavetas" (accordion) com subcategorias.
+ * Menu em grupos fixos (sempre expandidos, sem accordion - simplificado
+ * nesta tarefa: a versao anterior usava "gavetas" colapsaveis, trocada por
+ * grupos estaticos com um titulo pequeno de separacao, pedido explicito).
+ * Dashboard/Modulos/Suporte navegam direto, fora de qualquer grupo.
  *
  * `modulo` em cada item precisa bater com uma chave de MODULOS_VALIDOS
  * (api/src/services/auth.service.js) e com `ROTAS_POR_MODULO` em App.jsx -
  * um item só aparece no menu se essa chave estiver em `empresa.modulos`
- * (ver filtragem no componente `Sidebar` abaixo). Fonte da verdade agora e
- * `Empresa.modulosAtivos`, editavel pela propria empresa em Modulos.jsx
- * (arquitetura modular de 2026-09-22) - NAO MAIS calculada do segmento.
- * Sem `modulo` = sempre visível, independente dos modulos ativos (nenhum
- * item direto abaixo precisa disso hoje).
+ * (fonte da verdade: `Empresa.modulosAtivos`, editavel em Modulos.jsx - ver
+ * arquitetura modular de 2026-09-22). Item SEM `modulo` = sempre visível,
+ * independente dos modulos ativos (ex.: "Emissor Fiscal" abaixo, pagina
+ * mock sem gate nenhum, ver App.jsx).
  */
-const CATEGORIAS_MENU = [
+const GRUPOS_MENU = [
   {
-    chave: 'operacional',
-    titulo: 'Operacional',
-    icon: Briefcase,
+    titulo: 'Comercial',
     itens: [
-      // 'vendas' e modulo BASE (MODULOS_BASE em auth.service.js) - sempre
-      // presente em `empresa.modulos`, nunca aparece como toggle removível
-      // em Modulos.jsx.
+      // `destaque` (so este item) mantem o estilo verde de atalho rapido
+      // que o PDV Rápido ja tinha antes de entrar no grupo - continua
+      // sendo a rota de tela cheia sem Sidebar (pages/PDV.jsx), so mudou
+      // de posicao (antes ficava sozinho acima de todos os grupos).
+      { label: 'PDV Rápido', to: '/pdv', icon: Zap, modulo: 'pdv_touch', destaque: true },
       { label: 'Vendas', to: '/vendas', icon: ShoppingCart, modulo: 'vendas' },
       { label: 'Histórico de Vendas', to: '/historico-vendas', icon: History, modulo: 'vendas' },
-      { label: 'Produtos', to: '/produtos', icon: Package, modulo: 'produtos' },
-      { label: 'Precificação', to: '/precificacao', icon: Calculator, modulo: 'precificacao' },
-      { label: 'Estoque', to: '/estoque', icon: Boxes, modulo: 'estoque_avancado' },
       { label: 'Clientes', to: '/clientes', icon: Users, modulo: 'clientes' },
-      { label: 'Lançamentos', to: '/lancamentos', icon: Receipt, modulo: 'financeiro' },
-      { label: 'Agenda', to: '/agenda', icon: CalendarDays, modulo: 'agenda' },
-      // Desacoplado de 'agenda' nesta tarefa - toggle proprio na App Store
-      // (card "Gestão de Equipe/Kanban"), ver App.jsx.
-      { label: 'Tarefas', to: '/tarefas', icon: Kanban, modulo: 'tarefas' },
-      // Antes sempre visivel (sem `modulo`) - agora com toggle proprio na
-      // App Store (card "Inbox de Inteligência Artificial").
-      { label: 'Inbox WhatsApp', to: '/inbox', icon: MessageCircle, modulo: 'ia_whatsapp' },
     ],
   },
   {
-    chave: 'administracao',
-    titulo: 'Administração',
-    icon: Building2,
-    // "Configuracoes" saiu daqui de proposito (pedido explicito) - agora e
-    // acessada so pela engrenagem no rodape (ver botao "Configuracoes" mais
-    // abaixo, perto do toggle de tema), pra nao ter 2 caminhos diferentes
-    // levando pra mesma tela.
+    titulo: 'Catálogo',
     itens: [
+      { label: 'Produtos', to: '/produtos', icon: Package, modulo: 'produtos' },
+      { label: 'Precificação', to: '/precificacao', icon: Calculator, modulo: 'precificacao' },
+      { label: 'Estoque', to: '/estoque', icon: Boxes, modulo: 'estoque_avancado' },
+    ],
+  },
+  {
+    titulo: 'Financeiro',
+    itens: [
+      { label: 'Lançamentos', to: '/lancamentos', icon: Receipt, modulo: 'financeiro' },
       { label: 'Controle Financeiro', to: '/financeiro', icon: Wallet, modulo: 'financeiro' },
       { label: 'DRE', to: '/dre', icon: FileBarChart, modulo: 'financeiro' },
       { label: 'Relatórios', to: '/relatorios', icon: BarChart3, modulo: 'relatorios' },
+      // Sem `modulo` de proposito - "/notas" e sempre acessivel (ver
+      // App.jsx), a pagina em si e que avisa "Módulo Fiscal em
+      // Desenvolvimento" (Notas.jsx). Removido do menu numa reformulacao
+      // anterior da Sidebar, adicionado de volta nesta tarefa.
+      { label: 'Emissor Fiscal', to: '/notas', icon: ScrollText },
+    ],
+  },
+  {
+    titulo: 'Gestão',
+    itens: [
+      { label: 'Agenda', to: '/agenda', icon: CalendarDays, modulo: 'agenda' },
+      { label: 'Tarefas', to: '/tarefas', icon: Kanban, modulo: 'tarefas' },
+      { label: 'Inbox WhatsApp', to: '/inbox', icon: MessageCircle, modulo: 'ia_whatsapp' },
     ],
   },
 ];
 
 const ITEM_DASHBOARD = { label: 'Dashboard', to: '/', icon: LayoutDashboard };
-// PDV Rápido: modulo 'pdv_touch' (opcional, App Store - card "Frente de
-// Loja (PDV)") - separado de 'vendas' desde a arquitetura modular de
-// 2026-09-22 (antes os dois dividiam a chave 'pdv'). Filtrado junto com o
-// resto do menu (ver `modulos.includes(item.modulo)` abaixo), mas fica
-// FORA de `CATEGORIAS_MENU` porque nao e um item de accordion: e um atalho
-// direto e em destaque pro caixa rapido de balcao (rota sem Sidebar, ver
-// pages/PDV.jsx), nao mais uma tela "administrativa" pra esconder numa gaveta.
-const ITEM_PDV = { label: 'PDV Rápido', to: '/pdv', icon: Zap, modulo: 'pdv_touch' };
 const ITEM_MODULOS = { label: 'Módulos', to: '/modulos', icon: LayoutGrid };
 const ITEM_SUPORTE = { label: 'Suporte', to: '/suporte', icon: LifeBuoy };
-
-/** Categoria (se houver) que contem a rota atual - usado pra abrir a gaveta certa sozinho ao navegar direto pra uma sub-rota (ex.: link do Dashboard pra "/vendas"). */
-function encontrarCategoriaDaRota(pathname) {
-  const categoria = CATEGORIAS_MENU.find((c) => c.itens.some((item) => item.to === pathname));
-  return categoria?.chave ?? null;
-}
 
 /**
  * Fora do componente Sidebar (nao definido durante o render) - senao vira
@@ -140,6 +129,31 @@ function ItemDireto({ label, to, icon: Icon, isExpanded, aoNavegar }) {
   );
 }
 
+/** Item dentro de um grupo (`GRUPOS_MENU`) - um pouco menor que `ItemDireto`, sem indentacao (os grupos nao sao mais gavetas aninhadas). `destaque` reaproveita o estilo verde do antigo atalho isolado do PDV Rápido. */
+function ItemGrupo({ label, to, icon: Icon, destaque, isExpanded, aoNavegar }) {
+  return (
+    <NavLink
+      to={to}
+      onClick={aoNavegar}
+      title={!isExpanded ? label : undefined}
+      className={({ isActive }) =>
+        `flex items-center gap-3 rounded-xl px-4 py-2.5 text-base font-semibold transition-colors ${
+          !isExpanded ? 'md:justify-center md:px-0' : ''
+        } ${
+          destaque
+            ? `font-bold text-white shadow-sm ${isActive ? 'bg-emerald-700' : 'bg-emerald-600 hover:bg-emerald-700'}`
+            : isActive
+              ? 'bg-blue-600 text-white'
+              : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+        }`
+      }
+    >
+      <Icon size={18} className="shrink-0" aria-hidden="true" />
+      <span className={`flex-1 text-left ${!isExpanded ? 'md:hidden' : ''}`}>{label}</span>
+    </NavLink>
+  );
+}
+
 /**
  * Menu lateral. `isExpanded`/`onToggle` (collapse "berruga", so relevante a
  * partir do `md`) e `abertaNoMobile`/`onFecharNoMobile` (drawer full-screen
@@ -157,19 +171,11 @@ function ItemDireto({ label, to, icon: Icon, isExpanded, aoNavegar }) {
  * adicional só quando `!isExpanded`" (ver comentario do `ItemDireto`
  * acima) em vez do padrao antigo (`isExpanded ? a : b` sem prefixo),
  * que so fazia sentido quando a Sidebar nunca saia do layout lado-a-lado.
- *
- * Accordion EXCLUSIVO: `categoriaAberta` guarda no maximo 1 chave por vez
- * (nao um Set/array) - abrir uma categoria fecha a outra automaticamente,
- * so por causa do proprio formato do estado. A suavidade do abrir/fechar e
- * via `max-height`/`opacity` com `transition-all duration-300` (Tailwind
- * nao anima `height: auto`, e o conteudo tem tamanho variavel - por isso
- * um `max-h-[...]` generoso em vez de medir a altura real via ref).
  */
 export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFecharNoMobile }) {
   const { theme, toggleTheme } = useTheme();
   const { logout, empresa } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
   const escuro = theme === 'dark';
   // `empresa` comeca `null` ate o AuthContext popular (ver
   // AuthContext.jsx#obterEmpresaInicial/refreshEmpresa) - itens de modulo
@@ -177,25 +183,6 @@ export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFechar
   // App.jsx#RotasDaAplicacao (evita mostrar um item cujo modulo real ainda
   // nao se sabe se esta liberado).
   const modulos = empresa?.modulos ?? [];
-
-  const [categoriaAberta, setCategoriaAberta] = useState(() => encontrarCategoriaDaRota(location.pathname));
-
-  // Se o usuario chegar numa sub-rota por outro caminho (atalho do
-  // Dashboard, link direto, botao "voltar" do navegador), a gaveta certa
-  // abre sozinha - sem isso o item ativo apareceria "escondido" dentro de
-  // uma categoria fechada, sem nenhuma pista visual de onde ele esta.
-  // Ajuste de estado durante o proprio render (comparando com a rota
-  // anterior) em vez de `useEffect` - isso deriva de uma prop que mudou
-  // (`location.pathname`), nao sincroniza com nada externo, entao nao
-  // precisa do passo extra de render que um efeito custaria aqui.
-  const [rotaAnterior, setRotaAnterior] = useState(location.pathname);
-  if (location.pathname !== rotaAnterior) {
-    setRotaAnterior(location.pathname);
-    const categoriaDaRota = encontrarCategoriaDaRota(location.pathname);
-    if (categoriaDaRota) {
-      setCategoriaAberta(categoriaDaRota);
-    }
-  }
 
   function handleLogout() {
     logout();
@@ -208,14 +195,6 @@ export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFechar
     // (ver Configuracoes.jsx - abaInicial so muda com "?aba=..." na URL).
     navigate('/configuracoes');
   }
-
-  function alternarCategoria(chave) {
-    setCategoriaAberta((atual) => (atual === chave ? null : chave));
-  }
-
-  const itemClasses = `flex items-center gap-3 rounded-xl px-4 py-3 text-lg font-semibold transition-colors ${
-    !isExpanded ? 'md:justify-center md:px-0' : ''
-  }`;
 
   return (
     <aside
@@ -264,102 +243,55 @@ export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFechar
         </button>
       </div>
 
-      {/* Navegacao - unica parte que rola. A barra de rolagem fica
+      {/* Navegacao - unica parte que rola. `min-h-0` e o que faz o
+          `overflow-y-auto` funcionar de verdade aqui: um filho `flex-1`
+          dentro de um `flex-col` tem `min-height: auto` por padrao (o
+          "automatic minimum size" dos flex items), entao ele cresce pra
+          caber TODO o conteudo em vez de respeitar o espaco disponivel e
+          ativar o proprio scroll - na pratica, o ultimo item do menu
+          ficava cortado atras do rodape (tema/config/sair) sempre que a
+          lista de links era mais alta que a tela. `min-h-0` zera esse
+          minimo automatico, entao o flex item para no tamanho que o `flex-1`
+          calculou e `overflow-y-auto` finalmente entra em acao. `pb-24`
+          garante uma folga extra no fim da lista, pro ultimo link nunca
+          ficar colado (ou parcialmente escondido) contra a borda inferior
+          do drawer, independente do rodape. A barra de rolagem fica
           escondida visualmente (webkit/IE/Firefox) sem desativar o scroll
-          em si: o mouse/touch/teclado continuam rolando normalmente,
-          so o "trilho" visivel some. */}
+          em si: o mouse/touch/teclado continuam rolando normalmente, so o
+          "trilho" visivel some. */}
       <nav
-        className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex h-full min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 pb-24 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         aria-label="Navegacao principal"
       >
         <ItemDireto {...ITEM_DASHBOARD} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
 
-        {modulos.includes('pdv_touch') && (
-          <NavLink
-            to={ITEM_PDV.to}
-            onClick={onFecharNoMobile}
-            title={!isExpanded ? ITEM_PDV.label : undefined}
-            className={({ isActive }) =>
-              `flex items-center gap-3 rounded-xl px-4 py-3 text-lg font-bold text-white shadow-sm transition-colors ${
-                !isExpanded ? 'md:justify-center md:px-0' : ''
-              } ${isActive ? 'bg-emerald-700' : 'bg-emerald-600 hover:bg-emerald-700'}`
-            }
-          >
-            <Zap size={22} className="shrink-0" aria-hidden="true" />
-            <span className={`flex-1 text-left ${!isExpanded ? 'md:hidden' : ''}`}>{ITEM_PDV.label}</span>
-          </NavLink>
-        )}
-
-        {CATEGORIAS_MENU.map(({ chave, titulo, icon: Icon, itens }) => {
-          const itensVisiveis = itens.filter((item) => modulos.includes(item.modulo));
-          // Categoria inteira some se nenhum dos modulos dela estiver
-          // liberado pro segmento desta empresa - uma gaveta vazia (so o
-          // cabecalho, sem nenhum link dentro) seria um beco sem saida.
+        {GRUPOS_MENU.map(({ titulo, itens }) => {
+          const itensVisiveis = itens.filter((item) => !item.modulo || modulos.includes(item.modulo));
+          // Grupo inteiro some se nenhum dos modulos dele estiver ativo pra
+          // esta empresa - um titulo de grupo sem nenhum link embaixo seria
+          // um cabecalho orfao.
           if (itensVisiveis.length === 0) return null;
 
-          const aberto = categoriaAberta === chave;
-          const contemAtiva = itensVisiveis.some((item) => item.to === location.pathname);
-
           return (
-            <div key={chave}>
-              <button
-                type="button"
-                onClick={() => alternarCategoria(chave)}
-                title={!isExpanded ? titulo : undefined}
-                aria-expanded={aberto}
-                className={`${itemClasses} w-full ${
-                  contemAtiva
-                    ? 'text-blue-700 dark:text-blue-400'
-                    : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
-                }`}
+            <div key={titulo}>
+              <p
+                className={`mt-4 mb-1 px-4 text-xs font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500 ${!isExpanded ? 'md:hidden' : ''}`}
               >
-                <Icon size={22} className="shrink-0" aria-hidden="true" />
-                <span className={`flex-1 text-left ${!isExpanded ? 'md:hidden' : ''}`}>{titulo}</span>
-                <ChevronDown
-                  size={18}
-                  className={`shrink-0 transition-transform duration-300 ${aberto ? 'rotate-180' : ''} ${
-                    !isExpanded ? 'md:hidden' : ''
-                  }`}
-                  aria-hidden="true"
-                />
-              </button>
-
-              {/* Gaveta da categoria - sempre presente no mobile (onde a
-                  Sidebar e sempre "expandida"); a partir do `md`, some por
-                  completo quando a Sidebar esta recolhida (`md:hidden`),
-                  independente de `aberto` - nao ha espaco pra um flyout
-                  nesse modo icone-so. */}
-              <div
-                className={`overflow-hidden transition-all duration-300 ease-in-out ${!isExpanded ? 'md:hidden' : ''} ${
-                  aberto ? 'max-h-[28rem] opacity-100' : 'max-h-0 opacity-0'
-                }`}
-              >
-                <div className="flex flex-col gap-1 py-1 pl-4">
-                  {itensVisiveis.map(({ label, to, icon: SubIcon }) => (
-                    <NavLink
-                      key={label}
-                      to={to}
-                      onClick={onFecharNoMobile}
-                      className={({ isActive }) =>
-                        `flex items-center gap-3 rounded-xl px-4 py-2.5 text-base font-semibold transition-colors ${
-                          isActive
-                            ? 'bg-blue-600 text-white'
-                            : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-                        }`
-                      }
-                    >
-                      <SubIcon size={18} className="shrink-0" aria-hidden="true" />
-                      <span className="flex-1 text-left">{label}</span>
-                    </NavLink>
-                  ))}
-                </div>
+                {titulo}
+              </p>
+              <div className="flex flex-col gap-1">
+                {itensVisiveis.map((item) => (
+                  <ItemGrupo key={item.label} {...item} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
+                ))}
               </div>
             </div>
           );
         })}
 
-        <ItemDireto {...ITEM_MODULOS} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
-        <ItemDireto {...ITEM_SUPORTE} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
+        <div className="mt-4">
+          <ItemDireto {...ITEM_MODULOS} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
+          <ItemDireto {...ITEM_SUPORTE} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
+        </div>
       </nav>
 
       {/* Rodape fixo - fora da area de scroll da nav (e irmao dela, nao

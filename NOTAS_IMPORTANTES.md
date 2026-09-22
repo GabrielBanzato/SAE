@@ -6493,3 +6493,92 @@ alguém salvar algo em Módulos ou os campos serem migrados manualmente -
 o fallback `modulosAtivos ?? modulosDoSegmento(segmento)` (auth.service.js/
 empresa.service.js) cobre esse caso automaticamente, mas vale confirmar
 com um teste real contra produção antes de considerar encerrado lá.
+
+---
+
+## Fix de overflow da Sidebar + reorganização dos itens em grupos fixos (2026-09-22)
+
+### O bug relatado era um clássico de flexbox, não só falta de `overflow-y-auto`
+
+O `<nav>` da Sidebar **já tinha** `overflow-y-auto` antes desta tarefa -
+mesmo assim o último item ficava cortado. Causa raiz: dentro de um pai
+`flex flex-col`, um filho `flex-1` tem `min-height: auto` por padrão (o
+"automatic minimum size" dos flex items) - isso faz o elemento crescer
+pra caber TODO o conteúdo em vez de respeitar o espaço disponível e
+ativar o próprio scroll interno. `overflow-y-auto` sozinho não resolve
+isso; precisa de `min-h-0` (zera esse mínimo automático) junto com
+`flex-1`/`h-full` pra o scroll de verdade entrar em ação. Adicionado
+`min-h-0` além dos 3 itens pedidos explicitamente (`overflow-y-auto` já
+existia, `h-full` e `pb-24` foram adicionados) - sem o `min-h-0` a tarefa
+não teria corrigido o bug relatado de verdade, só mascarado.
+
+**Lição registrada pra qualquer sidebar/painel com scroll interno neste
+projeto**: sempre que um `<nav>`/`<div>` scrollável for filho de um `flex
+flex-col` com altura fixa (`h-screen` etc.), ele precisa de `min-h-0`
+(ou `min-height: 0` equivalente) além de `flex-1 overflow-y-auto` -
+padrão fácil de esquecer porque o bug só aparece quando o conteúdo é alto
+o suficiente pra estourar o espaço (por isso não pegou antes: a Sidebar
+com accordion só mostrava 1 categoria aberta por vez, altura sempre
+pequena o bastante pra nunca estourar; só apareceu depois que os módulos
+opcionais foram se acumulando - Kanban, Inbox WhatsApp etc. - e ficou
+óbvio com todos os módulos de uma empresa ativos ao mesmo tempo).
+
+### Accordion virou grupos estáticos - simplificação pedida, não só reorganização
+
+O pedido descrevia "pequenos títulos... texto pequeno, cinza, uppercase"
+como separadores - não gavetas clicáveis. Interpretado como uma
+simplificação deliberada: removido o mecanismo de accordion inteiro
+(`categoriaAberta`, `encontrarCategoriaDaRota`, `alternarCategoria`, os
+ícones de categoria `Briefcase`/`Building2`, o `ChevronDown` de
+abrir/fechar) - `CATEGORIAS_MENU` virou `GRUPOS_MENU`, sempre todos
+expandidos, cada grupo é só um `<p>` de título + a lista de links embaixo
+(mesmo filtro por `modulo` de antes, só sem a lógica de abrir/fechar).
+Efeito colateral bom: simplifica bastante o componente (menos estado,
+menos lógica condicional) e elimina de vez o cenário que escondia o bug
+de overflow (accordion fechado = pouco conteúdo = nunca estourava).
+
+### Mapeamento dos itens nos 4 grupos pedidos - e as 3 decisões que não estavam no pedido
+
+Pedido explícito: **Comercial** (PDV, Vendas, Histórico de Vendas,
+Clientes), **Catálogo** (Produtos, Precificação, Estoque), **Financeiro**
+(Lançamentos, DRE, Emissor Fiscal), **Gestão** (Agenda, Tarefas). Três
+decisões que precisei tomar sozinho, sem instrução explícita, sinalizadas
+aqui pra fácil correção se eu tiver interpretado errado:
+
+1. **"Controle Financeiro" e "Relatórios"** existiam no menu antes e não
+   apareciam em nenhum dos 4 grupos da lista do pedido. Em vez de
+   remover esses links (perderia navegação pra telas que continuam
+   funcionando normalmente), coloquei os dois dentro do grupo
+   **Financeiro** (o encaixe mais óbvio) junto com Lançamentos/DRE.
+2. **"Inbox WhatsApp"** (existia antes, também não estava em nenhum dos
+   4 grupos) foi pro grupo **Gestão**, ao lado de Agenda/Tarefas
+   (ferramentas operacionais de equipe, mesmo racional).
+3. **"Emissor Fiscal"** foi mapeado pra rota `/notas` (a página "Notas
+   Fiscais"/"Módulo Fiscal em Desenvolvimento" já existente, `Notas.jsx`)
+   - ela tinha ficado sem link nenhum no menu desde uma reformulação
+   anterior da Sidebar (virou só um card "Saiba mais" em `Modulos.jsx`).
+   Sem `modulo` no item (sempre visível, mesma regra de antes) - a
+   própria página já avisa que é mock/em desenvolvimento.
+
+"PDV Rápido" manteve o destaque visual verde que já tinha antes (era um
+item avulso, sozinho, acima de todas as categorias) - virou o primeiro
+item do grupo Comercial, mas com a mesma cor/peso de fonte diferenciado
+(`ItemGrupo` recebe um flag `destaque`), preservando a ideia original de
+"atalho rápido em destaque pro caixa de balcão".
+
+### Status de validação
+
+`npm run lint` (oxlint) sem nenhum aviso novo, `npm run build` (Vite) sem
+erro. Testado visualmente com Playwright headless numa viewport
+**propositalmente baixa** (1400x560 - bem menor que uma tela de laptop
+comum) com uma empresa de teste com **todos** os módulos ativos (o
+cenário que mais estoura a altura disponível): confirmado que os 4
+títulos de grupo aparecem, todos os 15 itens esperados estão no DOM
+(incluindo "Emissor Fiscal"/"Controle Financeiro"/"Relatórios", as 3
+decisões de mapeamento acima), o menu rola até o fim, e o último item
+("Suporte", abaixo até de "Módulos") fica **totalmente visível e
+clicável** depois do scroll (`boundingBox` conferido dentro dos limites
+do viewport, clique navegando pra `/suporte` com sucesso) - o bug
+relatado ("cortando o último item") não reproduz mais. `console --errors`
+vazio. Empresa/usuário de teste apagados do banco local ao final
+(`empresaId` 23).
