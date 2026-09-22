@@ -16,6 +16,7 @@ import { useAuth } from './context/AuthContext';
 // caminho mais critico do app (entrar no sistema).
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Vendas = lazy(() => import('./pages/Vendas'));
+const PDV = lazy(() => import('./pages/PDV'));
 const HistoricoVendas = lazy(() => import('./pages/HistoricoVendas'));
 const Produtos = lazy(() => import('./pages/Produtos'));
 const CalculadoraPrecificacao = lazy(() => import('./pages/CalculadoraPrecificacao'));
@@ -119,6 +120,17 @@ function RotasDaAplicacao() {
               }
             />
           </Route>
+
+          {/* PDV (Frente de Loja): de proposito FORA do `<Route element={<Layout />}>`
+              acima - tela cheia, sem Sidebar (ver pages/PDV.jsx). Mesmo
+              modulo 'pdv' que ja controla `/vendas`/`/historico-vendas` -
+              nao existe uma chave de modulo separada so pra essa tela. Se
+              nao renderizada (modulo ausente), o catch-all `*` da Layout
+              acima ja cobre `/pdv` (com a chrome normal, "Módulo
+              indisponível") - especificidade de rota do React Router
+              sempre prioriza este match exato sobre aquele wildcard quando
+              os dois estao presentes. */}
+          {!carregandoEmpresa && modulos.includes('pdv') && <Route path="/pdv" element={<PDV />} />}
         </Route>
       </Routes>
     </Suspense>

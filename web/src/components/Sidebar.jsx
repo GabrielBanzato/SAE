@@ -24,6 +24,7 @@ import {
   ChevronDown,
   LogOut,
   X,
+  Zap,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -71,6 +72,13 @@ const CATEGORIAS_MENU = [
 ];
 
 const ITEM_DASHBOARD = { label: 'Dashboard', to: '/', icon: LayoutDashboard };
+// PDV Rápido: mesmo modulo 'pdv' que ja controla Vendas/Histórico de Vendas
+// (ver ROTAS_POR_MODULO em App.jsx) - filtrado junto com o resto do menu
+// (ver `modulos.includes(item.modulo)` abaixo), mas fica FORA de
+// `CATEGORIAS_MENU` porque nao e um item de accordion: e um atalho direto
+// e em destaque pro caixa rapido de balcao (rota sem Sidebar, ver
+// pages/PDV.jsx), nao mais uma tela "administrativa" pra esconder numa gaveta.
+const ITEM_PDV = { label: 'PDV Rápido', to: '/pdv', icon: Zap, modulo: 'pdv' };
 const ITEM_MODULOS = { label: 'Módulos', to: '/modulos', icon: LayoutGrid };
 const ITEM_SUPORTE = { label: 'Suporte', to: '/suporte', icon: LifeBuoy };
 
@@ -249,6 +257,22 @@ export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFechar
         aria-label="Navegacao principal"
       >
         <ItemDireto {...ITEM_DASHBOARD} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
+
+        {modulos.includes('pdv') && (
+          <NavLink
+            to={ITEM_PDV.to}
+            onClick={onFecharNoMobile}
+            title={!isExpanded ? ITEM_PDV.label : undefined}
+            className={({ isActive }) =>
+              `flex items-center gap-3 rounded-xl px-4 py-3 text-lg font-bold text-white shadow-sm transition-colors ${
+                !isExpanded ? 'md:justify-center md:px-0' : ''
+              } ${isActive ? 'bg-emerald-700' : 'bg-emerald-600 hover:bg-emerald-700'}`
+            }
+          >
+            <Zap size={22} className="shrink-0" aria-hidden="true" />
+            <span className={`flex-1 text-left ${!isExpanded ? 'md:hidden' : ''}`}>{ITEM_PDV.label}</span>
+          </NavLink>
+        )}
 
         {CATEGORIAS_MENU.map(({ chave, titulo, icon: Icon, itens }) => {
           const itensVisiveis = itens.filter((item) => modulos.includes(item.modulo));
