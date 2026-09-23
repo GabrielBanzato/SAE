@@ -1,148 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Building2, Ban, Power, Gift, CreditCard, Loader2, X } from 'lucide-react';
+import { Building2, Ban, Power, Gift, CreditCard, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../services/api';
-
-/** Catalogo dos modulos pagos pro select do modal "Gerenciar Assinaturas" - mesmas chaves de MODULOS_PAGOS (empresa.service.js). */
-const MODULOS_PAGOS_INFO = [
-  { chave: 'pdv_touch', nome: 'Frente de Loja (PDV)' },
-  { chave: 'clientes', nome: 'CRM e Perfil 360' },
-  { chave: 'tarefas', nome: 'Gestão de Equipe/Kanban' },
-  {
-    chave: 'ia_whatsapp',
-    nome: 'Inbox de Inteligência Artificial',
-    planos: [
-      { chave: 'whatsapp_web', nome: 'Conexão Alternativa (WhatsApp Web)' },
-      { chave: 'meta_api', nome: 'Conexão Oficial (API Meta)' },
-    ],
-  },
-];
-
-/**
- * "Gerenciar Assinaturas" (aba Empresas/Clientes) - forca a ativacao de um
- * modulo pago pra uma empresa especifica, sem ela precisar passar pelo
- * checkout simulado (mesmo endpoint que `ModalPagamento.jsx` usa,
- * `PUT /.../pagamentos`, so que aqui o Supra Admin escolhe o alvo).
- */
-function ModalGerenciarAssinatura({ empresa, onFechar, onConfirmar }) {
-  const [moduloSelecionado, setModuloSelecionado] = useState(MODULOS_PAGOS_INFO[0].chave);
-  const [planoIa, setPlanoIa] = useState('whatsapp_web');
-  const [salvando, setSalvando] = useState(false);
-  const [erro, setErro] = useState('');
-
-  const moduloInfo = MODULOS_PAGOS_INFO.find((modulo) => modulo.chave === moduloSelecionado);
-
-  useEffect(() => {
-    function handleEsc(event) {
-      if (event.key === 'Escape' && !salvando) onFechar();
-    }
-    window.addEventListener('keydown', handleEsc);
-    return () => window.removeEventListener('keydown', handleEsc);
-  }, [onFechar, salvando]);
-
-  async function handleConfirmar() {
-    setErro('');
-    setSalvando(true);
-    try {
-      await onConfirmar({
-        modulo: moduloSelecionado,
-        planoIa: moduloSelecionado === 'ia_whatsapp' ? planoIa : undefined,
-      });
-    } catch (err) {
-      setErro(err.message || 'Não foi possível liberar o módulo.');
-      setSalvando(false);
-    }
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/50 p-4"
-      onClick={() => !salvando && onFechar()}
-      role="presentation"
-    >
-      <div
-        className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl dark:bg-slate-800 sm:p-8"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="titulo-modal-assinatura"
-      >
-        <div className="flex items-center justify-between">
-          <h2 id="titulo-modal-assinatura" className="text-xl font-extrabold text-slate-900 dark:text-slate-100">
-            Gerenciar Assinatura
-          </h2>
-          <button
-            type="button"
-            onClick={onFechar}
-            disabled={salvando}
-            aria-label="Fechar"
-            className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-slate-300"
-          >
-            <X size={22} aria-hidden="true" />
-          </button>
-        </div>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{empresa.nomeLoja || empresa.razaoSocial}</p>
-
-        <label className="mt-6 block">
-          <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Módulo</span>
-          <select
-            value={moduloSelecionado}
-            onChange={(event) => setModuloSelecionado(event.target.value)}
-            className="mt-2 w-full rounded-xl border-2 border-slate-300 bg-white px-3 py-2.5 text-base font-medium text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-blue-400"
-          >
-            {MODULOS_PAGOS_INFO.map((modulo) => (
-              <option key={modulo.chave} value={modulo.chave}>
-                {modulo.nome}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {moduloInfo.planos && (
-          <label className="mt-4 block">
-            <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Plano</span>
-            <select
-              value={planoIa}
-              onChange={(event) => setPlanoIa(event.target.value)}
-              className="mt-2 w-full rounded-xl border-2 border-slate-300 bg-white px-3 py-2.5 text-base font-medium text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-blue-400"
-            >
-              {moduloInfo.planos.map((plano) => (
-                <option key={plano.chave} value={plano.chave}>
-                  {plano.nome}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-
-        {erro && (
-          <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">
-            {erro}
-          </p>
-        )}
-
-        <div className="mt-6 flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onFechar}
-            disabled={salvando}
-            className="rounded-xl px-5 py-2.5 text-base font-semibold text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-700"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirmar}
-            disabled={salvando}
-            className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-base font-bold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {salvando ? <Loader2 size={18} className="animate-spin" aria-hidden="true" /> : <CreditCard size={18} aria-hidden="true" />}
-            Liberar Módulo
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+import ModalAssinaturas from '../../components/superadmin/ModalAssinaturas';
 
 /**
  * Aba/rota "Empresas/Clientes" (Painel Master, rota `/supra-admin/empresas`)
@@ -155,6 +14,11 @@ function ModalGerenciarAssinatura({ empresa, onFechar, onConfirmar }) {
  * `abaAtiva`) pro Painel Master - etapa 1 (2026-09-23): agora e uma rota de
  * verdade dentro do layout dedicado `SupraAdminLayout`, nao mudou nenhuma
  * logica de negocio, so onde o componente mora.
+ *
+ * "Gerenciar Assinaturas" abre `ModalAssinaturas` (Painel Master - etapa 2,
+ * 2026-09-23) - visao detalhada por modulo (antes era so um dropdown de 1
+ * modulo por vez); o modal cuida das proprias chamadas de API, aqui so
+ * abre/fecha e reusa `carregar()` como callback de "algo mudou".
  */
 export default function EmpresasClientes() {
   const [empresas, setEmpresas] = useState(null);
@@ -202,15 +66,6 @@ export default function EmpresasClientes() {
     } finally {
       setProcessandoId(null);
     }
-  }
-
-  async function confirmarAssinatura({ modulo, planoIa }) {
-    await apiFetch(`/superadmin/empresas/${empresaAssinatura.id}/pagamentos`, {
-      method: 'PUT',
-      body: JSON.stringify({ modulo, plano_ia: planoIa }),
-    });
-    setEmpresaAssinatura(null);
-    carregar();
   }
 
   return (
@@ -356,10 +211,10 @@ export default function EmpresasClientes() {
       )}
 
       {empresaAssinatura && (
-        <ModalGerenciarAssinatura
+        <ModalAssinaturas
           empresa={empresaAssinatura}
           onFechar={() => setEmpresaAssinatura(null)}
-          onConfirmar={confirmarAssinatura}
+          onAtualizado={carregar}
         />
       )}
     </div>

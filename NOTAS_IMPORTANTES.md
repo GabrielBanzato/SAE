@@ -6851,3 +6851,37 @@ docker exec sae_api npx prisma migrate deploy
 Rebuild do `web` (mudanças da Sidebar/Painel Master) é independente disso tudo - pode acontecer antes, durante ou depois, sem ordem obrigatória com os passos acima (não toca banco).
 
 **Por que não um `docker run --rm` cru** (like o usuário sugeriu inicialmente): `docker compose run --rm` faz a mesma coisa mas herda automaticamente a rede (`sae_net`) e as variáveis de ambiente (`DATABASE_URL` etc.) já declaradas no `docker-compose.yml` - um `docker run` manual exigiria repetir `--network sae_net -e DATABASE_URL=... -e JWT_SECRET=...` à mão, arriscando digitar errado justamente numa operação contra produção. Efeito prático é o mesmo (container avulso, descartado ao terminar, não é o container oficial da stack).
+
+---
+
+## Painel Master - Etapa 2: Gestão Detalhada de Assinaturas por módulo (2026-09-23)
+
+### O pedido e as 2 decisões de modelagem tomadas com o usuário antes de escrever código
+
+Substituir o antigo modal "Gerenciar Assinaturas" (dropdown de 1 módulo por vez, `ModalGerenciarAssinatura` em `EmpresasClientes.jsx`) por uma visão detalhada de TODOS os módulos, cada um com indicador de acesso, status financeiro (em dia/atrasado) + data de vencimento, e 2 ações manuais ("Liberar Gratuitamente"/"Restringir"). O sistema até esta tarefa era 100% "pagamento simulado sem ciclo" (`pagamentosAtivos[chave]` guardava só `true` ou, pro `ia_whatsapp`, a string do plano - sem noção de tempo nenhuma) - pra existir "em dia/atrasado" de verdade, 2 decisões precisavam ser tomadas antes de mexer no schema, perguntadas ao usuário:
+
+1. **Ciclo de vencimento**: confirmado **mensal automático** - toda confirmação de pagamento (checkout normal OU "Liberar Gratuitamente" do Supra Admin, mesma função) grava `proximoVencimento = agora + 30 dias`. Não existe cobrança real nem job que desativa o módulo quando a data passa (mesmo espírito "simulado" de sempre) - a data só alimenta o status mostrado pro Supra Admin.
+2. **"Restringir"**: confirmado que revoga o pagamento E desativa o módulo na MESMA escrita (simétrico ao "Liberar Gratuitamente", que também ativa os dois juntos) - não deixa o módulo ligado "fantasma" depois de restringido.
+
+### Mudança de formato: `pagamentosAtivos[chave]` virou objeto, não mais `true`/string solta
+
+Formato anterior: `{ pdv_touch: true, ia_whatsapp: "whatsapp_web" }`. Formato novo: `{ pdv_touch: { pago: true, proximoVencimento: "2026-10-23T..." }, ia_whatsapp: { pago: true, proximoVencimento: "...", planoIa: "whatsapp_web" } }`. Status (`EM_DIA`/`ATRASADO`/`SEM_ACESSO`) é sempre DERIVADO em `empresaService.calcularStatusPagamento` a partir de `pago`/`proximoVencimento` - nunca persistido como campo separado (mesmo motivo de sempre nesta base: 2 campos guardando a mesma informação podem divergir, ver `Empresa.isDoador`).
+
+**2 pontos no código que dependiam do formato antigo, corrigidos**: `empresaService.confirmarPagamento` (agora grava o objeto, com `proximoVencimento` calculado) e `Modulos.jsx` (`planoPago={pagamentos.ia_whatsapp || null}` → `pagamentos.ia_whatsapp?.planoIa ?? null` - o valor não é mais uma string solta). Conferido que `atualizarModulos`'s gate de pagamento (`!pagamentos[chave]`) **não precisou mudar** - um objeto não-vazio já é truthy em JS, o comportamento continua correto sem alteração.
+
+### Backend: `restringirModulo` (nova) + `obterAssinaturas` (nova) - endpoints e reaproveitamento
+
+- `empresaService.restringirModulo(prisma, empresaId, { modulo })` - remove a chave de `pagamentosAtivos` por completo (não só marca `pago: false` - sem registro nenhum, `calcularStatusPagamento` já devolve `SEM_ACESSO` naturalmente) e tira o módulo de `modulosAtivos` na mesma escrita.
+- `empresaService.obterAssinaturas(prisma, empresaId)` - breakdown de TODO o catálogo (`MODULOS_BASE` + `MODULOS_LEGADOS_GRATUITOS`, uma lista nova derivada de `MODULOS_VALIDOS - MODULOS_BASE - MODULOS_PAGOS` + `MODULOS_PAGOS`), não só os 4 pagos - decisão não pedida explicitamente, mas necessária pra "listando cada módulo do sistema individualmente" (pedido) fazer sentido: só os módulos pagos têm `status`/`proximoVencimento`, os outros 2 grupos só mostram ativo/inativo (nunca tiveram preço).
+- `superadmin.service.js#restringirModulo`/`obterAssinaturas` - mesmo padrão de reaproveitamento já estabelecido pra `forcarPagamento` (delega pra `empresaService`, sem lógica de negócio duplicada, só decide o `empresaId` alvo).
+- Rotas novas: `DELETE /superadmin/empresas/:id/pagamentos/:modulo` (restringir), `GET /superadmin/empresas/:id/assinaturas` (breakdown, carregado só quando o modal abre pra UMA empresa - não incluído em `GET /superadmin/empresas`, custaria calcular isso pra toda linha da tabela sem necessidade).
+
+### Frontend: `ModalAssinaturas.jsx` (novo, `components/superadmin/`) substitui `ModalGerenciarAssinatura`
+
+3 seções (Módulos Pagos com status/vencimento/ações, Módulos Inclusos no Cadastro, Módulos Base) - `EmpresasClientes.jsx` só abre/fecha e passa `onAtualizado={carregar}` como callback, o modal cuida das próprias chamadas de API (padrão diferente do antigo `ModalGerenciarAssinatura`, que recebia um `onConfirmar` do pai - aqui o modal é mais autocontido, já que agora tem sua própria carga de dados via `GET .../assinaturas`).
+
+**Bug real achado testando visualmente** (Playwright contra o app local, não só os testes de backend): o modal renderizava com as primeiras letras de cada linha cortadas - `z-40` (mesmo valor de todo modal do app) ficava POR BAIXO da sidebar do `SupraAdminLayout` (`z-50`), porque o modal é `fixed inset-0` centralizado na tela INTEIRA (não só na área de conteúdo, que já tem margem pra sidebar) - com um modal largo (`max-w-2xl`, mais largo que os modais comuns do app) essa matemática de centralização o compunha começando ANTES do fim da sidebar. Corrigido com `z-[60]` nesse modal especificamente (não alterado nos demais modais do app - risco/escopo maior que o pedido, mas vale o mesmo raciocínio se um modal largo aparecer em outra tela).
+
+### Validação
+
+Backend testado de ponta a ponta contra o MySQL local (script descartável, sem Docker precisar ficar fora do ar - achado à parte: o Docker Desktop da máquina caiu no meio da sessão e precisou ser religado manualmente pra continuar testando): `obterAssinaturas` antes de qualquer pagamento (tudo `SEM_ACESSO`), liberar `pdv_touch` (`EM_DIA` + vencimento em +30 dias), liberar `ia_whatsapp` com `planoIa: meta_api` (confirmado no retorno), forçar `proximoVencimento` pro passado direto no banco pra confirmar que o status calcula `ATRASADO` corretamente, restringir `pdv_touch` (volta a `SEM_ACESSO`/inativo, `ia_whatsapp` **não** afetado - confirma que a ação é por módulo, não por empresa inteira), módulo inválido rejeitado com 422. Frontend testado com Playwright de ponta a ponta (login, abrir o modal, liberar um módulo, ver o status mudar na tela, restringir, ver reverter) - 0 erros de console nas 2 rodadas (antes e depois do fix de z-index).

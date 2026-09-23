@@ -206,7 +206,7 @@ function CardModuloOpcional({ modulo, preco, ligado, pago, isDoador, salvando, o
  * selecionado decide tanto o preço mostrado quanto qual checkout abre se
  * o Switch for clicado sem esse plano especifico pago - pagar um plano
  * não libera o outro (`pagoNestePlano` só é `true` quando o plano
- * selecionado bate com o que consta em `empresa.pagamentos.ia_whatsapp`).
+ * selecionado bate com o que consta em `empresa.pagamentos.ia_whatsapp.planoIa`).
  */
 function CardModuloWhatsApp({ precos, ligado, planoPago, isDoador, salvando, onAlternar, onAbrirPagamento }) {
   const [planoSelecionado, setPlanoSelecionado] = useState(planoPago || PLANOS_IA_WHATSAPP[0].chave);
@@ -470,7 +470,7 @@ export default function Modulos() {
           <CardModuloWhatsApp
             precos={precos.ia_whatsapp}
             ligado={modulosAtivos.includes('ia_whatsapp')}
-            planoPago={pagamentos.ia_whatsapp || null}
+            planoPago={pagamentos.ia_whatsapp?.planoIa ?? null}
             isDoador={isDoador}
             salvando={salvandoChave === 'ia_whatsapp'}
             onAlternar={alternarModulo}

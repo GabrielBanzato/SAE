@@ -19,10 +19,22 @@ const ROLES_VALIDOS = ['admin', 'gerente', 'vendedor'];
 // que nao existe ainda.
 const MODULOS_PAGOS = ['pdv_touch', 'clientes', 'tarefas', 'ia_whatsapp'];
 
-// Unico modulo pago com mais de uma oferta - `pagamentosAtivos.ia_whatsapp`
-// guarda qual dessas 2 chaves foi paga (String, nao Boolean, ver
-// schema.prisma).
+// Unico modulo pago com mais de uma oferta - `pagamentosAtivos.ia_whatsapp.planoIa`
+// guarda qual dessas 2 chaves foi paga (ver formato completo de
+// `pagamentosAtivos` no comentario de `confirmarPagamento` abaixo).
 const PLANOS_IA_WHATSAPP = ['whatsapp_web', 'meta_api'];
+
+// Duracao do "ciclo de cobranca" simulado (Painel Master - Etapa 2,
+// 2026-09-23) - todo modulo pago tem uma data de proximo vencimento
+// (`pagamentosAtivos[chave].proximoVencimento`), calculada como "agora +
+// N dias" no momento da confirmacao (checkout normal OU liberado pelo
+// Supra Admin, mesma funcao `confirmarPagamento` abaixo pras duas). Nao
+// existe cobranca real nem job que desliga o modulo quando essa data
+// passa (mesmo espirito "simulado" de sempre) - a data so alimenta o
+// status EM_DIA/ATRASADO mostrado pro Supra Admin (`obterAssinaturas`),
+// uma sinalizacao visual pra ele saber quem esta "devendo", nao um
+// mecanismo de bloqueio automatico.
+const DURACAO_CICLO_PAGAMENTO_DIAS = 30;
 
 // Quantos usuarios cada plano pode ter vinculados ao mesmo tenant_id.
 const LIMITE_USUARIOS_POR_PLANO = { gratuito: 2, apoiador: 5 };
@@ -217,6 +229,31 @@ async function atualizarModulos(prisma, tenantId, modulos) {
   return { modulos: empresa.modulosAtivos };
 }
 
+/** "Agora + `DURACAO_CICLO_PAGAMENTO_DIAS` dias", como string ISO (formato que `pagamentosAtivos`, um campo Json, guarda datas). */
+function calcularProximoVencimento() {
+  const data = new Date();
+  data.setDate(data.getDate() + DURACAO_CICLO_PAGAMENTO_DIAS);
+  return data.toISOString();
+}
+
+/**
+ * Deriva o status de cobranca de UM modulo a partir do que esta gravado em
+ * `pagamentosAtivos[chave]` - NUNCA persistido como campo separado (mesmo
+ * motivo de sempre nesta base: 2 campos guardando a mesma informacao podem
+ * divergir, ver `Empresa.isDoador` em schema.prisma). 3 saidas possiveis:
+ * - `SEM_ACESSO`: nunca foi pago (chave ausente de `pagamentosAtivos`).
+ * - `EM_DIA`: pago e `proximoVencimento` ainda nao chegou.
+ * - `ATRASADO`: pago, mas `proximoVencimento` ja passou - nao desliga o
+ *   modulo sozinho (ver comentario de `DURACAO_CICLO_PAGAMENTO_DIAS`), so
+ *   sinaliza pro Supra Admin decidir (cobrar de novo, liberar de novo,
+ *   restringir).
+ */
+function calcularStatusPagamento(pagamentoModulo) {
+  if (!pagamentoModulo?.pago) return 'SEM_ACESSO';
+  if (!pagamentoModulo.proximoVencimento) return 'EM_DIA';
+  return new Date(pagamentoModulo.proximoVencimento) < new Date() ? 'ATRASADO' : 'EM_DIA';
+}
+
 /**
  * Checkout simulado (`ModalPagamento`, Modulos.jsx) - mesmo espirito de
  * `atualizarAssinatura` abaixo: nao ha gateway de pagamento real integrado
@@ -227,23 +264,32 @@ async function atualizarModulos(prisma, tenantId, modulos) {
  * Switch em Modulos.jsx volta a ligar/desligar livremente, sem pedir
  * pagamento de novo (ja consta em `pagamentosAtivos`).
  *
- * `planoIa` so e usado (e exigido) quando `modulo === 'ia_whatsapp'` - o
- * unico modulo pago com mais de 1 oferta (ver PLANOS_IA_WHATSAPP acima).
- * Trocar de plano depois (ex.: de `whatsapp_web` pra `meta_api`) passa por
- * aqui de novo - um novo "pagamento" simplesmente sobrescreve qual plano
- * esta ativo.
+ * MESMA funcao usada pelo checkout normal (tenant-scoped,
+ * `PUT /empresa/pagamentos`) E pelo "Liberar Gratuitamente" do Supra Admin
+ * (`superadmin.service.js#forcarPagamento`, que so decide QUAL empresa e o
+ * alvo) - nao existe uma logica separada pra "pagamento de verdade" vs.
+ * "liberado pelo admin", os dois usam o mesmo ciclo de 30 dias (Painel
+ * Master - Etapa 2, 2026-09-23, decisao confirmada com o usuario).
+ *
+ * `pagamentosAtivos[chave]` agora e um OBJETO (nao mais `true`/uma string
+ * solta, formato anterior a esta tarefa) - `{ pago: true, proximoVencimento,
+ * planoIa? }`. `planoIa` so existe pro unico modulo com mais de 1 oferta
+ * (ver PLANOS_IA_WHATSAPP acima) - exigido apenas quando `modulo ===
+ * 'ia_whatsapp'`. Trocar de plano depois (ex.: de `whatsapp_web` pra
+ * `meta_api`) passa por aqui de novo - um novo "pagamento" sobrescreve
+ * qual plano esta ativo E reinicia o ciclo de vencimento.
  */
 async function confirmarPagamento(prisma, tenantId, { modulo, planoIa }) {
   if (!MODULOS_PAGOS.includes(modulo)) {
     throw new AppError(`modulo deve ser um dos seguintes: ${MODULOS_PAGOS.join(', ')}.`, 422);
   }
 
-  let valorPago = true;
+  const dadosPagamento = { pago: true, proximoVencimento: calcularProximoVencimento() };
   if (modulo === 'ia_whatsapp') {
     if (!PLANOS_IA_WHATSAPP.includes(planoIa)) {
       throw new AppError(`planoIa deve ser um dos seguintes: ${PLANOS_IA_WHATSAPP.join(', ')}.`, 422);
     }
-    valorPago = planoIa;
+    dadosPagamento.planoIa = planoIa;
   }
 
   const empresaAtual = await prisma.empresa.findUnique({
@@ -254,7 +300,7 @@ async function confirmarPagamento(prisma, tenantId, { modulo, planoIa }) {
     throw new AppError('Empresa nao encontrada.', 404);
   }
 
-  const pagamentos = { ...(empresaAtual.pagamentosAtivos ?? {}), [modulo]: valorPago };
+  const pagamentos = { ...(empresaAtual.pagamentosAtivos ?? {}), [modulo]: dadosPagamento };
   const modulosAntes = empresaAtual.modulosAtivos ?? [];
   const modulosFinais = modulosAntes.includes(modulo) ? modulosAntes : [...modulosAntes, modulo];
 
@@ -265,6 +311,98 @@ async function confirmarPagamento(prisma, tenantId, { modulo, planoIa }) {
   });
 
   return { pagamentos: empresa.pagamentosAtivos, modulos: empresa.modulosAtivos };
+}
+
+/**
+ * "Restringir" (Painel Master - Etapa 2, exclusivo do Supra Admin, sem
+ * rota tenant-scoped equivalente - uma empresa nunca restringe a si
+ * mesma, so desliga o Switch em Modulos.jsx, que e outra funcao
+ * `atualizarModulos`) - revoga o pagamento E desativa o modulo NA MESMA
+ * escrita (decisao confirmada com o usuario: simetrico ao "Liberar
+ * Gratuitamente"/`confirmarPagamento` acima, que tambem ativa os dois
+ * juntos). Remove a chave de `pagamentosAtivos` por completo (nao so
+ * marca `pago: false`) - sem registro nenhum, `calcularStatusPagamento`
+ * ja devolve `SEM_ACESSO` naturalmente, sem precisar de um estado
+ * "revogado" a parte.
+ */
+async function restringirModulo(prisma, empresaId, { modulo }) {
+  if (!MODULOS_PAGOS.includes(modulo)) {
+    throw new AppError(`modulo deve ser um dos seguintes: ${MODULOS_PAGOS.join(', ')}.`, 422);
+  }
+
+  const empresaAtual = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: { modulosAtivos: true, pagamentosAtivos: true },
+  });
+  if (!empresaAtual) {
+    throw new AppError('Empresa nao encontrada.', 404);
+  }
+
+  const pagamentos = { ...(empresaAtual.pagamentosAtivos ?? {}) };
+  delete pagamentos[modulo];
+  const modulosFinais = (empresaAtual.modulosAtivos ?? []).filter((chave) => chave !== modulo);
+
+  const empresa = await prisma.empresa.update({
+    where: { id: empresaId },
+    data: { pagamentosAtivos: pagamentos, modulosAtivos: modulosFinais },
+    select: { pagamentosAtivos: true, modulosAtivos: true },
+  });
+
+  return { pagamentos: empresa.pagamentosAtivos, modulos: empresa.modulosAtivos };
+}
+
+// Modulos opcionais SEM cobranca (nunca precisaram de `pagamentosAtivos`,
+// liberados pelo segmento no cadastro - ver MAPA_MODULOS em
+// auth.service.js) - o unico papel desta lista aqui e alimentar
+// `obterAssinaturas` abaixo com um indicador "ativo/inativo" pra esses
+// modulos tambem, sem informacao financeira (nunca tiveram preco).
+const MODULOS_LEGADOS_GRATUITOS = MODULOS_VALIDOS.filter(
+  (chave) => !MODULOS_BASE.includes(chave) && !MODULOS_PAGOS.includes(chave)
+);
+
+/**
+ * "Gestao Detalhada de Assinaturas" (Painel Master - Etapa 2, modal
+ * `ModalAssinaturas` em EmpresasClientes.jsx) - visao completa de TODOS os
+ * modulos do catalogo pra uma empresa, nao so os pagos: base (sempre
+ * ativo, sem info financeira), legados gratuitos (ativo/inativo conforme
+ * `modulosAtivos`, tambem sem info financeira - nunca tiveram preco) e
+ * pagos (ativo/inativo + status de cobranca derivado, ver
+ * `calcularStatusPagamento`). So os pagos tem `proximoVencimento`/`status`
+ * de verdade - os outros 2 grupos existem aqui so pra dar ao Supra Admin o
+ * quadro completo do que a empresa enxerga no menu, num lugar so.
+ */
+async function obterAssinaturas(prisma, empresaId) {
+  const empresa = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: { modulosAtivos: true, pagamentosAtivos: true },
+  });
+  if (!empresa) {
+    throw new AppError('Empresa nao encontrada.', 404);
+  }
+
+  const modulosAtivos = empresa.modulosAtivos ?? [];
+  const pagamentos = empresa.pagamentosAtivos ?? {};
+
+  const base = MODULOS_BASE.map((chave) => ({ chave, tipo: 'base', ativo: true }));
+  const legados = MODULOS_LEGADOS_GRATUITOS.map((chave) => ({
+    chave,
+    tipo: 'legado',
+    ativo: modulosAtivos.includes(chave),
+  }));
+  const pagos = MODULOS_PAGOS.map((chave) => {
+    const pagamento = pagamentos[chave];
+    return {
+      chave,
+      tipo: 'pago',
+      ativo: modulosAtivos.includes(chave),
+      pago: Boolean(pagamento?.pago),
+      proximoVencimento: pagamento?.proximoVencimento ?? null,
+      status: calcularStatusPagamento(pagamento),
+      planoIa: chave === 'ia_whatsapp' ? (pagamento?.planoIa ?? null) : undefined,
+    };
+  });
+
+  return [...base, ...legados, ...pagos];
 }
 
 /**
@@ -384,6 +522,8 @@ module.exports = {
   atualizarDados,
   atualizarModulos,
   confirmarPagamento,
+  restringirModulo,
+  obterAssinaturas,
   listarUsuarios,
   adicionarUsuario,
   atualizarAssinatura,

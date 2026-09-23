@@ -101,6 +101,30 @@ async function forcarPagamento(prisma, empresaId, dados) {
   return empresaService.confirmarPagamento(prisma, empresaId, dados);
 }
 
+/**
+ * "Restringir" (Painel Master - Etapa 2, 2026-09-23) - mesmo padrao de
+ * `forcarPagamento` acima: delega pra `empresaService.restringirModulo`
+ * (nenhuma logica de negocio duplicada), so decide o `empresaId` alvo.
+ */
+async function restringirModulo(prisma, empresaId, dados) {
+  const empresa = await prisma.empresa.findUnique({ where: { id: empresaId }, select: { id: true } });
+  if (!empresa) {
+    throw new AppError('Empresa nao encontrada.', 404);
+  }
+
+  return empresaService.restringirModulo(prisma, empresaId, dados);
+}
+
+/**
+ * "Gestao Detalhada de Assinaturas" (Painel Master - Etapa 2, 2026-09-23) -
+ * breakdown por modulo (ativo/inativo + status de cobranca) de UMA
+ * empresa - delegado pra `empresaService.obterAssinaturas`, mesmo padrao
+ * de reaproveitamento das outras funcoes acima.
+ */
+async function obterAssinaturas(prisma, empresaId) {
+  return empresaService.obterAssinaturas(prisma, empresaId);
+}
+
 /** Todos os chamados de suporte, de qualquer empresa, com o nome dela junto - aba "Chamados de Suporte". */
 async function listarChamados(prisma) {
   return prisma.chamadoSuporte.findMany({
@@ -127,6 +151,8 @@ module.exports = {
   atualizarStatusEmpresa,
   definirDoador,
   forcarPagamento,
+  restringirModulo,
+  obterAssinaturas,
   listarChamados,
   atualizarStatusChamado,
   STATUS_CHAMADO_VALIDOS,

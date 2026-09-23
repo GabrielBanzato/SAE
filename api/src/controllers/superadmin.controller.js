@@ -49,6 +49,25 @@ async function forcarPagamento(request, reply) {
   return reply.send(resultado);
 }
 
+/** DELETE /superadmin/empresas/:id/pagamentos/:modulo - "Restringir" (revoga pagamento e desativa o modulo). */
+async function restringirModulo(request, reply) {
+  const id = parseId(request, reply);
+  if (id === null) return;
+
+  const { modulo } = request.params;
+  const resultado = await superadminService.restringirModulo(request.server.prisma, id, { modulo });
+  return reply.send(resultado);
+}
+
+/** GET /superadmin/empresas/:id/assinaturas - breakdown por modulo (ativo/inativo + status de cobranca), pro modal "Gestao Detalhada de Assinaturas". */
+async function obterAssinaturas(request, reply) {
+  const id = parseId(request, reply);
+  if (id === null) return;
+
+  const assinaturas = await superadminService.obterAssinaturas(request.server.prisma, id);
+  return reply.send(assinaturas);
+}
+
 async function listarChamados(request, reply) {
   const chamados = await superadminService.listarChamados(request.server.prisma);
   return reply.send(chamados);
@@ -82,6 +101,8 @@ module.exports = {
   atualizarStatusEmpresa,
   definirDoador,
   forcarPagamento,
+  restringirModulo,
+  obterAssinaturas,
   listarChamados,
   atualizarStatusChamado,
   obterPrecos,
