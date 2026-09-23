@@ -1,7 +1,11 @@
-import { useState } from 'react';
-import { LifeBuoy, Send, CheckCircle2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { LifeBuoy, Send, CheckCircle2, History, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../services/api';
+
+function formatarData(valor) {
+  return new Date(valor).toLocaleDateString('pt-BR');
+}
 
 const TIPOS_PROBLEMA = [
   { value: 'bug', label: 'Bug (algo não está funcionando)', rotuloCurto: 'Bug' },
@@ -57,6 +61,24 @@ export default function Suporte() {
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState('');
 
+  // "Meus Chamados" (correcao de bug, 2026-09-23) - antes desta correcao
+  // nao existia NENHUMA tela pro lojista ver seus proprios chamados depois
+  // de enviados (so o Supra Admin via a lista completa, de todas as
+  // empresas) - GET /chamados (tenant-scoped, ja existia no backend desde
+  // a tarefa original) nunca tinha um consumidor no frontend.
+  const [meusChamados, setMeusChamados] = useState(null);
+  const [erroLista, setErroLista] = useState('');
+
+  function carregarMeusChamados() {
+    apiFetch('/chamados')
+      .then(setMeusChamados)
+      .catch((err) => setErroLista(err.message || 'Não foi possível carregar seus chamados anteriores.'));
+  }
+
+  useEffect(() => {
+    carregarMeusChamados();
+  }, []);
+
   async function handleSubmit(event) {
     event.preventDefault();
     setErro('');
@@ -74,6 +96,7 @@ export default function Suporte() {
         body: JSON.stringify({ titulo, descricao, usuario_codigo: usuario?.codigoUsuario }),
       });
       setEnviado(true);
+      carregarMeusChamados();
     } catch (err) {
       setErro(err.message || 'Não foi possível enviar o chamado agora.');
     } finally {
@@ -187,6 +210,77 @@ export default function Suporte() {
               {enviando ? 'Enviando...' : 'Enviar'}
             </button>
           </form>
+        )}
+      </div>
+
+      <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700 sm:p-8">
+        <h2 className="flex items-center gap-2 text-xl font-extrabold text-slate-900 dark:text-slate-100">
+          <History size={22} className="shrink-0 text-slate-400 dark:text-slate-500" aria-hidden="true" />
+          Meus Chamados
+        </h2>
+
+        {erroLista && (
+          <p className="mt-4 rounded-2xl bg-red-50 p-3 text-sm font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">
+            {erroLista}
+          </p>
+        )}
+
+        {meusChamados === null ? (
+          <div className="flex items-center justify-center gap-2 py-10 text-slate-400 dark:text-slate-500">
+            <Loader2 size={20} className="animate-spin" aria-hidden="true" />
+            Carregando...
+          </div>
+        ) : meusChamados.length === 0 ? (
+          <p className="py-6 text-center text-base text-slate-400 dark:text-slate-500">
+            Você ainda não abriu nenhum chamado.
+          </p>
+        ) : (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[480px] text-left">
+              <thead>
+                <tr className="border-b border-slate-100 dark:border-slate-700">
+                  <th className="py-2 pr-4 text-xs font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                    ID
+                  </th>
+                  <th className="py-2 pr-4 text-xs font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                    Assunto
+                  </th>
+                  <th className="py-2 pr-4 text-xs font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                    Data
+                  </th>
+                  <th className="py-2 text-xs font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                    Status
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                {meusChamados.map((chamado) => (
+                  <tr key={chamado.id}>
+                    <td className="py-3 pr-4 font-mono text-sm font-semibold text-slate-400 dark:text-slate-500">
+                      #{chamado.id}
+                    </td>
+                    <td className="py-3 pr-4 text-base font-medium text-slate-800 dark:text-slate-200">
+                      {chamado.titulo}
+                    </td>
+                    <td className="py-3 pr-4 text-sm text-slate-500 dark:text-slate-400">
+                      {formatarData(chamado.criadoEm)}
+                    </td>
+                    <td className="py-3">
+                      <span
+                        className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${
+                          chamado.status === 'ABERTO'
+                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                            : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                        }`}
+                      >
+                        {chamado.status === 'ABERTO' ? 'Aberto' : 'Resolvido'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

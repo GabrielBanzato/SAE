@@ -6943,3 +6943,57 @@ Mesmo princípio já usado em toda a API pra `tenantId` (nunca vindo do body, se
 ### Validação
 
 Backend: teste de unidade cobrindo criação/listagem/chamado antigo sem usuário, e um teste HTTP real (`fastify.inject`) provando a propriedade de segurança (corpo forjado não muda o `usuarioId` gravado). Frontend testado com Playwright: campo "Seu ID" carrega o código certo, tentativa de digitar nele não muda o valor (`readOnly` de verdade, não só `disabled` visual), payload enviado ao `POST /chamados` confirmado incluindo `usuario_codigo`, chamado enviado com sucesso, e do lado do Supra Admin (`/supra-admin/chamados`) o chamado aparece com "Nome (ID código)" junto - 0 erros de console nas 2 sessões (lojista e Supra Admin).
+
+---
+
+## Lote de correção de bugs pós-Etapas 1-4 (2026-09-23)
+
+Usuário reportou 5 problemas depois de usar as Etapas 1-4 de verdade. Investigação achou que **2 dos 3 problemas mais graves (500 em Doadores/Chamados no Supra Admin, dropdown de Responsável vazio nas Tarefas) muito provavelmente compartilham a MESMA causa raiz** - as 3 migrations das Etapas 1/3/4 (`codigo_usuario`, campos de doador, `usuarioId` em chamados) nunca foram confirmadas como aplicadas em produção. `empresaService.listarUsuarios` seleciona `codigoUsuario`, `obterDadosDoador` seleciona `doadorDesde`/`doadorProximoVencimento`, `listarChamados` inclui `usuario.codigoUsuario` - se essas colunas não existem no banco de produção, as 3 rotas quebram com exatamente a mesma assinatura de erro do incidente "role vs nivel_acesso" documentado acima (`PrismaClientValidationError`/coluna desconhecida), só que desta vez **sem stack trace visível pro usuário**, porque `QuadroTarefas.jsx` tinha um `.catch(() => {})` totalmente silencioso pro `GET /empresa/usuarios` - a falha nunca aparecia em lugar nenhum, só um dropdown vazio.
+
+**Aguardando confirmação do usuário via `docker logs sae_api --tail 100`** (mesmo procedimento que resolveu o incidente do login) antes de considerar a causa 100% confirmada - mas a hipótese é forte o bastante (3 rotas diferentes, todas selecionando colunas de migrations recentes) pra já preparar o runbook de produção nesta entrada.
+
+### Runbook de produção consolidado (as 4 migrations pendentes de uma vez)
+
+Junta os runbooks já documentados nas entradas "Etapa 1"/"Painel Master - Etapa 3"/"Etapa 4" acima numa sequência única - só a migration `codigo_usuario` (passo 1/2) precisa do cuidado de expand/backfill/contract, as outras 3 são `ADD COLUMN` nullable simples:
+
+```bash
+# 0) Backup primeiro, sempre.
+docker exec sae_mysql mysqldump -uroot -p'<senha_root>' sae > backup_antes_lote_correcoes.sql
+
+# 1) Builda a imagem nova - NAO recria o container ainda.
+docker compose build api
+
+# 2) Aplica SO a migration 1/4 (codigo_usuario, expand - nullable) direto via SQL.
+cat api/prisma/migrations/20260923115935_adiciona_codigo_usuario_5_digitos/migration.sql | docker exec -i sae_mysql mysql -uroot -p'<senha_root>' sae
+
+# 3) Marca ela como aplicada (container avulso, imagem nova).
+docker compose run --rm api npx prisma migrate resolve --applied 20260923115935_adiciona_codigo_usuario_5_digitos
+
+# 4) Backfill dos usuarios que ja existiam antes da coluna nascer.
+docker compose run --rm api node scripts/backfillCodigoUsuario.js
+#    Confirme: "Backfill concluido - 0 usuarios sem codigo_usuario."
+
+# 5) SO AGORA recria o container principal com a imagem nova.
+docker compose up -d --force-recreate api
+
+# 6) Backfill de novo (rede de seguranca pro gap entre os passos 4 e 5).
+docker exec sae_api node scripts/backfillCodigoUsuario.js
+
+# 7) Aplica as 3 migrations restantes de uma vez so (codigo_usuario
+#    NOT NULL+UNIQUE, campos de doador, usuarioId em chamados) - todas
+#    seguras agora (backfill garantido, as outras 2 sao nullable simples).
+docker exec sae_api npx prisma migrate deploy
+```
+
+Rebuild do `web` (colunas de ID/Meus Chamados/CRUD de ingredientes deste lote) é independente - sem ordem obrigatoria com os passos acima.
+
+### Correções aplicadas nesta sessão (código, não migration)
+
+1. **`QuadroTarefas.jsx`** - o `.catch(() => {})` silencioso virou um `setErro(...)` de verdade (só se ainda não houver outro erro mostrado, via forma funcional do `setState`) - daqui pra frente, se `GET /empresa/usuarios` falhar de novo (por qualquer motivo, migration ou não), o usuário vê uma mensagem em vez de um dropdown vazio sem explicação.
+2. **Coluna "ID" em Empresas/Clientes** - `superadmin.service.js#listarEmpresas` passou a incluir `codigoUsuarioAdmin` (o código de 5 dígitos do usuário `role: 'admin'` mais antigo da empresa, via `include` - `Empresa` não tem código próprio, é um atributo de `Usuario`). Decisão de design não perguntada (achado claro, baixo risco): mostrar o código do ADMIN da empresa, já que uma empresa pode ter vários usuários, cada um com seu próprio código.
+3. **"Meus Chamados" em `Suporte.jsx`** - achado investigando o pedido: não existia NENHUMA tela pro lojista ver os próprios chamados depois de enviados (só o Supra Admin via a lista completa) - `GET /chamados` (tenant-scoped) já existia no backend desde a tarefa original, mas nunca tinha um consumidor no frontend. Nova seção "Meus Chamados" abaixo do formulário, com coluna "ID" mostrando o número sequencial do chamado (`#42`, não o código de 5 dígitos do usuário - decisão de UX: um ticket precisa de um identificador próprio pra referenciar "chamado #42" com o suporte, repetir o mesmo código do usuário em toda linha seria redundante).
+4. **CRUD de Ingredientes** - `ModalIngrediente.jsx` (novo componente, mesmo padrão estrutural de `ModalProduto.jsx`) + botão "Novo Ingrediente" + ações de editar/excluir por linha em `EstoqueIngredientes.jsx`. **O backend já estava 100% pronto** (GET/POST/PUT/DELETE completos desde a tarefa original de Ingredientes) - só faltava o frontend, nenhuma rota nova precisou ser criada.
+
+### Validação
+
+Todos os 4 itens de código testados com Playwright contra o app local (que já tem as 4 migrations aplicadas, então não reproduz o bug de produção - só confirma que o código novo funciona corretamente com o schema correto): dropdown de Responsável populado com os 2 usuários da empresa de teste, coluna ID mostrando o código do admin na tabela Empresas/Clientes, chamado enviado aparecendo em "Meus Chamados" com `#id`, e o ciclo completo de CRUD de ingrediente (criar → editar → excluir, cada um confirmado na tela) - 0 erros de console em todas as sessões.

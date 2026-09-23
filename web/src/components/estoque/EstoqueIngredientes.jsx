@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Factory } from 'lucide-react';
+import { Search, Factory, Plus, Pencil, Trash2, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../services/api';
+import ModalIngrediente from './ModalIngrediente';
 
 function formatarMoeda(valor) {
   return Number(valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -47,6 +48,12 @@ function calcularAutonomia(produto) {
  * cada produto o lojista ainda consegue fazer antes de faltar algum
  * ingrediente, evitando a surpresa de descobrir isso no meio de uma
  * encomenda.
+ *
+ * CRUD de verdade (correcao de bug, 2026-09-23) - o backend
+ * (`api/src/services/ingredientes.service.js`) ja tinha o CRUD completo
+ * desde a tarefa original, mas o frontend nunca ganhou um jeito de criar/
+ * editar/excluir um ingrediente - so listava. `ModalIngrediente` (novo)
+ * cobre criar/editar, mesmo padrao de `ModalProduto.jsx`.
  */
 export default function EstoqueIngredientes() {
   const [ingredientes, setIngredientes] = useState(null);
@@ -54,6 +61,11 @@ export default function EstoqueIngredientes() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
   const [busca, setBusca] = useState('');
+
+  const [modalAberto, setModalAberto] = useState(false);
+  const [ingredienteEditando, setIngredienteEditando] = useState(null);
+  const [idExcluindo, setIdExcluindo] = useState(null);
+  const [erroExclusao, setErroExclusao] = useState('');
 
   useEffect(() => {
     let ativo = true;
@@ -78,6 +90,53 @@ export default function EstoqueIngredientes() {
       ativo = false;
     };
   }, []);
+
+  function abrirModalNovo() {
+    setIngredienteEditando(null);
+    setModalAberto(true);
+  }
+
+  function abrirModalEdicao(ingrediente) {
+    setIngredienteEditando(ingrediente);
+    setModalAberto(true);
+  }
+
+  function fecharModal() {
+    setModalAberto(false);
+    setIngredienteEditando(null);
+  }
+
+  async function salvarIngrediente(payload) {
+    if (ingredienteEditando) {
+      const atualizado = await apiFetch(`/ingredientes/${ingredienteEditando.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+      setIngredientes((atual) => atual.map((item) => (item.id === atualizado.id ? atualizado : item)));
+    } else {
+      const criado = await apiFetch('/ingredientes', { method: 'POST', body: JSON.stringify(payload) });
+      setIngredientes((atual) => [...(atual || []), criado]);
+    }
+    fecharModal();
+  }
+
+  async function excluirIngrediente(ingrediente) {
+    if (!window.confirm(`Excluir o ingrediente "${ingrediente.nome}"? Essa ação não pode ser desfeita.`)) return;
+
+    setErroExclusao('');
+    setIdExcluindo(ingrediente.id);
+    try {
+      await apiFetch(`/ingredientes/${ingrediente.id}`, { method: 'DELETE' });
+      setIngredientes((atual) => atual.filter((item) => item.id !== ingrediente.id));
+    } catch (err) {
+      // Mensagem mais comum aqui: 409 "vinculado a ficha tecnica de um
+      // produto" (ver ingredientesService.remove) - erro de negocio
+      // legivel, nao um erro generico.
+      setErroExclusao(err.message || 'Não foi possível excluir este ingrediente.');
+    } finally {
+      setIdExcluindo(null);
+    }
+  }
 
   const ingredientesFiltrados = useMemo(() => {
     if (!ingredientes) return [];
@@ -172,20 +231,37 @@ export default function EstoqueIngredientes() {
       </div>
 
       {/* Lista de insumos */}
-      <div className="flex items-center gap-3 rounded-2xl border-2 border-slate-300 bg-white px-4 py-3 transition-all focus-within:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:focus-within:border-blue-400 sm:max-w-sm">
-        <Search size={20} className="shrink-0 text-slate-400 dark:text-slate-500" aria-hidden="true" />
-        <input
-          type="text"
-          placeholder="Buscar ingrediente..."
-          value={busca}
-          onChange={(event) => setBusca(event.target.value)}
-          className="w-full bg-transparent text-lg font-medium text-slate-900 outline-none placeholder:text-slate-300 dark:text-slate-100 dark:placeholder:text-slate-600"
-        />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-1 items-center gap-3 rounded-2xl border-2 border-slate-300 bg-white px-4 py-3 transition-all focus-within:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:focus-within:border-blue-400 sm:max-w-sm">
+          <Search size={20} className="shrink-0 text-slate-400 dark:text-slate-500" aria-hidden="true" />
+          <input
+            type="text"
+            placeholder="Buscar ingrediente..."
+            value={busca}
+            onChange={(event) => setBusca(event.target.value)}
+            className="w-full bg-transparent text-lg font-medium text-slate-900 outline-none placeholder:text-slate-300 dark:text-slate-100 dark:placeholder:text-slate-600"
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={abrirModalNovo}
+          className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-lg font-bold text-white shadow-lg shadow-blue-600/20 transition-colors hover:bg-blue-700"
+        >
+          <Plus size={22} aria-hidden="true" />
+          Novo Ingrediente
+        </button>
       </div>
+
+      {erroExclusao && (
+        <p className="rounded-2xl bg-red-50 p-4 text-base font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">
+          {erroExclusao}
+        </p>
+      )}
 
       <div className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-left">
+          <table className="w-full min-w-[640px] text-left">
             <thead className="bg-slate-50 dark:bg-slate-900/40">
               <tr>
                 <th className="px-6 py-4 text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -197,12 +273,15 @@ export default function EstoqueIngredientes() {
                 <th className="px-6 py-4 text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   Estoque Atual
                 </th>
+                <th className="px-6 py-4 text-right text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  <span className="sr-only">Ações</span>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
               {carregando && (
                 <tr>
-                  <td colSpan={3} className="px-6 py-8 text-center text-lg text-slate-500 dark:text-slate-400">
+                  <td colSpan={4} className="px-6 py-8 text-center text-lg text-slate-500 dark:text-slate-400">
                     Carregando ingredientes...
                   </td>
                 </tr>
@@ -210,7 +289,7 @@ export default function EstoqueIngredientes() {
 
               {!carregando && ingredientesFiltrados.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="px-6 py-10 text-center">
+                  <td colSpan={4} className="px-6 py-10 text-center">
                     <p className="text-lg font-semibold text-slate-600 dark:text-slate-300">
                       Nenhum ingrediente encontrado.
                     </p>
@@ -233,12 +312,48 @@ export default function EstoqueIngredientes() {
                     <td className="px-6 py-4 text-base font-semibold text-slate-700 dark:text-slate-200">
                       {formatarQuantidade(ingrediente.estoqueAtual)} {ingrediente.unidadeMedida}
                     </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-end gap-1">
+                        {idExcluindo === ingrediente.id ? (
+                          <Loader2 size={18} className="animate-spin text-slate-400" aria-hidden="true" />
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => abrirModalEdicao(ingrediente)}
+                              aria-label={`Editar ${ingrediente.nome}`}
+                              title="Editar"
+                              className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                            >
+                              <Pencil size={16} aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => excluirIngrediente(ingrediente)}
+                              aria-label={`Excluir ${ingrediente.nome}`}
+                              title="Excluir"
+                              className="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                            >
+                              <Trash2 size={16} aria-hidden="true" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
             </tbody>
           </table>
         </div>
       </div>
+
+      {modalAberto && (
+        <ModalIngrediente
+          ingrediente={ingredienteEditando}
+          onFechar={fecharModal}
+          onSalvar={salvarIngrediente}
+        />
+      )}
     </div>
   );
 }

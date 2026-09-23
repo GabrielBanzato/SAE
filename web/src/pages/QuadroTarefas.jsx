@@ -114,11 +114,15 @@ export default function QuadroTarefas() {
       .then((dados) => {
         if (ativo) setUsuarios(dados);
       })
-      .catch(() => {
-        // Falha silenciosa: so degrada o select de responsavel (sem
-        // opcoes) e os nomes nos cards (cai no fallback "Responsável #id"
-        // - ver `nomeDoResponsavel` abaixo) - nao deveria travar o quadro
-        // inteiro por causa disso.
+      .catch((err) => {
+        // Degrada o select de responsavel (sem opcoes) e os nomes nos
+        // cards, sem travar o quadro inteiro por causa disso - mas o erro
+        // precisa aparecer em algum lugar. Achado corrigindo um bug real
+        // (2026-09-23): isso era um catch totalmente silencioso antes -
+        // quando `GET /empresa/usuarios` falhava (ex.: schema de producao
+        // desatualizado), o usuario so via "Sem responsável" pra sempre,
+        // sem nenhuma pista de que algo tinha quebrado.
+        if (ativo) setErro((atual) => atual || err.message || 'Não foi possível carregar a lista de responsáveis.');
       });
     return () => {
       ativo = false;

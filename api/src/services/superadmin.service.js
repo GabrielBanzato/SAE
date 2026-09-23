@@ -19,6 +19,16 @@ const STATUS_CHAMADO_VALIDOS = ['ABERTO', 'RESOLVIDO'];
  * recalculada de `plano` aqui - ver comentario dela em schema.prisma).
  * `totalUsuarios` e que continua calculado nesta funcao pra a tabela da aba
  * "Empresas/Clientes" nao precisar de N chamadas extras.
+ *
+ * `codigoUsuarioAdmin` (achado de 2026-09-23, correcao de bug - a tabela
+ * nao tinha NENHUMA coluna de ID visivel) - o codigo de 5 digitos (ver
+ * Usuario.codigoUsuario em schema.prisma) do usuario ADMIN da empresa, nao
+ * um "ID da empresa" (esse codigo e um atributo de Usuario, nao de
+ * Empresa - uma empresa pode ter varios usuarios, cada um com seu proprio
+ * codigo). `role: 'admin'` + mais antigo (`criadoEm: 'asc'`) pega
+ * consistentemente o usuario criado no cadastro (`register()` sempre cria
+ * o primeiro usuario como admin) - `take: 1` porque so precisamos de 1
+ * pra exibir na tabela, nao a equipe toda.
  */
 async function listarEmpresas(prisma) {
   const empresas = await prisma.empresa.findMany({
@@ -35,13 +45,20 @@ async function listarEmpresas(prisma) {
       pagamentosAtivos: true,
       criadoEm: true,
       _count: { select: { usuarios: true } },
+      usuarios: {
+        where: { role: 'admin' },
+        orderBy: { criadoEm: 'asc' },
+        take: 1,
+        select: { codigoUsuario: true },
+      },
     },
     orderBy: { criadoEm: 'desc' },
   });
 
-  return empresas.map(({ _count, ...empresa }) => ({
+  return empresas.map(({ _count, usuarios, ...empresa }) => ({
     ...empresa,
     totalUsuarios: _count.usuarios,
+    codigoUsuarioAdmin: usuarios[0]?.codigoUsuario ?? null,
   }));
 }
 

@@ -26,6 +26,11 @@ import ModalDoador from '../../components/superadmin/ModalDoador';
  * confirmacao nem detalhe (valor, ha quanto tempo, vencimento) - mesmo
  * padrao autocontido do `ModalAssinaturas` (o modal cuida das proprias
  * chamadas de API).
+ *
+ * Coluna "ID" (correcao de bug, 2026-09-23) - mostra `codigoUsuarioAdmin`
+ * (o codigo de 5 digitos do usuario ADMIN da empresa, ver comentario em
+ * superadmin.service.js#listarEmpresas) - a tabela nao tinha NENHUM jeito
+ * de identificar rapidamente uma empresa por um codigo curto antes disso.
  */
 export default function EmpresasClientes() {
   const [empresas, setEmpresas] = useState(null);
@@ -88,6 +93,9 @@ export default function EmpresasClientes() {
               <thead className="bg-slate-50 dark:bg-slate-900/40">
                 <tr>
                   <th className="px-6 py-4 text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    ID
+                  </th>
+                  <th className="px-6 py-4 text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                     Empresa
                   </th>
                   <th className="px-6 py-4 text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -110,7 +118,7 @@ export default function EmpresasClientes() {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                 {empresas.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-10 text-center text-lg text-slate-500 dark:text-slate-400">
+                    <td colSpan={7} className="px-6 py-10 text-center text-lg text-slate-500 dark:text-slate-400">
                       Nenhuma empresa cadastrada.
                     </td>
                   </tr>
@@ -120,6 +128,9 @@ export default function EmpresasClientes() {
                   const processando = processandoId === empresa.id;
                   return (
                     <tr key={empresa.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-900/30">
+                      <td className="px-6 py-4 font-mono text-sm font-semibold text-slate-500 dark:text-slate-400">
+                        {empresa.codigoUsuarioAdmin ?? '-'}
+                      </td>
                       <td className="px-6 py-4">
                         <p className="text-base font-bold text-slate-900 dark:text-slate-100">
                           {empresa.nomeLoja || empresa.razaoSocial}
