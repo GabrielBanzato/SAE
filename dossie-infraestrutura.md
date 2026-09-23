@@ -137,6 +137,12 @@ No mesmo dia da 2.6, um motor de pricing foi adicionado à App Store: `pdv_touch
 
 **Pendência de produto pra antes do deploy**: essa mudança só afeta cadastros **novos** — qualquer empresa que já tinha `pdv_touch`/`clientes`/`tarefas` em `modulosAtivos` (seja por ter se cadastrado no mesmo dia antes desta tarefa, seja num eventual banco de produção anterior a ela) **continua com o módulo ativo e nunca pagou por ele** (`pagamentosAtivos` fica vazio pra esses módulos). Efeito colateral: se essa empresa desligar o módulo no toggle e tentar religar depois, vai esbarrar no `402` — parece um bug pro usuário ("eu já tinha isso, por que agora está pedindo pra pagar?"), mas é esperado dado como a migração foi feita. Antes de considerar esse motor de pricing "pronto pra produção": rodar uma migração de dados retroativa marcando como pago (`pagamentosAtivos[chave] = true`) qualquer módulo que já constava em `modulosAtivos` de uma empresa existente, pra não cobrar por algo que já era de graça.
 
+### 2.7.1 Pedido duplicado da "Fase 2" de monetização recebido no mesmo dia (2026-09-22)
+
+Depois da 2.7 acima ser implementada e commitada (`d884708`), uma sessão seguinte pediu a **mesma feature do zero** ("Fase 2: Monetização, Regras de Desconto para Doadores e Bloqueio de Módulos"), com um spec que diverge só em nomenclatura: pedia uma coluna literal `Empresa.is_doador` (o código já tinha decidido, com o usuário, **derivar** isso de `plano === 'apoiador'` — ver 2.7 e `NOTAS_IMPORTANTES.md`) e uma rota `POST /pagamentos/checkout` (o código já usa `PUT /empresa/pagamentos`, mesmo comportamento). Confrontado com o usuário antes de mexer em código já testado — decisão: **manter como está**, sem renomear nada. Nenhum arquivo de código mudou; só esta nota e a entrada correspondente em `NOTAS_IMPORTANTES.md`.
+
+**Lição prática**: antes de implementar um pedido detalhado (schema + backend + frontend + modal) neste projeto, vale conferir `git log --oneline` e grepar pelos nomes-chave do pedido primeiro — pode já existir.
+
 ### 2.8 Painel Supra Admin — "Suspender Acesso" não revoga sessões JWT já abertas (2026-09-22)
 
 Nível mais alto do sistema, exclusivo pro dono do software (`Usuario.nivelAcesso === 'SUPERADMIN'`, campo novo e separado do já existente `Usuario.role` — ver `NOTAS_IMPORTANTES.md` pra o raciocínio completo por trás de não reaproveitar `role`). Ninguém vira SUPERADMIN pelo cadastro self-service (`register()` sempre grava `"LOJISTA"`) — só manualmente, direto no banco.
