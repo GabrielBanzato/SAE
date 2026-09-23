@@ -6997,3 +6997,52 @@ Rebuild do `web` (colunas de ID/Meus Chamados/CRUD de ingredientes deste lote) �
 ### Validação
 
 Todos os 4 itens de código testados com Playwright contra o app local (que já tem as 4 migrations aplicadas, então não reproduz o bug de produção - só confirma que o código novo funciona corretamente com o schema correto): dropdown de Responsável populado com os 2 usuários da empresa de teste, coluna ID mostrando o código do admin na tabela Empresas/Clientes, chamado enviado aparecendo em "Meus Chamados" com `#id`, e o ciclo completo de CRUD de ingrediente (criar → editar → excluir, cada um confirmado na tela) - 0 erros de console em todas as sessões.
+
+
+---
+
+## Chat de Suporte com Áudio - Passo 1: 3 bugs + schema `MensagemChamado` (2026-09-23)
+
+Pedido grande em 2 partes (3 bugs + transformar o Suporte num chat bidirecional com mensagens de voz). A pedido do próprio usuário, entregue **em passos**: este Passo 1 cobre só os 3 bugs e a mudança de banco (Parte 2.1). Backend de mensagens/áudio, telas de chat (lojista e Supra Admin) e gravação com `MediaRecorder` ficam pro Passo 2.
+
+### Bug 1 - dropdown de ingredientes cortado dentro do Modal de Produto
+
+**Causa raiz**: o card de `ModalProduto.jsx` tem `max-h-[90vh] overflow-y-auto` (precisa rolar em tela pequena), e no CSS qualquer `overflow` diferente de `visible` num eixo força o outro eixo a cortar também - não existe `overflow-y: auto` + `overflow-x: visible`. Somado ao `<select>` com `flex-1` sem `min-w-0` (flex item não encolhe abaixo do texto da maior opção), o campo vazava da largura do card e era cortado. Subir `z-index` sozinho não resolveria: `z-index` não escapa de um ancestral com `overflow` que corta.
+
+**Correção**: novo `web/src/components/produtos/SeletorIngrediente.jsx` substitui o `<select>` nativo - a lista é renderizada via `createPortal` direto no `document.body`, com `position: fixed` calculada do `getBoundingClientRect()` do botão (fora da árvore de overflow do modal, nenhum ancestral consegue cortá-la), `z-[70]` (acima do overlay `z-30` do modal e dos `z-[60]` do Supra Admin), abre pra cima quando falta espaço abaixo, largura mínima de 280px limitada à tela, recalcula posição em scroll/resize (listener em captura, pega o scroll do próprio card do modal). Esc fecha só o dropdown (`stopPropagation` num listener em captura) sem fechar o modal inteiro.
+
+### Bug 2 - "Seu ID" mostrando `-----` no Suporte
+
+**Causa raiz**: não era bind errado - `Suporte.jsx` já lia `usuario?.codigoUsuario` corretamente. O problema é que `AuthContext` só grava o objeto `usuario` no `localStorage` **no login**. Quem já estava logado antes de `codigoUsuario` existir (Painel Master - Etapa 1) continuou com o objeto antigo, sem esse campo, indefinidamente (até um novo login).
+
+**Correção**: rota nova `GET /auth/me` (autenticada, `id` sempre do token - `auth.service.js#me`) devolvendo o usuário no mesmo formato de login/register. `AuthContext.jsx` chama essa rota uma vez por boot (se houver token) e mescla o resultado no `usuario` salvo, só trocando o estado se algo mudou de fato (evita disparar o `refreshEmpresa` de novo à toa). **Efeito colateral positivo**: qualquer campo novo de `Usuario` daqui pra frente (ou uma promoção a `SUPERADMIN` feita direto no banco) chega no frontend sem exigir logout/login.
+
+**Se continuar `-----` em produção depois do deploy**: o usuário não tem `codigo_usuario` preenchido no banco - rodar o backfill (`scripts/backfillCodigoUsuario.js`, ver runbook do "Lote de correção de bugs pós-Etapas 1-4" acima).
+
+### Bug 3 - doação aceitando R$ 0,00
+
+`superadmin.service.js#definirDoador` aceitava qualquer valor `> 0` (decisão antiga: concessão administrativa não exigia o mínimo de R$10 da mensalidade self-service). Agora exige o mesmo mínimo nas 3 camadas: constante `VALOR_MINIMO_DOACAO = 10` exportada do service (fonte de verdade, `422`), checagem antecipada no `superadmin.controller.js#definirDoador` (`400`), e `ModalDoador.jsx` (espelha a constante, botão desabilitado + mensagem "O valor mínimo da doação é R$ 10,00." + dica "Valor mínimo: R$ 10,00" abaixo do campo, `min={10}` no input).
+
+### Parte 2.1 - schema do Chat de Suporte
+
+- **`MensagemChamado`** (tabela `mensagens_chamado`, 1 `ChamadoSuporte` : N mensagens, `onDelete: Cascade`): `id`, `chamadoId` (`chamado_id`), `remetente` (enum novo `RemetenteMensagem`: `LOJISTA`/`ADMIN`), `tipoMensagem` (`tipo_mensagem`, enum novo `TipoMensagemChamado`: `TEXTO`/`AUDIO`, default `TEXTO`), `conteudo` (`TEXT`), `criadoEm` (coluna `created_at` - nome pedido explicitamente, diferente do `criado_em` do resto do schema). Índice composto `(chamado_id, created_at)` - o chat sempre lê "mensagens do chamado X em ordem".
+- **Decisão: áudio em disco, não base64 no banco** - `conteudo` guarda o caminho relativo do arquivo (ex.: `chamados/12/<timestamp>-<rand>.webm`). Um áudio de 1 min em base64 passa de ~500 KB e incharia a tabela e toda listagem do chat. Implica **volume Docker persistente pra pasta de uploads da API** no Passo 2 (senão os áudios somem a cada recreate do container).
+- **`ChamadoSuporte.atualizadoEm`** (`atualizado_em`, `@default(now()) @updatedAt`) - necessário pra "data da última alteração" pedida no cabeçalho do chat do lojista. `@default(now())` junto de propósito: a coluna nasce `NOT NULL` numa tabela que já tem linhas em produção.
+- `status` continua `String` - os valores novos (`EM_ANALISE`, `SENDO_SOLUCIONADO`, além de `ABERTO`/`RESOLVIDO`) entram em `STATUS_CHAMADO_VALIDOS` no Passo 2, sem `ALTER` de tipo.
+- A `descricao` original do chamado **não** é duplicada como "mensagem 0" - o frontend vai exibi-la como primeiro balão.
+
+**Migration**: `20260923170000_chat_suporte_mensagens_chamado` - 100% aditiva, sem backfill, pode ir direto com `npx prisma migrate deploy`. Gerada via `prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url ...` porque `prisma migrate dev --create-only` **recusou rodar localmente**: acusou que `20260922222219_saas_modular_pricing_supra_admin_catchup` "foi modificada depois de aplicada" (checksum diferente) e exigiu `migrate reset` (apaga o banco inteiro) - não feito. Aplicada no banco local com `migrate deploy` (não confere checksum de migration antiga). **Pendência a investigar**: se o banco de produção tiver o checksum antigo dessa migration registrado, `migrate deploy` lá também não reclama (só `migrate dev` reclama) - mas vale não editar migrations já aplicadas daqui pra frente.
+
+### Validação
+
+- Backend (`fastify.inject` contra o banco local): `GET /auth/me` → `200` com `codigoUsuario`; sem token → `401`; `PUT /superadmin/empresas/:id/doador` com `0`, `9.99` e `""` → `400` "valor mínimo R$ 10,00"; service chamado direto com `5` → `422` (regra vale mesmo sem passar pelo controller). `SHOW COLUMNS` confirmou `mensagens_chamado` e `chamados_suporte.atualizado_em` criadas com os tipos certos; `prisma migrate status` limpo.
+- Frontend: `npm run build` ok, `oxlint` sem aviso novo nos arquivos tocados. Playwright contra API + Vite locais: sessão "antiga" simulada (usuário no `localStorage` **sem** `codigoUsuario`) → "Seu ID" mostrou `27501` após o boot (bug 2 reproduzido e corrigido); dropdown de ingredientes renderizado como filho direto do `<body>`, visível inteiro por cima do modal no desktop (1280px) e no mobile (390px), seleção funcionando, Esc fecha só o dropdown. 0 erros de console. 3 ingredientes de teste criados pra isso e apagados ao final.
+
+### Deploy deste passo
+
+```bash
+docker exec sae_mysql mysqldump -uroot -p'<senha_root>' sae > backup_antes_chat_suporte.sql
+docker compose build api web
+docker compose up -d --force-recreate api web
+docker exec sae_api npx prisma migrate deploy
+```

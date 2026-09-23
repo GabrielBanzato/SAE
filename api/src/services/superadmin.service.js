@@ -84,10 +84,14 @@ async function atualizarStatusEmpresa(prisma, empresaId, ativo) {
  * outro lugar que muda esses campos - `calcularCiclosDoador` reaproveitada
  * dali, nao duplicada) - nunca um campo sem os outros, pra nunca
  * divergirem. Diferente de `atualizarAssinatura` (self-service): aqui e
- * uma concessao administrativa, entao NAO exige o minimo de R$10 da
- * "mensalidade caridosa" normal - so exige um numero positivo (`> 0`),
- * pra nao criar um doador "de R$0" sem querer.
+ * uma concessao administrativa - mas, desde a correcao de 2026-09-23,
+ * exige o MESMO minimo de R$10,00 (`VALOR_MINIMO_DOACAO`) da "mensalidade
+ * caridosa" self-service (antes aceitava qualquer valor `> 0`, o que
+ * permitia um doador de R$0,01 - reportado como bug). Validado aqui
+ * (fonte de verdade) E no controller/ModalDoador.jsx (feedback rapido).
  */
+const VALOR_MINIMO_DOACAO = 10;
+
 async function definirDoador(prisma, empresaId, { isDoador, valorContribuicao }) {
   if (typeof isDoador !== 'boolean') {
     throw new AppError('isDoador deve ser um booleano.', 422);
@@ -96,8 +100,8 @@ async function definirDoador(prisma, empresaId, { isDoador, valorContribuicao })
   let valor = 0;
   if (isDoador) {
     valor = Number(valorContribuicao);
-    if (!Number.isFinite(valor) || valor <= 0) {
-      throw new AppError('valor_contribuicao deve ser um numero maior que zero para tornar a empresa doadora.', 422);
+    if (!Number.isFinite(valor) || valor < VALOR_MINIMO_DOACAO) {
+      throw new AppError('O valor mínimo da doação é R$ 10,00.', 422);
     }
   }
 
@@ -218,4 +222,5 @@ module.exports = {
   listarChamados,
   atualizarStatusChamado,
   STATUS_CHAMADO_VALIDOS,
+  VALOR_MINIMO_DOACAO,
 };

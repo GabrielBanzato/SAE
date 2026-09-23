@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { X, Gift, Heart, Loader2, Ban } from 'lucide-react';
 import { apiFetch } from '../../services/api';
 
+// Espelha `VALOR_MINIMO_DOACAO` de api/src/services/superadmin.service.js.
+const VALOR_MINIMO_DOACAO = 10;
+
 function formatarMoeda(valor) {
   return Number(valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
@@ -42,10 +45,22 @@ function BadgeStatusDoacao({ status }) {
 /** Estado A - empresa AINDA NAO e doadora: formulario pra tornar. */
 function EstadoNaoDoador({ salvando, erro, onConfirmar }) {
   const [valor, setValor] = useState('');
+  const [erroValor, setErroValor] = useState('');
+
+  // Minimo de R$10,00 (correcao de bug, 2026-09-23) - o `min` do input
+  // sozinho nao bastava (so vale no submit nativo, e era 0.01). Checado
+  // aqui E no backend (superadmin.controller/service - fonte de verdade).
+  const numero = Number(valor);
+  const valorValido = valor !== '' && Number.isFinite(numero) && numero >= VALOR_MINIMO_DOACAO;
 
   function handleSubmit(event) {
     event.preventDefault();
-    onConfirmar(Number(valor));
+    if (!valorValido) {
+      setErroValor('O valor mínimo da doação é R$ 10,00.');
+      return;
+    }
+    setErroValor('');
+    onConfirmar(numero);
   }
 
   return (
@@ -64,27 +79,32 @@ function EstadoNaoDoador({ salvando, erro, onConfirmar }) {
           <input
             type="number"
             step="0.01"
-            min="0.01"
+            min={VALOR_MINIMO_DOACAO}
             required
             autoFocus
             value={valor}
-            onChange={(event) => setValor(event.target.value)}
-            placeholder="0,00"
+            onChange={(event) => {
+              setValor(event.target.value);
+              setErroValor('');
+            }}
+            placeholder="10,00"
+            aria-invalid={Boolean(erroValor)}
             className="w-full bg-transparent text-lg font-medium text-slate-900 outline-none dark:text-slate-100"
           />
           <span className="text-sm text-slate-400 dark:text-slate-500">/mês</span>
         </div>
+        <span className="mt-1.5 block text-xs text-slate-400 dark:text-slate-500">Valor mínimo: R$ 10,00</span>
       </label>
 
-      {erro && (
+      {(erroValor || erro) && (
         <p className="rounded-xl bg-red-50 p-3 text-sm font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">
-          {erro}
+          {erroValor || erro}
         </p>
       )}
 
       <button
         type="submit"
-        disabled={salvando}
+        disabled={salvando || !valorValido}
         className="flex w-full items-center justify-center gap-2 rounded-2xl bg-purple-600 px-6 py-3 text-lg font-bold text-white shadow-sm transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {salvando ? <Loader2 size={20} className="animate-spin" aria-hidden="true" /> : <Gift size={20} aria-hidden="true" />}

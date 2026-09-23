@@ -31,6 +31,16 @@ async function definirDoador(request, reply) {
   if (id === null) return;
 
   const { is_doador: isDoador, valor_contribuicao: valorContribuicao } = request.body || {};
+
+  // Minimo de R$10,00 (correcao de bug, 2026-09-23) - checado aqui pra
+  // devolver 400 cedo; o service repete a regra (fonte de verdade, 422).
+  if (isDoador === true) {
+    const valor = Number(valorContribuicao);
+    if (!Number.isFinite(valor) || valor < superadminService.VALOR_MINIMO_DOACAO) {
+      return reply.code(400).send({ error: 'O valor mínimo da doação é R$ 10,00.' });
+    }
+  }
+
   const empresa = await superadminService.definirDoador(request.server.prisma, id, { isDoador, valorContribuicao });
   return reply.send(empresa);
 }

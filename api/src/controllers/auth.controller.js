@@ -55,4 +55,10 @@ async function login(request, reply) {
   return reply.send(resultado);
 }
 
-module.exports = { register, login };
+/** GET /auth/me - usuario logado (id sempre do token, ver auth.service.js#me). */
+async function me(request, reply) {
+  const usuario = await authService.me(request.server.prisma, request.userId);
+  return reply.send(usuario);
+}
+
+module.exports = { register, login, me };

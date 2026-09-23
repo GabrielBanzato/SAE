@@ -186,6 +186,16 @@ Sempre `SELECT` por `email` antes de qualquer `UPDATE` manual em produção, pra
 
 **⚠️ Achado à parte, mais grave**: durante este diagnóstico, o comando colado pelo usuário usava a senha root do MySQL de produção como `dev_root_change_me` — o placeholder de desenvolvimento local (ver 3.4 abaixo, que já avisa contra isso). Se essa é de fato a senha em produção, é uma exposição de segurança real — troque assim que possível. Ver 4.2 abaixo.
 
+### 2.10 Chat de Suporte (Passo 1): migration `mensagens_chamado` + sessões antigas sem campos novos (2026-09-23)
+
+**Migration nova, 100% aditiva** — `20260923170000_chat_suporte_mensagens_chamado`: cria a tabela `mensagens_chamado` (chat 1:N de `chamados_suporte`, `remetente` `LOJISTA`/`ADMIN`, `tipo_mensagem` `TEXTO`/`AUDIO`) e adiciona `chamados_suporte.atualizado_em` (`NOT NULL DEFAULT CURRENT_TIMESTAMP(3)` — seguro com linhas existentes). Sem backfill; aplicar com `docker exec sae_api npx prisma migrate deploy` depois do rebuild/recreate de `api` e `web` (backup antes, como sempre). Runbook completo em `NOTAS_IMPORTANTES.md`.
+
+**⚠️ Pendência de infraestrutura pro Passo 2 (áudio)**: os áudios do chat vão ser salvos **em disco** pela API (não em base64 no banco — decisão pra não inchar a tabela). Antes desse passo ir pra produção, o serviço `api` do `docker-compose.yml` precisa de um **volume nomeado persistente** montado na pasta de uploads — sem isso, todo `--force-recreate` do container `api` (o fluxo normal de deploy via Portainer) **apaga todos os áudios já enviados**, e as mensagens no banco passam a apontar pra arquivos inexistentes.
+
+**⚠️ `prisma migrate dev` recusa rodar no banco local**: acusa que `20260922222219_saas_modular_pricing_supra_admin_catchup` foi modificada depois de aplicada (checksum diferente) e pede `migrate reset` (apaga tudo). **Não rodar o reset.** Gerar migrations novas via `prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url <SHADOW_DATABASE_URL> --script` e aplicar com `migrate deploy` (que não confere checksum de migration antiga). Lição: **nunca editar o `migration.sql` de uma migration que já foi aplicada em algum banco**.
+
+**Comportamento novo do login a saber**: o frontend grava o objeto `usuario` no `localStorage` só no login — antes desta correção, uma sessão aberta antes de um campo novo existir (ex.: `codigoUsuario`) ficava sem ele até novo login ("Seu ID" = `-----` no Suporte). Agora `AuthContext` chama `GET /auth/me` a cada boot e reidrata o usuário. Se "Seu ID" continuar `-----` em produção depois do deploy, o problema é dado, não código: o usuário não tem `codigo_usuario` no banco — rodar `scripts/backfillCodigoUsuario.js`.
+
 ---
 
 ## 3. Configurações de Ambiente (`.env`)

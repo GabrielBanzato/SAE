@@ -306,9 +306,30 @@ async function login(fastify, { email, senha }) {
   };
 }
 
+/**
+ * GET /auth/me (correcao de bug, 2026-09-23) - devolve o usuario logado
+ * direto do banco, no mesmo formato de `usuario` de login/register. Motivo:
+ * o frontend so gravava o objeto `usuario` no localStorage NO LOGIN - quem
+ * ja estava logado antes de `codigoUsuario` existir (Painel Master - Etapa
+ * 1) continuava com um objeto antigo, sem esse campo, e "Seu ID" em
+ * Suporte.jsx mostrava "-----" ate um novo login. AuthContext chama esta
+ * rota a cada boot pra reidratar o usuario com o schema atual.
+ */
+async function me(prisma, usuarioId) {
+  const usuario = await prisma.usuario.findUnique({
+    where: { id: usuarioId },
+    select: { id: true, nome: true, email: true, role: true, nivelAcesso: true, codigoUsuario: true },
+  });
+  if (!usuario) {
+    throw new AppError('Usuario nao encontrado.', 404);
+  }
+  return usuario;
+}
+
 module.exports = {
   register,
   login,
+  me,
   MAPA_MODULOS,
   SEGMENTOS_VALIDOS,
   MODULOS_BASE,

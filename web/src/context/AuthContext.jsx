@@ -97,6 +97,28 @@ export function AuthProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [usuario]);
 
+  // Reidrata `usuario` com o schema ATUAL do backend uma vez por boot
+  // (correcao de bug, 2026-09-23) - o objeto do localStorage so era gravado
+  // no login, entao uma sessao aberta antes de um campo novo existir
+  // (`codigoUsuario`, Painel Master - Etapa 1) ficava sem ele pra sempre ate
+  // um novo login ("Seu ID" = "-----" em Suporte.jsx). So troca o estado se
+  // algo mudou de fato - evita disparar o `refreshEmpresa` acima de novo a
+  // toa (ele depende de `usuario`).
+  useEffect(() => {
+    if (!localStorage.getItem(TOKEN_KEY)) return;
+    api
+      .get('/auth/me')
+      .then(({ data }) => {
+        setUsuario((atual) => {
+          const novo = { ...atual, ...data };
+          if (JSON.stringify(novo) === JSON.stringify(atual)) return atual;
+          localStorage.setItem(USER_KEY, JSON.stringify(novo));
+          return novo;
+        });
+      })
+      .catch(() => {});
+  }, []);
+
   /**
    * `resultado.empresa` (login/register) já chega com `modulos` (ver
    * auth.service.js) - salvo aqui ANTES do primeiro GET /empresa/dados

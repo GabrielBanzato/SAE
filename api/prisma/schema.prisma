@@ -639,12 +639,24 @@ model ChamadoSuporte {
   // quem for atender - reaproveita o campo "Descrição" que o formulario de
   // Suporte.jsx ja pedia (so nao persistia antes desta tarefa).
   descricao String?  @db.VarChar(1000)
+  // Valores (Chat de Suporte, 2026-09-23): ABERTO (padrao, recem-criado),
+  // EM_ANALISE, SENDO_SOLUCIONADO, RESOLVIDO - validados em
+  // superadmin.service.js#STATUS_CHAMADO_VALIDOS. Continua String (nao
+  // enum) pra nao exigir ALTER de tipo em producao a cada status novo.
   status    String   @default("ABERTO") @db.VarChar(20)
   criadoEm  DateTime @default(now()) @map("criado_em")
+  // "Data da ultima alteracao" do cabecalho do chat (Chat de Suporte,
+  // 2026-09-23) - `@updatedAt` atualiza em toda escrita do chamado (troca
+  // de status, e o service tambem "toca" o chamado a cada mensagem nova).
+  // `@default(now())` junto de proposito: a migration cria a coluna
+  // NOT NULL numa tabela que ja tem linhas em producao - sem DEFAULT o
+  // MySQL nao tem valor pra preencher as linhas existentes.
+  atualizadoEm DateTime @default(now()) @updatedAt @map("atualizado_em")
 
   // Cascade: historico de chamados nao tem sentido preservado se a empresa
   // inteira for removida.
   empresa Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  mensagens MensagemChamado[]
   // Restrict (nao Cascade) - mesmo motivo ja usado em Tarefa.responsavel:
   // preserva o historico do chamado (quem abriu), nao permite apagar um
   // usuario que ja tem chamado registrado.
@@ -653,6 +665,50 @@ model ChamadoSuporte {
   @@index([empresaId], map: "idx_chamados_suporte_empresa_id")
   @@index([usuarioId], map: "idx_chamados_suporte_usuario_id")
   @@map("chamados_suporte")
+}
+
+/// Quem mandou uma MensagemChamado - o lojista que abriu o chamado ou a
+/// equipe do Supra Admin. Enum (nao String solto) pelo mesmo motivo de
+/// RoleUsuario/TipoPessoa: conjunto fechado, validado na propria coluna.
+/// MAIUSCULO seguindo TipoLancamento/StatusLancamento (valores pedidos).
+enum RemetenteMensagem {
+  LOJISTA
+  ADMIN
+}
+
+/// Tipo de conteudo de uma MensagemChamado.
+enum TipoMensagemChamado {
+  TEXTO
+  AUDIO
+}
+
+/// Mensagem do chat de um ChamadoSuporte (Chat de Suporte, 2026-09-23) -
+/// transforma o chamado de formulario estatico em conversa bidirecional
+/// (1 chamado : N mensagens). A `descricao` original do chamado continua
+/// no proprio ChamadoSuporte (nao e duplicada aqui como "mensagem 0") - o
+/// frontend a exibe como o primeiro balao do chat.
+///
+/// `conteudo`: texto da mensagem (TEXTO) OU o caminho relativo do arquivo
+/// de audio salvo em disco pela API (AUDIO, ex.:
+/// "chamados/12/1695480000000-ab12cd.webm") - nunca o audio em base64 (um
+/// audio de 1 min em base64 passa de ~500 KB, inflaria a tabela e toda
+/// listagem do chat). TEXT (ate 64 KB) cobre os dois casos com folga.
+model MensagemChamado {
+  id           Int                 @id @default(autoincrement()) @db.UnsignedInt
+  chamadoId    Int                 @map("chamado_id") @db.UnsignedInt
+  remetente    RemetenteMensagem
+  tipoMensagem TipoMensagemChamado @default(TEXTO) @map("tipo_mensagem")
+  conteudo     String              @db.Text
+  criadoEm     DateTime            @default(now()) @map("created_at")
+
+  // Cascade: mensagens nao tem sentido sem o chamado (que por sua vez ja
+  // cai em cascata junto com a empresa).
+  chamado ChamadoSuporte @relation(fields: [chamadoId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  // Chat sempre lido "mensagens do chamado X em ordem cronologica" -
+  // indice composto cobre o where + orderBy de uma vez.
+  @@index([chamadoId, criadoEm], map: "idx_mensagens_chamado_chamado_criado")
+  @@map("mensagens_chamado")
 }
 
 /// Configuracao global de precos dos modulos pagos (Supra Admin, aba

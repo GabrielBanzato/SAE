@@ -3,6 +3,7 @@ import { X, Package, Boxes, Calculator, ChefHat, Plus, Trash2 } from 'lucide-rea
 import CampoTexto from '../CampoTexto';
 import Switch from '../Switch';
 import ModalCalculadoraLucros from './ModalCalculadoraLucros';
+import SeletorIngrediente from './SeletorIngrediente';
 import { apiFetch } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 
@@ -299,18 +300,12 @@ export default function ModalProduto({ produto, onFechar, onSalvar }) {
               {!carregandoIngredientes && ingredientesDisponiveis.length > 0 && (
                 <>
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                    <select
-                      value={ingredienteSelecionado}
-                      onChange={(event) => setIngredienteSelecionado(event.target.value)}
-                      className="flex-1 rounded-xl border-2 border-slate-300 bg-white px-3 py-2.5 text-base font-medium text-slate-900 outline-none transition-all focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-blue-400"
-                    >
-                      <option value="">Selecione um ingrediente...</option>
-                      {ingredientesParaAdicionar.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.nome} ({item.unidadeMedida})
-                        </option>
-                      ))}
-                    </select>
+                    {/* Dropdown via portal (nao <select> nativo) - ver SeletorIngrediente.jsx pro motivo (lista cortada pelo overflow do modal). */}
+                    <SeletorIngrediente
+                      opcoes={ingredientesParaAdicionar}
+                      valor={ingredienteSelecionado}
+                      onSelecionar={setIngredienteSelecionado}
+                    />
                     <input
                       type="number"
                       min="0.001"
