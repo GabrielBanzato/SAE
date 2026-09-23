@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Loader2, Lock } from 'lucide-react';
 import Layout from './components/Layout';
 import PrivateRoute from './components/PrivateRoute';
@@ -33,7 +33,14 @@ const Configuracoes = lazy(() => import('./pages/Configuracoes'));
 const Modulos = lazy(() => import('./pages/Modulos'));
 const Suporte = lazy(() => import('./pages/Suporte'));
 const InboxUnificado = lazy(() => import('./pages/InboxUnificado'));
-const SupraAdmin = lazy(() => import('./pages/SupraAdmin'));
+// Painel Master (Supra Admin) - layout e rotas PROPRIAS, deliberadamente
+// fora da arvore de <Layout /> normal (ver comentario de `ehSuperAdmin`
+// mais abaixo e SupraAdminLayout.jsx - pedido explicito, 2026-09-23, pra
+// nao compartilhar o mesmo menu de uma empresa cliente comum).
+const SupraAdminLayout = lazy(() => import('./pages/superadmin/SupraAdminLayout'));
+const EmpresasClientes = lazy(() => import('./pages/superadmin/EmpresasClientes'));
+const ChamadosSuporte = lazy(() => import('./pages/superadmin/ChamadosSuporte'));
+const ConfiguracoesGlobais = lazy(() => import('./pages/superadmin/ConfiguracoesGlobais'));
 
 /**
  * Rotas de pagina LIGADAS a um modulo de negocio (chave precisa bater com
@@ -127,13 +134,6 @@ function RotasDaAplicacao() {
             <Route path="/configuracoes" element={<Configuracoes />} />
             <Route path="/modulos" element={<Modulos />} />
             <Route path="/suporte" element={<Suporte />} />
-            {/* Painel Supra Admin - so entra na arvore de rotas se o usuario
-                logado for SUPERADMIN (ver comentario de `ehSuperAdmin`
-                acima). Sem isso, navegar direto pra /supra-admin cai no
-                catch-all "Módulo indisponível" abaixo - mensagem um pouco
-                imprecisa pra este caso especifico, mas evita revelar que a
-                rota existe pra quem nao devia nem saber disso. */}
-            {ehSuperAdmin && <Route path="/supra-admin" element={<SupraAdmin />} />}
 
             {/* Catch-all: cobre tanto uma URL que nunca existiu quanto uma
                 rota de modulo que existe no app mas nao esta ativa pra esta
@@ -167,6 +167,26 @@ function RotasDaAplicacao() {
               Router sempre prioriza este match exato sobre aquele wildcard
               quando os dois estao presentes. */}
           {!carregandoEmpresa && modulos.includes('pdv_touch') && <Route path="/pdv" element={<PDV />} />}
+
+          {/* Painel Master (Supra Admin): de proposito FORA do
+              `<Route element={<Layout />}>` acima, mesmo espirito do PDV -
+              layout PROPRIO (`SupraAdminLayout`, sidebar/menu dedicados,
+              nao compartilha a Sidebar de uma empresa cliente comum, ver
+              Sidebar.jsx onde o link agora abre numa aba nova). So entra na
+              arvore de rotas se o usuario logado for SUPERADMIN (ver
+              `ehSuperAdmin` acima) - se nao, `/supra-admin` cai no catch-all
+              `*` da Layout normal ("Módulo indisponível"), mesma logica
+              defensiva de antes (nao revela que a rota existe pra quem nao
+              devia nem saber). `index` redireciona a raiz `/supra-admin`
+              pra `/supra-admin/empresas` - a aba inicial de sempre. */}
+          {ehSuperAdmin && (
+            <Route path="/supra-admin" element={<SupraAdminLayout />}>
+              <Route index element={<Navigate to="empresas" replace />} />
+              <Route path="empresas" element={<EmpresasClientes />} />
+              <Route path="chamados" element={<ChamadosSuporte />} />
+              <Route path="configuracoes" element={<ConfiguracoesGlobais />} />
+            </Route>
+          )}
         </Route>
       </Routes>
     </Suspense>

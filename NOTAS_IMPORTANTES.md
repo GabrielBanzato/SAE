@@ -6770,3 +6770,84 @@ UPDATE usuarios SET nivel_acesso = 'LOJISTA' WHERE email = 'email-do-usuario@exe
 ### ⚠️ Achado à parte, fora do escopo deste incidente mas grave: senha root do MySQL de produção é a mesma senha de exemplo do ambiente local
 
 Os comandos colados pelo usuário durante este diagnóstico usaram `docker exec sae_mysql mysql -uroot -p'dev_root_change_me' sae ...` - **`dev_root_change_me` é o valor placeholder usado no `api/.env`/`docker-compose.yml` de desenvolvimento local** (ver seção 3.4 do `dossie-infraestrutura.md`, que já avisa explicitamente "nunca reaproveite os valores de exemplo"). Se essa é de fato a senha root do MySQL em produção, é uma exposição de segurança real - qualquer pessoa com esse valor (documentado neste repositório, mesmo que só como exemplo) tem acesso root ao banco de produção. **Recomendado trocar essa senha em produção o quanto antes** (gerar uma nova senha forte, atualizar a variável `MYSQL_ROOT_PASSWORD` no Portainer/`.env` de produção, e reiniciar o container `mysql` - qualquer serviço que dependa da senha antiga, como scripts de backup, precisa ser atualizado junto). Não fazia parte do pedido original de diagnóstico do 500, mas registrado aqui por gravidade.
+
+---
+
+## Painel Master - Etapa 1: layout dedicado + código de 5 dígitos, e o runbook de deploy pra Portainer com "recreate" único (2026-09-23)
+
+### O que foi pedido e o que já existia
+
+Pedido em 2 frentes independentes: (1) o link "Painel Master" na Sidebar abrir numa aba nova do navegador, com um layout PRÓPRIO (menu/submenu dedicados, sem herdar a Sidebar de uma empresa cliente comum); (2) `Usuario` ganhar um código de 5 dígitos, gerado no cadastro/criação.
+
+### Frontend: layout dedicado + rotas aninhadas, fora da árvore de `<Layout />`
+
+`Sidebar.jsx` - o link virou `<a href="/supra-admin" target="_blank" rel="noopener noreferrer">` (não mais `<NavLink>` - sem sentido usar `isActive` numa navegação que abre aba nova, a aba atual nunca "fica" na rota). `web/src/pages/superadmin/SupraAdminLayout.jsx` (novo) - sidebar roxa própria, com os 3 itens de menu como rotas de verdade (`/supra-admin/empresas`, `/chamados`, `/configuracoes`, via `<Outlet/>`), rodapé com tema/"Voltar à Loja"/Sair. As 3 abas que antes eram um `useState('abaAtiva')` dentro de um único `SupraAdmin.jsx` viraram páginas próprias (`EmpresasClientes.jsx`, `ChamadosSuporte.jsx`, `ConfiguracoesGlobais.jsx`) montadas como rotas aninhadas em `App.jsx`, **fora** do `<Route element={<Layout />}>` normal - mesmo padrão que o PDV já usava (`pages/PDV.jsx`) pra fugir da Sidebar comum. Continua exigindo `nivelAcesso === 'SUPERADMIN'` pra sequer entrar na árvore de rotas (se não, `/supra-admin` cai no catch-all "Módulo indisponível" da Layout normal - mesma defesa de sempre, não revela que a rota existe).
+
+Testado de ponta a ponta com Playwright (`web/.env` trocado temporariamente pra `http://localhost:3000`, revertido ao final - mesmo procedimento já registrado em sessões anteriores): login, clique real no link (capturado via `context.waitForEvent('page')` - confirma que é mesmo uma aba/página nova, não só um `href` correto), as 3 rotas navegando e renderizando sem erro, redirect de `/supra-admin` pra `/supra-admin/empresas`, 0 erros de console nas duas abas.
+
+**Achado corrigido no caminho**: gerando a migration nova, o Prisma detectou que a migration de alcance da sessão anterior (`20260922222219_...catchup`) tinha um bug real - derrubava `vendas_empresa_id_fkey` e nunca recriava. Corrigido no próprio arquivo (ainda não tinha sido aplicada em produção, sem risco).
+
+### Backend: `Usuario.codigoUsuario` - por que virou 2 migrations, não 1
+
+Pedido inicial gerava 1 migration só (`ADD COLUMN codigo_usuario VARCHAR(5) NOT NULL` + `UNIQUE INDEX`) - identificado ANTES de entregar que isso quebraria a aplicação em produção: a tabela `usuarios` de lá já tem linhas reais, e um `ALTER TABLE` `NOT NULL` sem default falha (ou pior, se o modo SQL permitir, preenche tudo com o mesmo valor vazio e quebra a `UNIQUE` na sequência). Resolvido com o padrão "expand → backfill → contract" (mesma técnica já usada aqui pra `tarefas.status_concluida` -> `status`, ver entrada de 2.5 no dossiê):
+
+1. **Migration `20260923115935_adiciona_codigo_usuario_5_digitos`** (expand) - só `ADD COLUMN codigo_usuario VARCHAR(5) NULL`. Segura com dado real presente.
+2. **`api/scripts/backfillCodigoUsuario.js`** (novo) - preenche o código de todo usuário com `codigo_usuario IS NULL`, reaproveitando o MESMO gerador (`gerarCodigoUsuario`, exportado de `auth.service.js`) que `register()`/`adicionarUsuario()` usam pra usuário novo - não uma lógica de backfill separada, pra não arriscar formatos divergentes. Idempotente (rodar de novo depois de completo não faz nada).
+3. **Migration `20260923121513_codigo_usuario_not_null_unique`** (contract) - só agora `MODIFY COLUMN ... NOT NULL` + `CREATE UNIQUE INDEX`. Falha alto e claro se sobrar alguma linha NULL - nunca corrompe silenciosamente.
+
+**Achado real rodando o backfill pela primeira vez** (testado local, usando os 2 usuários seedados que já existiam ANTES desta coluna nascer - o cenário exato de "usuário antigo sem código"): `prisma.usuario.findMany({ where: { codigoUsuario: null } })` **lança em runtime** (`PrismaClientValidationError: Argument codigoUsuario must not be null`) - o Prisma Client é gerado a partir do `schema.prisma` ATUAL (onde o campo já é obrigatório), então ele recusa um filtro por `null` num campo que ele "sabe" ser obrigatório, mesmo a COLUNA FÍSICA ainda sendo nullable nesse passo intermediário (o client não conhece o estado transitório do banco, só o schema final). Corrigido usando `$queryRaw`/`$executeRaw` só pra essa checagem (ignora a validação de tipo do client) - `id` volta como `BigInt` de `$queryRaw` (mesma pegadinha de `INT UNSIGNED` já documentada em `dashboard.service.js`/dossiê seção 4.3), convertido com `Number(...)` antes de usar. Validado rodando de verdade: os 2 usuários receberam códigos únicos, rodar o script de novo confirmou "nada a fazer" (idempotente), e um dos 2 usuários ainda logou normalmente depois de todo o processo (schema final aplicado, `NOT NULL` + `UNIQUE` incluídos).
+
+### ⚠️ Runbook de deploy em produção - Portainer com "recreate" único do container
+
+Perguntei ao usuário como o deploy real funciona: no Portainer deles, o container `api` é recriado inteiro a partir da imagem nova de uma vez só (sem passo intermediário nativo do Portainer pra isso). Problema real disso pra uma migration em 2 passos: se o container novo (que já espera `codigoUsuario` obrigatório) subir ANTES do backfill terminar, qualquer leitura de um usuário ainda sem código (ex.: o próprio `login()`, que faz `findFirst` sem excluir o campo do select) quebra - um `String` obrigatório com `NULL` no banco por baixo é a MESMA classe de erro do incidente "role vs nivel_acesso" (`PrismaClientValidationError`/erro de desserialização), documentado na entrada acima.
+
+**Solução: usar `docker compose build`/`run --rm` pra rodar migration+backfill com a imagem NOVA, SEM recriar o container principal ainda** - o `api/Dockerfile` já roda `npx prisma generate` em tempo de BUILD (não só no `npm start`), então assim que a imagem termina de buildar, ela já tem o Prisma Client novo disponível pra um container avulso, mesmo que o container "oficial" (`sae_api`, definido no `docker-compose.yml`) continue rodando a imagem antiga até o passo 5. Passo a passo (rodar no HOST, na pasta do repositório, depois de `git pull` das mudanças):
+
+```bash
+# 0) Backup primeiro, sempre - antes de qualquer coisa abaixo.
+docker exec sae_mysql mysqldump -uroot -p'<senha_root>' sae > backup_antes_codigo_usuario.sql
+
+# 1) Builda a imagem NOVA do api - NAO recria o container ainda
+#    (build puro, sem "up"/"recreate" - o container sae_api atual continua rodando a imagem antiga).
+docker compose build api
+
+# 2) Aplica SO a migration 1 (expand, nullable) direto via SQL - nao usa
+#    "prisma migrate deploy" aqui de proposito, porque ele aplicaria as 2
+#    migrations pendentes de uma vez (as 2 ja estao no repo/imagem nova) e
+#    isso pularia o backfill no meio. Roda contra o MySQL direto, sem
+#    precisar do container api novo pra isso.
+cat api/prisma/migrations/20260923115935_adiciona_codigo_usuario_5_digitos/migration.sql | docker exec -i sae_mysql mysql -uroot -p'<senha_root>' sae
+
+# 3) Marca essa migration como "aplicada" na tabela de controle do Prisma,
+#    usando um container AVULSO com a imagem NOVA (--rm = descartado ao
+#    terminar, nunca vira o container oficial) - sem isso, o "migrate
+#    deploy" do passo 6 tentaria rodar a migration 1 de novo e falharia
+#    (coluna ja existe).
+docker compose run --rm api npx prisma migrate resolve --applied 20260923115935_adiciona_codigo_usuario_5_digitos
+
+# 4) Roda o backfill - mesmo container avulso, imagem nova (tem o script
+#    porque ja foi buildado no passo 1), mas ainda apontando pro banco que
+#    so tem a coluna nullable (o script foi feito pra funcionar nesse
+#    estado intermediario, ver script pra detalhes).
+docker compose run --rm api node scripts/backfillCodigoUsuario.js
+#    Confirme a saida: "Backfill concluido - 0 usuarios sem codigo_usuario."
+
+# 5) SO AGORA recria o container principal com a imagem nova (o fluxo
+#    "recreate" de sempre no Portainer, ou via linha de comando):
+docker compose up -d --force-recreate api
+
+# 6) Roda o backfill MAIS UMA VEZ (rede de seguranca) - cobre qualquer
+#    usuario cadastrado pelo container ANTIGO entre os passos 4 e 5 (que
+#    nao sabia gravar codigo_usuario, deixaria NULL de novo). Idempotente,
+#    nao faz nada se nao houver ninguem novo.
+docker exec sae_api node scripts/backfillCodigoUsuario.js
+
+# 7) SO AGORA aplica a migration 2 (contract - NOT NULL + UNIQUE) - com o
+#    container novo ja rodando (garante que a partir de agora todo cadastro
+#    novo grava o campo certo) e o backfill garantidamente completo.
+docker exec sae_api npx prisma migrate deploy
+```
+
+Rebuild do `web` (mudanças da Sidebar/Painel Master) é independente disso tudo - pode acontecer antes, durante ou depois, sem ordem obrigatória com os passos acima (não toca banco).
+
+**Por que não um `docker run --rm` cru** (like o usuário sugeriu inicialmente): `docker compose run --rm` faz a mesma coisa mas herda automaticamente a rede (`sae_net`) e as variáveis de ambiente (`DATABASE_URL` etc.) já declaradas no `docker-compose.yml` - um `docker run` manual exigiria repetir `--network sae_net -e DATABASE_URL=... -e JWT_SECRET=...` à mão, arriscando digitar errado justamente numa operação contra produção. Efeito prático é o mesmo (container avulso, descartado ao terminar, não é o container oficial da stack).

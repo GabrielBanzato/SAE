@@ -206,6 +206,12 @@ CREATE INDEX `idx_tarefas_empresa_responsavel` ON `tarefas`(`empresa_id`, `respo
 -- CreateIndex
 CREATE INDEX `idx_vendas_funcionario_id` ON `vendas`(`funcionario_id`);
 
+-- AddForeignKey (re-adicionada apos o DROP FOREIGN KEY do topo deste arquivo -
+-- faltava recriar esta, achado em 2026-09-23 via "prisma migrate dev" detectando
+-- drift entre esta migration e o banco local real, que sempre teve a FK; ver
+-- NOTAS_IMPORTANTES.md)
+ALTER TABLE `vendas` ADD CONSTRAINT `vendas_empresa_id_fkey` FOREIGN KEY (`empresa_id`) REFERENCES `empresas`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
 -- AddForeignKey
 ALTER TABLE `vendas` ADD CONSTRAINT `vendas_funcionario_id_fkey` FOREIGN KEY (`funcionario_id`) REFERENCES `usuarios`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 

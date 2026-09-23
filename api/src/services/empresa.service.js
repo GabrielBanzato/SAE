@@ -4,7 +4,7 @@ const AppError = require('../utils/AppError');
 // auth.service.js, ao lado de MAPA_MODULOS (a fonte da verdade do catalogo
 // de modulos). Reexportados abaixo por compatibilidade - nenhum outro
 // arquivo alem deste precisa saber que a definicao mora la.
-const { SEGMENTOS_VALIDOS, MODULOS_BASE, MODULOS_VALIDOS, modulosDoSegmento } = require('./auth.service');
+const { SEGMENTOS_VALIDOS, MODULOS_BASE, MODULOS_VALIDOS, modulosDoSegmento, gerarCodigoUsuario } = require('./auth.service');
 
 const SALT_ROUNDS = 10;
 
@@ -279,6 +279,7 @@ async function listarUsuarios(prisma, tenantId) {
       nome: true,
       email: true,
       role: true,
+      codigoUsuario: true,
       criadoEm: true,
     },
     orderBy: { nome: 'asc' },
@@ -318,11 +319,12 @@ async function adicionarUsuario(prisma, tenantId, { nome, email, senha, role }) 
   }
 
   const senhaHash = await bcrypt.hash(senha, SALT_ROUNDS);
+  const codigoUsuario = await gerarCodigoUsuario(prisma);
 
   try {
     return await prisma.usuario.create({
-      data: { empresaId: tenantId, nome, email, senhaHash, role: roleFinal },
-      select: { id: true, nome: true, email: true, role: true, criadoEm: true },
+      data: { empresaId: tenantId, nome, email, senhaHash, role: roleFinal, codigoUsuario },
+      select: { id: true, nome: true, email: true, role: true, codigoUsuario: true, criadoEm: true },
     });
   } catch (err) {
     // P2002 = violacao de unique constraint - aqui, @@unique([empresaId, email]).

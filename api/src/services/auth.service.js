@@ -99,6 +99,27 @@ function modulosDoSegmento(segmento) {
   return MAPA_MODULOS[segmento] || [];
 }
 
+/**
+ * Codigo curto de identificacao do usuario (Painel Master - etapa 1,
+ * 2026-09-23) - 5 digitos, zero-padded ("00042", nunca "42"), unico
+ * GLOBALMENTE (ver comentario de `Usuario.codigoUsuario` em schema.prisma).
+ * Verifica unicidade ANTES do insert (nao reage a um erro de constraint
+ * depois) - mais simples de acompanhar que distinguir, no catch de
+ * `register`/`adicionarUsuario`, se um P2002 veio do email ou do codigo.
+ * `prisma` aqui pode ser o client normal OU um `tx` de transacao (mesma
+ * interface) - `register` abaixo passa o `tx` pra checagem valer dentro da
+ * mesma transacao que vai criar o usuario.
+ */
+async function gerarCodigoUsuario(prisma) {
+  let codigo;
+  let jaExiste;
+  do {
+    codigo = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
+    jaExiste = await prisma.usuario.findUnique({ where: { codigoUsuario: codigo } });
+  } while (jaExiste);
+  return codigo;
+}
+
 function gerarToken(fastify, usuario) {
   return fastify.jwt.sign(
     {
@@ -173,6 +194,7 @@ async function register(
         email,
         senhaHash,
         role: 'admin',
+        codigoUsuario: await gerarCodigoUsuario(tx),
       },
     });
 
@@ -277,4 +299,13 @@ async function login(fastify, { email, senha }) {
   };
 }
 
-module.exports = { register, login, MAPA_MODULOS, SEGMENTOS_VALIDOS, MODULOS_BASE, MODULOS_VALIDOS, modulosDoSegmento };
+module.exports = {
+  register,
+  login,
+  MAPA_MODULOS,
+  SEGMENTOS_VALIDOS,
+  MODULOS_BASE,
+  MODULOS_VALIDOS,
+  modulosDoSegmento,
+  gerarCodigoUsuario,
+};

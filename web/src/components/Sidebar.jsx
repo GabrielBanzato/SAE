@@ -26,6 +26,7 @@ import {
   X,
   Zap,
   FileBarChart,
+  ExternalLink,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -301,7 +302,14 @@ export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFechar
 
         {/* Painel Supra Admin - so renderiza pro nivel de acesso certo,
             estilo roxo deliberadamente diferente do resto do menu (sinaliza
-            "zona administrativa", distinta das telas normais da loja). */}
+            "zona administrativa", distinta das telas normais da loja).
+            `<a target="_blank">` (nao `<NavLink>`, pedido explicito de
+            2026-09-23) - abre numa aba NOVA do navegador, sempre um full
+            page load carregando `SupraAdminLayout` (layout proprio, sem
+            relacao com esta Sidebar - ver pages/superadmin/). Por ser uma
+            navegacao de aba nova, nunca fica "ativo" nesta Sidebar (a aba
+            atual continua na tela de onde o clique partiu) - sem sentido
+            usar `isActive` do NavLink aqui, por isso o estilo e estatico. */}
         {ehSuperAdmin && (
           <div className="mt-4">
             <p
@@ -309,23 +317,19 @@ export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFechar
             >
               Supra Admin
             </p>
-            <NavLink
-              to="/supra-admin"
-              onClick={onFecharNoMobile}
-              title={!isExpanded ? 'Painel Supra Admin' : undefined}
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-xl px-4 py-3 text-lg font-bold transition-colors ${
-                  !isExpanded ? 'md:justify-center md:px-0' : ''
-                } ${
-                  isActive
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-purple-50 text-purple-700 hover:bg-purple-100 dark:bg-purple-950/30 dark:text-purple-300 dark:hover:bg-purple-950/50'
-                }`
-              }
+            <a
+              href="/supra-admin"
+              target="_blank"
+              rel="noopener noreferrer"
+              title={!isExpanded ? 'Painel Master (abre em nova aba)' : undefined}
+              className={`flex items-center gap-3 rounded-xl bg-purple-50 px-4 py-3 text-lg font-bold text-purple-700 transition-colors hover:bg-purple-100 dark:bg-purple-950/30 dark:text-purple-300 dark:hover:bg-purple-950/50 ${
+                !isExpanded ? 'md:justify-center md:px-0' : ''
+              }`}
             >
               <ShieldAlert size={22} className="shrink-0" aria-hidden="true" />
               <span className={`flex-1 text-left ${!isExpanded ? 'md:hidden' : ''}`}>Painel Master</span>
-            </NavLink>
+              <ExternalLink size={16} className={`shrink-0 ${!isExpanded ? 'md:hidden' : ''}`} aria-hidden="true" />
+            </a>
           </div>
         )}
       </nav>

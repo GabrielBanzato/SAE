@@ -32,6 +32,10 @@ async function main() {
       email: 'admin@teste.com',
       senhaHash,
       role: 'admin',
+      // Codigo de 5 digitos fixo pro seed (nao precisa do gerador aleatorio
+      // com checagem de unicidade que os services usam - o seed roda contra
+      // um banco vazio/conhecido, sem risco de colisao).
+      codigoUsuario: '00001',
     },
   });
 
@@ -44,6 +48,7 @@ async function main() {
       email: 'vendedor@teste.com',
       senhaHash,
       role: 'vendedor',
+      codigoUsuario: '00002',
     },
   });
 

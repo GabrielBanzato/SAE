@@ -25,8 +25,8 @@ const classesInput =
 /**
  * Helpdesk simples - desde o Painel Supra Admin (2026-09-22), "enviar" aqui
  * persiste de verdade via `POST /chamados` (`ChamadoSuporte`, ver
- * schema.prisma) e aparece na aba "Chamados de Suporte" do Supra Admin
- * (SupraAdmin.jsx). `titulo` do chamado e composto do tipo escolhido +
+ * schema.prisma) e aparece na rota "Chamados de Suporte" do Painel Master
+ * (`pages/superadmin/ChamadosSuporte.jsx`). `titulo` do chamado e composto do tipo escolhido +
  * inicio da descricao (o modelo `ChamadoSuporte` nao tem um campo `tipo`
  * proprio - so id/empresaId/titulo/descricao/status/data, pedido explicito
  * da tarefa) - `nome`/`email` continuam so locais (pre-preenchidos do

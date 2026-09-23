@@ -47,7 +47,7 @@ function calcularPrecoDoador(preco) {
  * Precos NAO ficam mais fixos aqui (ver `PRECOS_PADRAO` abaixo, so um
  * fallback pro primeiro instante antes da API responder) - vem de
  * `GET /configuracoes/precos` (`ConfiguracaoGlobal`, schema.prisma),
- * editaveis pelo Supra Admin em `SupraAdmin.jsx` > Configurações Globais -
+ * editaveis pelo Supra Admin em `pages/superadmin/ConfiguracoesGlobais.jsx` -
  * mudar um preco la reflete AQUI, pra qualquer empresa, sem precisar
  * alterar codigo.
  */

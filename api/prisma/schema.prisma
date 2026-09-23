@@ -192,15 +192,15 @@ model Empresa {
 }
 
 model Usuario {
-  id           Int         @id @default(autoincrement()) @db.UnsignedInt
-  empresaId    Int         @map("empresa_id") @db.UnsignedInt
-  nome         String      @db.VarChar(120)
-  email        String      @db.VarChar(150)
-  senhaHash    String      @map("senha_hash") @db.VarChar(255)
+  id            Int         @id @default(autoincrement()) @db.UnsignedInt
+  empresaId     Int         @map("empresa_id") @db.UnsignedInt
+  nome          String      @db.VarChar(120)
+  email         String      @db.VarChar(150)
+  senhaHash     String      @map("senha_hash") @db.VarChar(255)
   // Permissao DENTRO da empresa/tenant (admin/gerente/vendedor) - continua
   // sem nenhuma rota checando isso ainda (mesma lacuna ja documentada no
   // dossie de infraestrutura), NAO confundir com `nivelAcesso` abaixo.
-  role         RoleUsuario @default(vendedor)
+  role          RoleUsuario @default(vendedor)
   // Nivel de acesso na PLATAFORMA (Painel Supra Admin, 2026-09-22) - eixo
   // SEPARADO de `role` acima de proposito (conferido com o usuario antes
   // de escrever isto): `role` e "que tipo de funcionario dentro desta
@@ -216,9 +216,21 @@ model Usuario {
   // cadastro self-service (`register()` sempre grava o default "LOJISTA")
   // - virar SUPERADMIN e uma operacao manual (direto no banco), de
   // proposito: nenhum usuario deve conseguir se auto-promover.
-  nivelAcesso  String      @default("LOJISTA") @map("nivel_acesso") @db.VarChar(20)
-  criadoEm     DateTime    @default(now()) @map("criado_em")
-  atualizadoEm DateTime    @default(now()) @updatedAt @map("atualizado_em")
+  nivelAcesso   String      @default("LOJISTA") @map("nivel_acesso") @db.VarChar(20)
+  // Codigo curto de 5 digitos (2026-09-23, Painel Master - etapa 1) pra
+  // identificar o usuario sem expor id/email (ex.: suporte confirmando
+  // identidade por telefone). String (nao Int) e zero-padded na geracao
+  // ("00042", nao "42") - preserva sempre 5 caracteres, o que um Int
+  // perderia (zero a esquerda nao sobrevive num tipo numerico). Unico
+  // GLOBALMENTE (nao so por empresa, diferente de email) - e um codigo
+  // "cartao de identificacao", faz mais sentido nao repetir entre tenants
+  // diferentes. Gerado em auth.service.js#register/empresa.service.js#adicionarUsuario
+  // (gerarCodigoUsuario, com checagem de unicidade antes do insert) -
+  // nunca escolhido pelo usuario, nunca reaproveitado como credencial de
+  // login (email+senha continua sendo o unico jeito de entrar).
+  codigoUsuario String      @unique(map: "uq_usuarios_codigo_usuario") @map("codigo_usuario") @db.VarChar(5)
+  criadoEm      DateTime    @default(now()) @map("criado_em")
+  atualizadoEm  DateTime    @default(now()) @updatedAt @map("atualizado_em")
 
   empresa           Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   // 2 relacoes distintas com Venda (quem vendeu vs. quem consumiu
