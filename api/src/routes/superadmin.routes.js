@@ -1,0 +1,36 @@
+const superadminController = require('../controllers/superadmin.controller');
+
+/**
+ * Painel Supra Admin (2026-09-22) - nivel mais alto do sistema, exclusivo
+ * pro dono do software (`Usuario.nivelAcesso === 'SUPERADMIN'`).
+ *
+ * O hook abaixo e ESCOPADO a este plugin (encapsulamento do Fastify - um
+ * `addHook` dentro de um `register()` so vale pras rotas registradas
+ * aqui dentro, nao pro resto da API) e roda DEPOIS do hook global de JWT
+ * (plugins/auth.js, ja populou `request.userNivelAcesso` a essa altura) -
+ * ainda exige um JWT valido primeiro (nenhuma rota aqui declara
+ * `config: { public: true }`), so adiciona a checagem extra de nivel de
+ * acesso em cima disso.
+ */
+module.exports = async function superadminRoutes(fastify) {
+  fastify.addHook('preHandler', async (request, reply) => {
+    if (request.userNivelAcesso !== 'SUPERADMIN') {
+      reply.code(403).send({ error: 'Acesso restrito ao Supra Admin.' });
+      return reply;
+    }
+  });
+
+  // Aba "Empresas/Clientes"
+  fastify.get('/empresas', superadminController.listarEmpresas);
+  fastify.put('/empresas/:id/status', superadminController.atualizarStatusEmpresa);
+  fastify.put('/empresas/:id/doador', superadminController.definirDoador);
+  fastify.put('/empresas/:id/pagamentos', superadminController.forcarPagamento);
+
+  // Aba "Chamados de Suporte"
+  fastify.get('/chamados', superadminController.listarChamados);
+  fastify.put('/chamados/:id/status', superadminController.atualizarStatusChamado);
+
+  // Aba "Configurações Globais"
+  fastify.get('/configuracoes/precos', superadminController.obterPrecos);
+  fastify.put('/configuracoes/precos', superadminController.atualizarPrecos);
+};

@@ -137,6 +137,14 @@ No mesmo dia da 2.6, um motor de pricing foi adicionado à App Store: `pdv_touch
 
 **Pendência de produto pra antes do deploy**: essa mudança só afeta cadastros **novos** — qualquer empresa que já tinha `pdv_touch`/`clientes`/`tarefas` em `modulosAtivos` (seja por ter se cadastrado no mesmo dia antes desta tarefa, seja num eventual banco de produção anterior a ela) **continua com o módulo ativo e nunca pagou por ele** (`pagamentosAtivos` fica vazio pra esses módulos). Efeito colateral: se essa empresa desligar o módulo no toggle e tentar religar depois, vai esbarrar no `402` — parece um bug pro usuário ("eu já tinha isso, por que agora está pedindo pra pagar?"), mas é esperado dado como a migração foi feita. Antes de considerar esse motor de pricing "pronto pra produção": rodar uma migração de dados retroativa marcando como pago (`pagamentosAtivos[chave] = true`) qualquer módulo que já constava em `modulosAtivos` de uma empresa existente, pra não cobrar por algo que já era de graça.
 
+### 2.8 Painel Supra Admin — "Suspender Acesso" não revoga sessões JWT já abertas (2026-09-22)
+
+Nível mais alto do sistema, exclusivo pro dono do software (`Usuario.nivelAcesso === 'SUPERADMIN'`, campo novo e separado do já existente `Usuario.role` — ver `NOTAS_IMPORTANTES.md` pra o raciocínio completo por trás de não reaproveitar `role`). Ninguém vira SUPERADMIN pelo cadastro self-service (`register()` sempre grava `"LOJISTA"`) — só manualmente, direto no banco.
+
+**Limitação estrutural a saber antes de confiar cegamente em "Suspender Acesso" (aba Empresas/Clientes)**: suspender uma empresa (`Empresa.ativo = false`) bloqueia **login novo** (`auth.service.js#login` passou a checar isso, `403`), mas esta arquitetura usa JWT **stateless**, sem blacklist/revogação de token ativo — qualquer sessão já aberta (token emitido antes da suspensão) continua funcionando normalmente até expirar (`JWT_EXPIRES_IN`, padrão 8h). Ou seja: suspender uma empresa não tira ninguém que já está logado do sistema na hora, só impede login novo dali pra frente. Se um caso de uso real exigir corte instantâneo (ex.: fraude, inadimplência crítica), essa arquitetura não entrega isso sem trabalho adicional (lista de tokens revogados, ou trocar pra sessão server-side) — nenhum desses foi implementado, fora do escopo desta tarefa.
+
+Mesma observação vale, por extensão, pra qualquer futuro mecanismo de "banir"/"desativar" usuário individual (não só empresa inteira) que reaproveite o mesmo padrão de JWT sem estado.
+
 ---
 
 ## 3. Configurações de Ambiente (`.env`)

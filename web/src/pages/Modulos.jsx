@@ -42,13 +42,19 @@ function calcularPrecoDoador(preco) {
  * "Notas Fiscais" continua um mock "em breve" (preco placeholder, "A
  * definir") - o backend dela nunca foi implementado, entao nao ha modulo
  * real pra cobrar nem ativar ainda.
+ *
+ * Precos NAO ficam mais fixos aqui (ver `PRECOS_PADRAO` abaixo, so um
+ * fallback pro primeiro instante antes da API responder) - vem de
+ * `GET /configuracoes/precos` (`ConfiguracaoGlobal`, schema.prisma),
+ * editaveis pelo Supra Admin em `SupraAdmin.jsx` > Configurações Globais -
+ * mudar um preco la reflete AQUI, pra qualquer empresa, sem precisar
+ * alterar codigo.
  */
 const MODULOS_OPCIONAIS = [
   {
     chave: 'pdv_touch',
     nome: 'Frente de Loja (PDV)',
     icon: Zap,
-    preco: 5.9,
     descricao:
       'Tela cheia, touch-friendly, pensada pro caixa rápido de balcão - carrinho grande, checkout em poucos toques.',
   },
@@ -56,7 +62,6 @@ const MODULOS_OPCIONAIS = [
     chave: 'clientes',
     nome: 'CRM e Perfil 360',
     icon: Users,
-    preco: 3.9,
     descricao:
       'Cadastro de clientes com histórico de compras, LTV e ticket médio calculados automaticamente - saiba quem são seus melhores clientes.',
   },
@@ -64,7 +69,6 @@ const MODULOS_OPCIONAIS = [
     chave: 'tarefas',
     nome: 'Gestão de Equipe/Kanban',
     icon: Kanban,
-    preco: 3.9,
     descricao:
       'Quadro de tarefas com 3 colunas (A Fazer, Em Andamento, Concluído) pra organizar o trabalho da equipe, com responsável e prazo por tarefa.',
   },
@@ -72,8 +76,8 @@ const MODULOS_OPCIONAIS = [
 
 /** As 2 ofertas do único módulo pago com mais de 1 preço - `chave` bate com `PLANOS_IA_WHATSAPP` em empresa.service.js. */
 const PLANOS_IA_WHATSAPP = [
-  { chave: 'whatsapp_web', nome: 'Conexão Alternativa (WhatsApp Web)', preco: 39.9 },
-  { chave: 'meta_api', nome: 'Conexão Oficial (API Meta) + Taxas de uso', preco: 69.9 },
+  { chave: 'whatsapp_web', nome: 'Conexão Alternativa (WhatsApp Web)' },
+  { chave: 'meta_api', nome: 'Conexão Oficial (API Meta) + Taxas de uso' },
 ];
 
 /** Card ainda sem backend real - so um mock de "registrar interesse", igual a versao antiga desta pagina. Preco "A definir" - placeholder visual, nao cobra de verdade. */
@@ -81,10 +85,18 @@ const MODULO_MOCK = {
   id: 'notas-fiscais',
   nome: 'Emissão de Notas Fiscais',
   icon: ScrollText,
-  preco: 9.9,
   descricao:
     'Emita NFe/NFCe direto pelo SAE, com total conformidade com a legislação fiscal - sem precisar abrir outro sistema nem digitar os mesmos dados da venda de novo.',
   saibaMaisEm: '/notas',
+};
+
+/** Fallback so pro primeiro instante do render, antes de `GET /configuracoes/precos` responder - nunca fica visivel por mais que um piscar de tela (ver `carregando` em `Modulos()`). */
+const PRECOS_PADRAO = {
+  pdv_touch: 5.9,
+  clientes: 3.9,
+  tarefas: 3.9,
+  notas_fiscais: 9.9,
+  ia_whatsapp: { whatsapp_web: 39.9, meta_api: 69.9 },
 };
 
 /** Mesmo padrao visual de switch ja usado em InboxUnificado.jsx (toggle "Bot de IA Ativo"). */
@@ -137,14 +149,14 @@ function PrecoLinha({ preco, isDoador, compacto }) {
   );
 }
 
-function CardModuloOpcional({ modulo, ligado, pago, isDoador, salvando, onAlternar, onAbrirPagamento }) {
+function CardModuloOpcional({ modulo, preco, ligado, pago, isDoador, salvando, onAlternar, onAbrirPagamento }) {
   const Icon = modulo.icon;
 
   function handleSwitchClick() {
     if (pago) {
       onAlternar(modulo.chave, !ligado);
     } else {
-      onAbrirPagamento({ chave: modulo.chave, nome: modulo.nome, preco: modulo.preco });
+      onAbrirPagamento({ chave: modulo.chave, nome: modulo.nome, preco });
     }
   }
 
@@ -173,7 +185,7 @@ function CardModuloOpcional({ modulo, ligado, pago, isDoador, salvando, onAltern
 
         <p className="mt-2 flex-1 text-base text-slate-500 dark:text-slate-400">{modulo.descricao}</p>
 
-        <PrecoLinha preco={modulo.preco} isDoador={isDoador} />
+        <PrecoLinha preco={preco} isDoador={isDoador} />
 
         <p
           className={`mt-3 text-sm font-bold ${
@@ -195,7 +207,7 @@ function CardModuloOpcional({ modulo, ligado, pago, isDoador, salvando, onAltern
  * não libera o outro (`pagoNestePlano` só é `true` quando o plano
  * selecionado bate com o que consta em `empresa.pagamentos.ia_whatsapp`).
  */
-function CardModuloWhatsApp({ ligado, planoPago, isDoador, salvando, onAlternar, onAbrirPagamento }) {
+function CardModuloWhatsApp({ precos, ligado, planoPago, isDoador, salvando, onAlternar, onAbrirPagamento }) {
   const [planoSelecionado, setPlanoSelecionado] = useState(planoPago || PLANOS_IA_WHATSAPP[0].chave);
 
   // Sincroniza a selecao se um pagamento for confirmado por fora (outro
@@ -215,7 +227,7 @@ function CardModuloWhatsApp({ ligado, planoPago, isDoador, salvando, onAlternar,
       onAbrirPagamento({
         chave: 'ia_whatsapp',
         nome: `Inbox de IA - ${planoInfo.nome}`,
-        preco: planoInfo.preco,
+        preco: precos[planoSelecionado],
         planoIa: planoSelecionado,
       });
     }
@@ -269,7 +281,7 @@ function CardModuloWhatsApp({ ligado, planoPago, isDoador, salvando, onAlternar,
               />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{plano.nome}</p>
-                <PrecoLinha preco={plano.preco} isDoador={isDoador} compacto />
+                <PrecoLinha preco={precos[plano.chave]} isDoador={isDoador} compacto />
               </div>
               {planoPago === plano.chave && (
                 <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
@@ -296,7 +308,7 @@ function CardModuloWhatsApp({ ligado, planoPago, isDoador, salvando, onAlternar,
   );
 }
 
-function CardModuloMock({ modulo, interessado, onRegistrarInteresse }) {
+function CardModuloMock({ modulo, preco, interessado, onRegistrarInteresse }) {
   const Icon = modulo.icon;
 
   return (
@@ -320,7 +332,7 @@ function CardModuloMock({ modulo, interessado, onRegistrarInteresse }) {
         <div className="mt-4 flex items-baseline gap-1.5">
           <span className="text-lg font-bold text-slate-400 dark:text-slate-500">A definir</span>
           <span className="text-sm text-slate-400 dark:text-slate-500">
-            (estimativa: {formatarMoeda(modulo.preco)}/mês)
+            (estimativa: {formatarMoeda(preco)}/mês)
           </span>
         </div>
 
@@ -350,11 +362,30 @@ export default function Modulos() {
   const [erro, setErro] = useState('');
   const [interesses, setInteresses] = useState(() => new Set());
   const [pagamentoAberto, setPagamentoAberto] = useState(null);
+  // Precos globais (Supra Admin > Configurações Globais) - `null` so no
+  // instante antes da 1a resposta, PRECOS_PADRAO cobre esse instante caso
+  // algum card renderize antes (ver `precos` computado abaixo).
+  const [precosCarregados, setPrecosCarregados] = useState(null);
 
+  useEffect(() => {
+    let ativo = true;
+    apiFetch('/configuracoes/precos')
+      .then((dados) => {
+        if (ativo) setPrecosCarregados(dados);
+      })
+      .catch((err) => {
+        if (ativo) setErro(err.message || 'Não foi possível carregar os preços dos módulos.');
+      });
+    return () => {
+      ativo = false;
+    };
+  }, []);
+
+  const precos = precosCarregados ?? PRECOS_PADRAO;
   const modulosAtivos = empresa?.modulos ?? [];
   const pagamentos = empresa?.pagamentos ?? {};
   const isDoador = empresa?.isDoador ?? false;
-  const carregando = empresa === null;
+  const carregando = empresa === null || precosCarregados === null;
 
   async function alternarModulo(chave, ligar) {
     setErro('');
@@ -425,6 +456,7 @@ export default function Modulos() {
             <CardModuloOpcional
               key={modulo.chave}
               modulo={modulo}
+              preco={precos[modulo.chave]}
               ligado={modulosAtivos.includes(modulo.chave)}
               pago={Boolean(pagamentos[modulo.chave])}
               isDoador={isDoador}
@@ -435,6 +467,7 @@ export default function Modulos() {
           ))}
 
           <CardModuloWhatsApp
+            precos={precos.ia_whatsapp}
             ligado={modulosAtivos.includes('ia_whatsapp')}
             planoPago={pagamentos.ia_whatsapp || null}
             isDoador={isDoador}
@@ -445,6 +478,7 @@ export default function Modulos() {
 
           <CardModuloMock
             modulo={MODULO_MOCK}
+            preco={precos.notas_fiscais}
             interessado={interesses.has(MODULO_MOCK.id)}
             onRegistrarInteresse={registrarInteresse}
           />

@@ -33,6 +33,7 @@ const Configuracoes = lazy(() => import('./pages/Configuracoes'));
 const Modulos = lazy(() => import('./pages/Modulos'));
 const Suporte = lazy(() => import('./pages/Suporte'));
 const InboxUnificado = lazy(() => import('./pages/InboxUnificado'));
+const SupraAdmin = lazy(() => import('./pages/SupraAdmin'));
 
 /**
  * Rotas de pagina LIGADAS a um modulo de negocio (chave precisa bater com
@@ -93,9 +94,16 @@ function CarregandoRota() {
  * a mensagem de bloqueio por um instante antes da lista real chegar.
  */
 function RotasDaAplicacao() {
-  const { empresa } = useAuth();
+  const { empresa, usuario } = useAuth();
   const carregandoEmpresa = empresa === null;
   const modulos = empresa?.modulos ?? [];
+  // Painel Supra Admin (2026-09-22) - gate SEPARADO do mecanismo de modulo
+  // (nao e um "modulo" de negocio de uma empresa, e um nivel de acesso da
+  // PLATAFORMA inteira, ver Usuario.nivelAcesso no schema.prisma). Sem
+  // "carregando" especial aqui - `usuario` (diferente de `empresa`) ja vem
+  // populado desde o primeiro render via localStorage (AuthContext
+  // #obterUsuarioInicial), nao existe um estado transitorio "ainda nao sei".
+  const ehSuperAdmin = usuario?.nivelAcesso === 'SUPERADMIN';
 
   return (
     <Suspense fallback={<CarregandoRota />}>
@@ -119,6 +127,13 @@ function RotasDaAplicacao() {
             <Route path="/configuracoes" element={<Configuracoes />} />
             <Route path="/modulos" element={<Modulos />} />
             <Route path="/suporte" element={<Suporte />} />
+            {/* Painel Supra Admin - so entra na arvore de rotas se o usuario
+                logado for SUPERADMIN (ver comentario de `ehSuperAdmin`
+                acima). Sem isso, navegar direto pra /supra-admin cai no
+                catch-all "Módulo indisponível" abaixo - mensagem um pouco
+                imprecisa pra este caso especifico, mas evita revelar que a
+                rota existe pra quem nao devia nem saber disso. */}
+            {ehSuperAdmin && <Route path="/supra-admin" element={<SupraAdmin />} />}
 
             {/* Catch-all: cobre tanto uma URL que nunca existiu quanto uma
                 rota de modulo que existe no app mas nao esta ativa pra esta

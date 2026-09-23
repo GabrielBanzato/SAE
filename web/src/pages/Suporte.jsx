@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { LifeBuoy, Send, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { apiFetch } from '../services/api';
 
 const TIPOS_PROBLEMA = [
-  { value: 'bug', label: 'Bug (algo não está funcionando)' },
-  { value: 'duvida', label: 'Dúvida' },
-  { value: 'sugestao', label: 'Sugestão' },
+  { value: 'bug', label: 'Bug (algo não está funcionando)', rotuloCurto: 'Bug' },
+  { value: 'duvida', label: 'Dúvida', rotuloCurto: 'Dúvida' },
+  { value: 'sugestao', label: 'Sugestão', rotuloCurto: 'Sugestão' },
 ];
 
 /** Mesma linguagem visual dos campos de DadosDaLoja.jsx/Assinatura.jsx (borda 2px, foco azul, texto grande). */
@@ -22,12 +23,16 @@ const classesInput =
   'mt-2 w-full rounded-2xl border-2 border-slate-300 bg-white px-4 py-3 text-lg font-medium text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-600 dark:focus:border-blue-400';
 
 /**
- * Helpdesk simples: nao existe (nem foi pedido criar) uma rota de backend
- * pra receber chamados de suporte, entao "enviar" aqui e so front-end - o
- * formulario valida os campos e troca pra uma tela de agradecimento local,
- * sem persistir nada de verdade. Documentando isso explicitamente aqui (e
- * pro usuario, na resposta) pra nao passar a impressao de que ja existe um
- * chamado sendo aberto de verdade em algum lugar.
+ * Helpdesk simples - desde o Painel Supra Admin (2026-09-22), "enviar" aqui
+ * persiste de verdade via `POST /chamados` (`ChamadoSuporte`, ver
+ * schema.prisma) e aparece na aba "Chamados de Suporte" do Supra Admin
+ * (SupraAdmin.jsx). `titulo` do chamado e composto do tipo escolhido +
+ * inicio da descricao (o modelo `ChamadoSuporte` nao tem um campo `tipo`
+ * proprio - so id/empresaId/titulo/descricao/status/data, pedido explicito
+ * da tarefa) - `nome`/`email` continuam so locais (pre-preenchidos do
+ * usuario logado, editaveis), a empresa de quem abriu o chamado ja fica
+ * registrada via `empresaId` (tenant do token), sem precisar duplicar isso
+ * no chamado.
  */
 export default function Suporte() {
   const { usuario } = useAuth();
@@ -37,10 +42,28 @@ export default function Suporte() {
   const [tipo, setTipo] = useState('duvida');
   const [descricao, setDescricao] = useState('');
   const [enviado, setEnviado] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState('');
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
-    setEnviado(true);
+    setErro('');
+    setEnviando(true);
+
+    const rotuloTipo = TIPOS_PROBLEMA.find((item) => item.value === tipo)?.rotuloCurto || 'Chamado';
+    const titulo = `${rotuloTipo}: ${descricao.slice(0, 80)}${descricao.length > 80 ? '…' : ''}`;
+
+    try {
+      await apiFetch('/chamados', {
+        method: 'POST',
+        body: JSON.stringify({ titulo, descricao }),
+      });
+      setEnviado(true);
+    } catch (err) {
+      setErro(err.message || 'Não foi possível enviar o chamado agora.');
+    } finally {
+      setEnviando(false);
+    }
   }
 
   function handleNovoChamado() {
@@ -123,12 +146,19 @@ export default function Suporte() {
               />
             </Campo>
 
+            {erro && (
+              <p className="rounded-2xl bg-red-50 p-3 text-sm font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                {erro}
+              </p>
+            )}
+
             <button
               type="submit"
-              className="inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-blue-600 px-6 py-4 text-xl font-bold text-white shadow-lg shadow-blue-600/20 transition-all duration-200 hover:bg-blue-700 sm:w-auto"
+              disabled={enviando}
+              className="inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-blue-600 px-6 py-4 text-xl font-bold text-white shadow-lg shadow-blue-600/20 transition-all duration-200 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
             >
               <Send size={20} aria-hidden="true" />
-              Enviar
+              {enviando ? 'Enviando...' : 'Enviar'}
             </button>
           </form>
         )}

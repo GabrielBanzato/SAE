@@ -105,6 +105,11 @@ function gerarToken(fastify, usuario) {
       sub: usuario.id,
       empresa_id: usuario.empresaId,
       role: usuario.role,
+      // Nivel de acesso na PLATAFORMA (LOJISTA/SUPERADMIN, ver comentario
+      // de Usuario.nivelAcesso no schema.prisma) - decodificado pelo
+      // plugin de auth em `request.userNivelAcesso`, unico ponto de
+      // confianca pro middleware de superadmin.routes.js.
+      nivel_acesso: usuario.nivelAcesso,
     },
     { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
   );
@@ -199,6 +204,7 @@ async function register(
       nome: usuario.nome,
       email: usuario.email,
       role: usuario.role,
+      nivelAcesso: usuario.nivelAcesso,
     },
   };
 }
@@ -217,13 +223,13 @@ async function register(
 async function login(fastify, { email, senha }) {
   const { prisma } = fastify;
 
-  // `include: { empresa: ... }` so pra ler `modulosAtivos`/`segmento` dela -
-  // precisamos montar a resposta abaixo (nao seria possivel so com o
+  // `include: { empresa: ... }` so pra ler `modulosAtivos`/`segmento`/`ativo`
+  // dela - precisamos montar a resposta abaixo (nao seria possivel so com o
   // `usuario`). `segmento` continua selecionado so pro fallback defensivo
   // de `modulosAtivos` nulo (ver comentario abaixo).
   const usuario = await prisma.usuario.findFirst({
     where: { email },
-    include: { empresa: { select: { segmento: true, modulosAtivos: true } } },
+    include: { empresa: { select: { segmento: true, modulosAtivos: true, ativo: true } } },
   });
   if (!usuario) {
     return null;
@@ -232,6 +238,14 @@ async function login(fastify, { email, senha }) {
   const senhaValida = await bcrypt.compare(senha, usuario.senhaHash);
   if (!senhaValida) {
     return null;
+  }
+
+  // Empresa suspensa pelo Supra Admin (Painel Master, 2026-09-22) - bloqueia
+  // login de QUALQUER usuario dela, mesmo com senha certa. Verificado DEPOIS
+  // da senha (nao antes) de proposito - nao vaza pra quem esta tentando
+  // adivinhar senha se o e-mail pertence a uma empresa suspensa ou nao.
+  if (!usuario.empresa.ativo) {
+    throw new AppError('Esta empresa esta com o acesso suspenso. Entre em contato com o suporte.', 403);
   }
 
   const token = gerarToken(fastify, usuario);
@@ -258,6 +272,7 @@ async function login(fastify, { email, senha }) {
       nome: usuario.nome,
       email: usuario.email,
       role: usuario.role,
+      nivelAcesso: usuario.nivelAcesso,
     },
   };
 }

@@ -9,10 +9,12 @@ const jwt = require('@fastify/jwt');
  *
  *   1. Verifica e decodifica o JWT do header Authorization.
  *   2. Extrai `empresa_id` (o tenant_id) do payload do token.
- *   3. Injeta `request.tenantId`, `request.userId` e `request.userRole`
- *      no request, para que controllers/services usem esse valor -
- *      nunca um empresa_id vindo do body/query, que o cliente poderia
- *      forjar para acessar dados de outro tenant.
+ *   3. Injeta `request.tenantId`, `request.userId`, `request.userRole` e
+ *      `request.userNivelAcesso` no request, para que controllers/services
+ *      usem esse valor - nunca um empresa_id vindo do body/query, que o
+ *      cliente poderia forjar para acessar dados de outro tenant.
+ *      `userNivelAcesso` (LOJISTA/SUPERADMIN) e o unico ponto de confianca
+ *      do middleware de `superadmin.routes.js`.
  *
  * Rotas publicas (login, health check, etc.) devem declarar
  * `config: { public: true }` para pular a verificacao:
@@ -27,6 +29,7 @@ module.exports = fp(async function authPlugin(fastify) {
   fastify.decorateRequest('tenantId', null);
   fastify.decorateRequest('userId', null);
   fastify.decorateRequest('userRole', null);
+  fastify.decorateRequest('userNivelAcesso', null);
 
   fastify.addHook('onRequest', async (request, reply) => {
     const isPublic = request.routeOptions?.config?.public === true;
@@ -41,7 +44,7 @@ module.exports = fp(async function authPlugin(fastify) {
       return reply;
     }
 
-    const { sub, empresa_id: empresaId, role } = request.user;
+    const { sub, empresa_id: empresaId, role, nivel_acesso: nivelAcesso } = request.user;
 
     if (!empresaId) {
       reply.code(401).send({ error: 'Token nao contem um tenant valido.' });
@@ -53,5 +56,6 @@ module.exports = fp(async function authPlugin(fastify) {
     request.tenantId = empresaId;
     request.userId = sub;
     request.userRole = role;
+    request.userNivelAcesso = nivelAcesso;
   });
 });

@@ -17,6 +17,7 @@ import {
   LifeBuoy,
   MessageCircle,
   ScrollText,
+  ShieldAlert,
   Sun,
   Moon,
   ChevronLeft,
@@ -174,7 +175,7 @@ function ItemGrupo({ label, to, icon: Icon, destaque, isExpanded, aoNavegar }) {
  */
 export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFecharNoMobile }) {
   const { theme, toggleTheme } = useTheme();
-  const { logout, empresa } = useAuth();
+  const { logout, empresa, usuario } = useAuth();
   const navigate = useNavigate();
   const escuro = theme === 'dark';
   // `empresa` comeca `null` ate o AuthContext popular (ver
@@ -183,6 +184,11 @@ export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFechar
   // App.jsx#RotasDaAplicacao (evita mostrar um item cujo modulo real ainda
   // nao se sabe se esta liberado).
   const modulos = empresa?.modulos ?? [];
+  // Painel Supra Admin (2026-09-22) - gate por NIVEL DE ACESSO, nao por
+  // modulo (ver comentario equivalente em App.jsx). Escondido do menu
+  // padrao pra qualquer LOJISTA, mesmo que descubra a URL direto (a rota
+  // em si ja bloqueia pra quem nao e SUPERADMIN, ver App.jsx).
+  const ehSuperAdmin = usuario?.nivelAcesso === 'SUPERADMIN';
 
   function handleLogout() {
     logout();
@@ -292,6 +298,36 @@ export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFechar
           <ItemDireto {...ITEM_MODULOS} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
           <ItemDireto {...ITEM_SUPORTE} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
         </div>
+
+        {/* Painel Supra Admin - so renderiza pro nivel de acesso certo,
+            estilo roxo deliberadamente diferente do resto do menu (sinaliza
+            "zona administrativa", distinta das telas normais da loja). */}
+        {ehSuperAdmin && (
+          <div className="mt-4">
+            <p
+              className={`mb-1 px-4 text-xs font-bold uppercase tracking-wide text-purple-400 dark:text-purple-500 ${!isExpanded ? 'md:hidden' : ''}`}
+            >
+              Supra Admin
+            </p>
+            <NavLink
+              to="/supra-admin"
+              onClick={onFecharNoMobile}
+              title={!isExpanded ? 'Painel Supra Admin' : undefined}
+              className={({ isActive }) =>
+                `flex items-center gap-3 rounded-xl px-4 py-3 text-lg font-bold transition-colors ${
+                  !isExpanded ? 'md:justify-center md:px-0' : ''
+                } ${
+                  isActive
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-purple-50 text-purple-700 hover:bg-purple-100 dark:bg-purple-950/30 dark:text-purple-300 dark:hover:bg-purple-950/50'
+                }`
+              }
+            >
+              <ShieldAlert size={22} className="shrink-0" aria-hidden="true" />
+              <span className={`flex-1 text-left ${!isExpanded ? 'md:hidden' : ''}`}>Painel Master</span>
+            </NavLink>
+          </div>
+        )}
       </nav>
 
       {/* Rodape fixo - fora da area de scroll da nav (e irmao dela, nao

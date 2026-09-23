@@ -14,4 +14,7 @@ module.exports = async function routes(fastify) {
   fastify.register(require('./ingredientes.routes'), { prefix: '/ingredientes' });
   fastify.register(require('./whatsapp.routes'), { prefix: '/whatsapp' });
   fastify.register(require('./tarefas.routes'), { prefix: '/tarefas' });
+  fastify.register(require('./chamados.routes'), { prefix: '/chamados' });
+  fastify.register(require('./configuracoes.routes'), { prefix: '/configuracoes' });
+  fastify.register(require('./superadmin.routes'), { prefix: '/superadmin' });
 };
