@@ -143,6 +143,16 @@ Depois da 2.7 acima ser implementada e commitada (`d884708`), uma sessão seguin
 
 **Lição prática**: antes de implementar um pedido detalhado (schema + backend + frontend + modal) neste projeto, vale conferir `git log --oneline` e grepar pelos nomes-chave do pedido primeiro — pode já existir.
 
+### 2.7.2 Causa raiz confirmada: quase nada tinha migration real desde 2026-09-08 (2026-09-22)
+
+Investigando o relato "mudanças não refletem em produção, servidor diz que schema não tem alterações": `api/prisma/migrations/` só tinha 4 pastas (todas de 2026-09-07/08). Tudo depois disso (`segmento` obrigatório, `modulosAtivos`/`pagamentosAtivos`/`isDoador`, `nivelAcesso`, `Tarefa.status`, `VendaItem`, `Atendimento`/`Mensagem`, `ChamadoSuporte`, `ConfiguracaoGlobal`) só existia via `prisma db push` local - nunca virou migration commitada. `prisma migrate deploy` em produção sempre reportaria "nada pendente" mesmo com o schema real defasado, porque **não existe migration nenhuma pra ele aplicar** - a mensagem "schema não tem alterações" é literalmente verdadeira e ao mesmo tempo enganosa.
+
+**Corrigido nesta sessão**: gerada `api/prisma/migrations/20260922222219_saas_modular_pricing_supra_admin_catchup/migration.sql` via `prisma migrate diff` (contra um banco shadow, sem tocar no banco real). Local sincronizado e as 5 migrations marcadas como aplicadas (`prisma migrate resolve --applied`) - `migrate status` local limpo agora.
+
+**Não resolvido, fora do alcance desta sessão (sem acesso ao MySQL de produção)**: a migration nova precisa rodar em produção via `prisma migrate deploy`, mas ela **derruba colunas com dado real** se produção tiver `tarefas`/`vendas` preenchidas (`tarefas.status_concluida`, `vendas.produto_id`/`quantidade`/`preco_unitario`) - os comandos de backfill necessários estão no cabeçalho do próprio arquivo de migration. **Backup obrigatório antes.** Ver a entrada completa em `NOTAS_IMPORTANTES.md` (2026-09-22, "Causa raiz real do 'schema não tem alterações em produção'") para o passo a passo.
+
+**Lição de processo**: este projeto não tem nenhum pipeline que rode `prisma migrate deploy` (ou `db push`) contra produção automaticamente a cada deploy - toda evolução de schema até agora dependeu de alguém lembrar de fazer isso manualmente. Enquanto isso não existir, qualquer mudança de schema nova corre o mesmo risco de "não refletir em produção" silenciosamente.
+
 ### 2.8 Painel Supra Admin — "Suspender Acesso" não revoga sessões JWT já abertas (2026-09-22)
 
 Nível mais alto do sistema, exclusivo pro dono do software (`Usuario.nivelAcesso === 'SUPERADMIN'`, campo novo e separado do já existente `Usuario.role` — ver `NOTAS_IMPORTANTES.md` pra o raciocínio completo por trás de não reaproveitar `role`). Ninguém vira SUPERADMIN pelo cadastro self-service (`register()` sempre grava `"LOJISTA"`) — só manualmente, direto no banco.

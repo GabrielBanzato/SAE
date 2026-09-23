@@ -10,9 +10,10 @@ function formatarMoeda(valor) {
 }
 
 /**
- * Preço de Apoiador (desconto pra empresa com `isDoador === true`, ver
- * empresa.service.js#obterDados - deriva de `plano === 'apoiador'`, o
- * mesmo plano/mensalidade já existente em Assinatura.jsx) - metade do
+ * Preço de Apoiador (desconto pra empresa com `isDoador === true`, coluna
+ * persistida - ver empresa.service.js#obterDados/Empresa.isDoador em
+ * schema.prisma, sempre gravada junto com `plano` pra nunca divergir) -
+ * metade do
  * preço cheio, arredondado pra baixo mantendo a terminação ",90" (mesma
  * psicologia de preço do resto do catálogo). Ex.: R$ 5,90 -> R$ 2,90;
  * R$ 39,90 -> R$ 19,90. Fórmula única (não preço fixo por módulo) pra

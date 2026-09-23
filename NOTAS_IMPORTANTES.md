@@ -6670,3 +6670,31 @@ Uma nova sessão pediu, do zero, exatamente o motor de pricing/desconto de Apoia
 Perguntei ao usuário antes de tocar em código já testado em produção sem ganho funcional real: confirmado **deixar como está**, sem renomear rotas nem adicionar a coluna redundante. Nenhum arquivo de código foi alterado nesta sessão - só esta entrada e a atualização equivalente em `dossie-infraestrutura.md`.
 
 **Lição pra quem for ler um pedido parecido de novo**: antes de implementar uma tarefa "grande" descrita em detalhe (schema + backend + frontend + modal), vale a pena grepar por nomes-chave do pedido (`isDoador`, `pagamentosAtivos`, nomes de componente) e checar `git log --oneline` primeiro - este projeto já teve pelo menos um pedido chegar em duplicata no mesmo dia da implementação original.
+
+---
+
+## Causa raiz real do "schema não tem alterações em produção": nunca existiu migration pra quase nada desde 2026-09-08 (2026-09-22)
+
+Sessão seguinte à duplicata acima reportou algo mais sério: as mudanças de Sidebar (scroll) e de `Modulos.jsx` (preços/doador) "não refletiram em produção", e "o servidor apontou que o schema do banco não tem alterações". Frontend (Sidebar/CSS) e schema de banco são coisas independentes, mas a pista era real - investiguei o motivo.
+
+### O achado: `prisma migrate status` local mostrava as 4 migrations mais antigas como "not yet applied", mesmo o banco local já tendo toda a estrutura mais recente
+
+`api/prisma/migrations/` só tem 4 pastas, todas de 2026-09-07/08 (`init`, `empresa_tipo_pessoa_documento_valor_contribuicao`, `criar_tabela_tarefas`, `produto_sob_demanda_cliente_venda`). Toda evolução de schema **depois** disso - segmento obrigatório, `modulosAtivos`/`pagamentosAtivos`/`isDoador`, `nivelAcesso`, `Tarefa.status`, `VendaItem` (venda multi-item), `Atendimento`/`Mensagem`, `ChamadoSuporte`, `ConfiguracaoGlobal` - foi aplicada **só com `prisma db push`** nas sessões locais (padrão já registrado antes, seção 2.2 de `dossie-infraestrutura.md`), **nunca virou uma migration de verdade commitada**. Resultado: quem roda `prisma migrate deploy` em produção (o comando "oficial" pra aplicar migrations, diferente de `db push`) sempre vê "nothing to apply" - não porque o banco de produção já tem tudo, mas porque **não existe migration nenhuma pra aplicar**. É exatamente essa mensagem enganosa que o usuário reportou como "o servidor apontou que o schema não tem alterações".
+
+Confirmado rodando `npx prisma migrate status` contra o MySQL local: reportou as 4 migrations antigas como pendentes (nunca tinham sido marcadas como aplicadas na tabela `_prisma_migrations`, mesmo o banco já tendo essa estrutura e muito mais via `db push` direto).
+
+### Correção: gerada 1 migration de alcance (catch-up), sem tocar no banco local de dados
+
+Usei `prisma migrate diff --from-migrations ./prisma/migrations --to-schema-datamodel ./prisma/schema.prisma --shadow-database-url ...` (banco `sae_shadow`, criado na hora só pra esse calculo - **não** o banco `sae` real) pra calcular exatamente a diferença entre "o que as 4 migrations antigas produziriam" e "o schema.prisma atual, com `isDoador` incluso" - sem depender do estado (já divergente) do banco local de dev. Resultado: `api/prisma/migrations/20260922222219_saas_modular_pricing_supra_admin_catchup/migration.sql`. Removida 1 duplicata de `ADD CONSTRAINT vendas_funcionario_id_fkey` que o `migrate diff` gerou 2x (rodar a migration assim quebraria na segunda tentativa de criar a mesma FK).
+
+**Banco local**: sincronizado com `prisma db push --accept-data-loss` (só ADD COLUMN `is_doador`, resto já estava lá; tabelas `tarefas`/`vendas`/`empresas`/`usuarios` confirmadas vazias antes de rodar, então "accept-data-loss" não descartou nada de verdade). As 5 migrations (4 antigas + a nova) foram marcadas como aplicadas via `prisma migrate resolve --applied <nome>` pra cada uma - `prisma migrate status` agora reporta "Database schema is up to date!" localmente.
+
+### ⚠️ Pendência real pra produção - NÃO resolvida nesta sessão, exige acesso que esta sessão não tem
+
+Esta sessão não tem `DATABASE_URL` nem acesso ao MySQL de produção (Portainer/túnel Cloudflare) - a migration nova foi **gerada e commitada no repositório**, mas **NÃO foi rodada contra produção**. Antes de rodar `npx prisma migrate deploy` lá (o próximo passo, fora do alcance desta sessão):
+
+1. **Backup do banco de produção primeiro** (`mysqldump` ou snapshot do volume `sae_mysql_data`) - sem exceção, dado o que vem a seguir.
+2. Descobrir se o banco de produção **já tem** parte dessas colunas/tabelas (se alguém rodou `db push` direto em produção alguma vez, sem deixar rastro em `_prisma_migrations`) - se sim, a migration nova vai falhar com "column/table already exists" em vez de aplicar (falha segura, não silenciosa, mas precisa resolução manual - `prisma migrate resolve --applied` pra essa migration especificamente, pulando a aplicação real).
+3. Se produção **não** tiver essas colunas ainda e tiver dados reais em `tarefas`/`vendas`: a migration novo **derruba colunas com dado real** (`tarefas.status_concluida`, `vendas.produto_id`/`quantidade`/`preco_unitario`) - os 2 avisos com o SQL de backfill necessário estão no cabeçalho do próprio arquivo `migration.sql` (mesmo espírito das seções 2.5/2.7 deste dossiê) - rodar esse backfill ANTES do `prisma migrate deploy`, não depois.
+
+**Sem passar por isso em produção, o sintoma original ("mudanças não refletem") provavelmente continua** para qualquer mudança de schema futura - o problema não é desta tarefa especificamente, é a ausência de um pipeline que rode `prisma migrate deploy` (ou ao menos `db push`) contra produção a cada deploy. Vale considerar isso como item de infraestrutura separado, não só "essa migration".

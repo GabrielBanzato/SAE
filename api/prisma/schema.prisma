@@ -116,6 +116,14 @@ model Empresa {
   // Decimal (nao Float) pelo mesmo motivo de Produto.custo/precoVenda
   // abaixo: dinheiro nunca deve usar ponto flutuante binario.
   valorContribuicao Decimal      @default(0.00) @map("valor_contribuicao") @db.Decimal(10, 2)
+  // Coluna persistida (pedido explicito, 2026-09-22) - antes era so um valor
+  // CALCULADO em runtime (`plano === 'apoiador'`, nunca gravado). Mantida em
+  // sincronia com `plano` nos 2 unicos lugares que escrevem `plano`
+  // (`atualizarAssinatura` em empresa.service.js e `definirDoador` em
+  // superadmin.service.js - ambos gravam os dois campos na MESMA escrita),
+  // entao os dois nunca divergem na pratica, apesar de guardados em colunas
+  // separadas agora.
+  isDoador          Boolean      @default(false) @map("is_doador")
   // Segmento de atuacao da empresa - gate de regras de negocio pontuais
   // (ex.: so "varejo_alimentacao" desbloqueia Ficha Tecnica de ingredientes
   // em Produto, ver FichaTecnica abaixo, e as formas de pagamento "Consumo

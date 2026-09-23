@@ -15,9 +15,10 @@ const STATUS_CHAMADO_VALIDOS = ['ABERTO', 'RESOLVIDO'];
 
 /**
  * Todas as empresas cadastradas - visao "de cima", sem filtro de tenant.
- * `isDoador` (derivado de `plano === 'apoiador'`, mesmo criterio de
- * empresa.service.js#obterDados) e `totalUsuarios` sao calculados aqui pra
- * a tabela da aba "Empresas/Clientes" nao precisar de N chamadas extras.
+ * `isDoador` vem direto da coluna persistida `Empresa.isDoador` (nao mais
+ * recalculada de `plano` aqui - ver comentario dela em schema.prisma).
+ * `totalUsuarios` e que continua calculado nesta funcao pra a tabela da aba
+ * "Empresas/Clientes" nao precisar de N chamadas extras.
  */
 async function listarEmpresas(prisma) {
   const empresas = await prisma.empresa.findMany({
@@ -28,6 +29,7 @@ async function listarEmpresas(prisma) {
       documento: true,
       segmento: true,
       plano: true,
+      isDoador: true,
       ativo: true,
       modulosAtivos: true,
       pagamentosAtivos: true,
@@ -37,10 +39,8 @@ async function listarEmpresas(prisma) {
     orderBy: { criadoEm: 'desc' },
   });
 
-  return empresas.map(({ _count, plano, ...empresa }) => ({
+  return empresas.map(({ _count, ...empresa }) => ({
     ...empresa,
-    plano,
-    isDoador: plano === 'apoiador',
     totalUsuarios: _count.usuarios,
   }));
 }
@@ -60,13 +60,13 @@ async function atualizarStatusEmpresa(prisma, empresaId, ativo) {
 }
 
 /**
- * "Tornar Doador" manual (SupraAdmin.jsx) - reaproveita o MESMO campo
- * `plano` ja usado por Assinatura.jsx/`atualizarAssinatura`, nao inventa um
- * campo `isDoador` a parte (evita os dois saírem de sincronia, mesma
- * decisao ja tomada na tarefa de pricing). Diferente de
- * `atualizarAssinatura`: aqui e uma concessao administrativa (o Supra
- * Admin decide dar/tirar o status), entao NAO exige `valorContribuicao`
- * minima - vira Apoiador sem precisar informar um valor de contribuicao.
+ * "Tornar Doador" manual (SupraAdmin.jsx) - grava `plano` E `isDoador` na
+ * MESMA escrita (mesmo padrao de `empresaService.atualizarAssinatura`,
+ * unico outro lugar que muda esses 2 campos) - nunca uma sem a outra, pra
+ * as 2 colunas nunca divergirem. Diferente de `atualizarAssinatura`: aqui
+ * e uma concessao administrativa (o Supra Admin decide dar/tirar o
+ * status), entao NAO exige `valorContribuicao` minima - vira Apoiador sem
+ * precisar informar um valor de contribuicao.
  */
 async function definirDoador(prisma, empresaId, isDoador) {
   if (typeof isDoador !== 'boolean') {
@@ -75,13 +75,13 @@ async function definirDoador(prisma, empresaId, isDoador) {
 
   const resultado = await prisma.empresa.updateMany({
     where: { id: empresaId },
-    data: { plano: isDoador ? 'apoiador' : 'gratuito' },
+    data: { plano: isDoador ? 'apoiador' : 'gratuito', isDoador },
   });
   if (resultado.count === 0) {
     throw new AppError('Empresa nao encontrada.', 404);
   }
 
-  return prisma.empresa.findUnique({ where: { id: empresaId }, select: { id: true, plano: true } });
+  return prisma.empresa.findUnique({ where: { id: empresaId }, select: { id: true, plano: true, isDoador: true } });
 }
 
 /**

@@ -47,6 +47,7 @@ async function obterDados(prisma, tenantId) {
       endereco: true,
       telefone: true,
       plano: true,
+      isDoador: true,
       segmento: true,
       modulosAtivos: true,
       pagamentosAtivos: true,
@@ -70,13 +71,12 @@ async function obterDados(prisma, tenantId) {
   // acima sempre inclui `modulosAtivos`, e o fallback abaixo (so pra linhas
   // antigas sem o campo preenchido) nunca deixa `modulos` sair `null`.
   //
-  // `isDoador` NAO e uma coluna nova - e derivado de `plano === 'apoiador'`
-  // (motor de pricing, 2026-09-22). `Empresa.plano`/`valorContribuicao` ja
-  // representavam exatamente esse conceito ("Apoiador", a mensalidade
-  // caridosa - ver Assinatura.jsx) desde antes desta tarefa; guardar um
-  // segundo campo booleano redundante arriscaria os dois saírem de
-  // sincronia (ex.: `isDoador=true` com `plano='gratuito'`), entao o
-  // frontend so recebe o valor ja calculado, nunca grava nele direto.
+  // `isDoador` e uma coluna persistida (`Empresa.isDoador`, pedido explicito
+  // de 2026-09-22 - antes era so calculado em runtime a partir de `plano`,
+  // ver git blame) - devolvida direto do `select` acima, sem recalcular.
+  // Continua sem ser gravavel por aqui: quem escreve o par
+  // `plano`/`isDoador` junto e `atualizarAssinatura` (abaixo) e
+  // `definirDoador` (superadmin.service.js), nunca esta funcao de leitura.
   // `pagamentos` (o que ja foi pago, ver `MODULOS_PAGOS`/`confirmarPagamento`
   // abaixo) segue o mesmo padrao defensivo de `modulos`: nunca sai `null`.
   const { modulosAtivos, pagamentosAtivos, ...dadosPublicos } = empresa;
@@ -84,7 +84,6 @@ async function obterDados(prisma, tenantId) {
     ...dadosPublicos,
     modulos: modulosAtivos ?? modulosDoSegmento(empresa.segmento),
     pagamentos: pagamentosAtivos ?? {},
-    isDoador: empresa.plano === 'apoiador',
   };
 }
 
@@ -132,6 +131,7 @@ async function atualizarDados(prisma, tenantId, { razaoSocial, nomeLoja, enderec
       endereco: true,
       telefone: true,
       plano: true,
+      isDoador: true,
       segmento: true,
       modulosAtivos: true,
       pagamentosAtivos: true,
@@ -145,13 +145,13 @@ async function atualizarDados(prisma, tenantId, { razaoSocial, nomeLoja, enderec
   // regras de negocio pontuais (Ficha Tecnica, Consumo Interno/Doacao).
   // `modulos`/`pagamentos`/`isDoador` ainda vao na resposta (mesmo padrao
   // de sempre, pro DadosDaLoja.jsx repassar pro AuthContext via
-  // `refreshEmpresa`, ver comentario de `obterDados` acima).
+  // `refreshEmpresa`) - `isDoador` vem direto do `select` acima (coluna
+  // persistida, ver comentario de `obterDados`), nao recalculado aqui.
   const { modulosAtivos, pagamentosAtivos, ...dadosPublicos } = empresa;
   return {
     ...dadosPublicos,
     modulos: modulosAtivos ?? modulosDoSegmento(empresa.segmento),
     pagamentos: pagamentosAtivos ?? {},
-    isDoador: empresa.plano === 'apoiador',
   };
 }
 
@@ -361,12 +361,16 @@ async function atualizarAssinatura(prisma, tenantId, { plano, valorContribuicao 
 
   return prisma.empresa.update({
     where: { id: tenantId },
-    data: { plano, valorContribuicao: valor },
+    // `isDoador` gravado na MESMA escrita que `plano` - unico jeito de
+    // manter as 2 colunas em sincronia (ver comentario dela em
+    // schema.prisma), nao um recalculo derivado em outro lugar.
+    data: { plano, isDoador: plano === 'apoiador', valorContribuicao: valor },
     select: {
       id: true,
       razaoSocial: true,
       documento: true,
       plano: true,
+      isDoador: true,
       valorContribuicao: true,
       atualizadoEm: true,
     },
