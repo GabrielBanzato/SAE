@@ -60,28 +60,62 @@ async function atualizarStatusEmpresa(prisma, empresaId, ativo) {
 }
 
 /**
- * "Tornar Doador" manual (SupraAdmin.jsx) - grava `plano` E `isDoador` na
- * MESMA escrita (mesmo padrao de `empresaService.atualizarAssinatura`,
- * unico outro lugar que muda esses 2 campos) - nunca uma sem a outra, pra
- * as 2 colunas nunca divergirem. Diferente de `atualizarAssinatura`: aqui
- * e uma concessao administrativa (o Supra Admin decide dar/tirar o
- * status), entao NAO exige `valorContribuicao` minima - vira Apoiador sem
- * precisar informar um valor de contribuicao.
+ * "Modal de Gestao de Doadores" (Painel Master - Etapa 3, 2026-09-23) -
+ * torna/remove uma empresa como doadora, gravando `plano`/`isDoador`/
+ * `valorContribuicao`/`doadorDesde`/`doadorProximoVencimento` na MESMA
+ * escrita (mesmo padrao de `empresaService.atualizarAssinatura`, unico
+ * outro lugar que muda esses campos - `calcularCiclosDoador` reaproveitada
+ * dali, nao duplicada) - nunca um campo sem os outros, pra nunca
+ * divergirem. Diferente de `atualizarAssinatura` (self-service): aqui e
+ * uma concessao administrativa, entao NAO exige o minimo de R$10 da
+ * "mensalidade caridosa" normal - so exige um numero positivo (`> 0`),
+ * pra nao criar um doador "de R$0" sem querer.
  */
-async function definirDoador(prisma, empresaId, isDoador) {
+async function definirDoador(prisma, empresaId, { isDoador, valorContribuicao }) {
   if (typeof isDoador !== 'boolean') {
     throw new AppError('isDoador deve ser um booleano.', 422);
   }
 
-  const resultado = await prisma.empresa.updateMany({
-    where: { id: empresaId },
-    data: { plano: isDoador ? 'apoiador' : 'gratuito', isDoador },
-  });
-  if (resultado.count === 0) {
+  let valor = 0;
+  if (isDoador) {
+    valor = Number(valorContribuicao);
+    if (!Number.isFinite(valor) || valor <= 0) {
+      throw new AppError('valor_contribuicao deve ser um numero maior que zero para tornar a empresa doadora.', 422);
+    }
+  }
+
+  const empresaAntes = await prisma.empresa.findUnique({ where: { id: empresaId }, select: { isDoador: true, doadorDesde: true } });
+  if (!empresaAntes) {
     throw new AppError('Empresa nao encontrada.', 404);
   }
 
-  return prisma.empresa.findUnique({ where: { id: empresaId }, select: { id: true, plano: true, isDoador: true } });
+  const ciclos = empresaService.calcularCiclosDoador({
+    isDoadorAntes: empresaAntes.isDoador,
+    isDoadorNovo: isDoador,
+    doadorDesdeAtual: empresaAntes.doadorDesde,
+  });
+
+  return prisma.empresa.update({
+    where: { id: empresaId },
+    data: { plano: isDoador ? 'apoiador' : 'gratuito', isDoador, valorContribuicao: valor, ...ciclos },
+    select: {
+      id: true,
+      plano: true,
+      isDoador: true,
+      valorContribuicao: true,
+      doadorDesde: true,
+      doadorProximoVencimento: true,
+    },
+  });
+}
+
+/**
+ * Dados de doacao de UMA empresa, pro modal decidir entre Estado A (nao e
+ * doadora) e Estado B (ja e). Delegado pra `empresaService.obterDadosDoador`,
+ * mesmo padrao de reaproveitamento das outras funcoes acima.
+ */
+async function obterDadosDoador(prisma, empresaId) {
+  return empresaService.obterDadosDoador(prisma, empresaId);
 }
 
 /**
@@ -125,10 +159,20 @@ async function obterAssinaturas(prisma, empresaId) {
   return empresaService.obterAssinaturas(prisma, empresaId);
 }
 
-/** Todos os chamados de suporte, de qualquer empresa, com o nome dela junto - aba "Chamados de Suporte". */
+/**
+ * Todos os chamados de suporte, de qualquer empresa, com o nome dela junto
+ * - aba "Chamados de Suporte". `usuario` (nome/codigoUsuario de quem abriu,
+ * Ajuste no Formulario de Suporte, 2026-09-23) incluido pra chamado nao
+ * ficar "orfao" - quem for atender sabe exatamente a quem se referir, sem
+ * precisar confiar so no nome/email de texto livre que o formulario tambem
+ * manda.
+ */
 async function listarChamados(prisma) {
   return prisma.chamadoSuporte.findMany({
-    include: { empresa: { select: { id: true, razaoSocial: true, nomeLoja: true } } },
+    include: {
+      empresa: { select: { id: true, razaoSocial: true, nomeLoja: true } },
+      usuario: { select: { nome: true, codigoUsuario: true } },
+    },
     orderBy: { criadoEm: 'desc' },
   });
 }
@@ -150,6 +194,7 @@ module.exports = {
   listarEmpresas,
   atualizarStatusEmpresa,
   definirDoador,
+  obterDadosDoador,
   forcarPagamento,
   restringirModulo,
   obterAssinaturas,

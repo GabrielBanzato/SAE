@@ -25,14 +25,23 @@ async function atualizarStatusEmpresa(request, reply) {
   return reply.send(empresa);
 }
 
-/** PUT /superadmin/empresas/:id/doador - "Tornar Doador" manual. */
+/** PUT /superadmin/empresas/:id/doador - Modal de Gestao de Doadores: tornar/remover doador. */
 async function definirDoador(request, reply) {
   const id = parseId(request, reply);
   if (id === null) return;
 
-  const { is_doador: isDoador } = request.body || {};
-  const empresa = await superadminService.definirDoador(request.server.prisma, id, isDoador);
+  const { is_doador: isDoador, valor_contribuicao: valorContribuicao } = request.body || {};
+  const empresa = await superadminService.definirDoador(request.server.prisma, id, { isDoador, valorContribuicao });
   return reply.send(empresa);
+}
+
+/** GET /superadmin/empresas/:id/doador - dados de doacao de uma empresa, pro Modal de Gestao de Doadores. */
+async function obterDadosDoador(request, reply) {
+  const id = parseId(request, reply);
+  if (id === null) return;
+
+  const dados = await superadminService.obterDadosDoador(request.server.prisma, id);
+  return reply.send(dados);
 }
 
 /** PUT /superadmin/empresas/:id/pagamentos - "Gerenciar Assinaturas" (forca ativacao de um modulo pago). */
@@ -100,6 +109,7 @@ module.exports = {
   listarEmpresas,
   atualizarStatusEmpresa,
   definirDoador,
+  obterDadosDoador,
   forcarPagamento,
   restringirModulo,
   obterAssinaturas,

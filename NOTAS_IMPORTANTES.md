@@ -6891,3 +6891,55 @@ Backend testado de ponta a ponta contra o MySQL local (script descartável, sem 
 Turno seguinte pediu a MESMA "Etapa 2" de novo, do zero, com um spec diferente: tabela relacional nova `AssinaturaModulo` (em vez do JSON `Empresa.pagamentosAtivos` reaproveitado, já implementado) e um status de acesso de **3 estados** persistidos (`Restrito`/`Liberado`/`Liberado Gratuitamente` - o que existe hoje só tem 2, pago/não-pago, porque a sessão anterior confirmou explicitamente com o usuário que "Liberar Gratuitamente" e pagamento normal deveriam se comportar de forma idêntica, mesmo ciclo). Diferente das duplicatas anteriores (só nomenclatura), esta tinha uma divergência de regra de negócio real - perguntado ao usuário antes de tocar em código já testado: confirmado **manter como está** (JSON + 2 estados). Nenhum arquivo de código alterado.
 
 **Padrão consolidado nesta sessão** (4 ocorrências no mesmo dia - ver entradas "Fase 2"/"Fase 3"/este mesmo tópico acima): pedidos chegando descrevendo trabalho já feito horas antes. Vale considerar, pra sessões futuras, perguntar/conferir `git log` logo no início de qualquer pedido que pareça uma "nova etapa" de algo já em andamento no mesmo dia.
+
+---
+
+## Painel Master - Etapa 3: Modal de Gestão de Doadores (2026-09-23)
+
+### Pedido genuinamente novo (não duplicava nada) - 1 dúvida de regra de negócio esclarecida antes de codar
+
+Diferente das 4 duplicatas anteriores no mesmo dia, esta era uma feature nova de verdade: um modal dedicado ao clicar no ícone de "Doador" na tabela Empresas/Clientes (antes virava/desvirava o status na hora, sem confirmação nem detalhe nenhum). O pedido original listava 3 status de pagamento (`Pago`/`Pendente`/`Atrasado`) - perguntado ao usuário (convidado explicitamente a perguntar) o que diferenciava "Pago" de "Pendente" antes do vencimento chegar: confirmado que são a MESMA coisa - só 2 estados reais (`PAGO`/`ATRASADO`), calculados a partir da data de vencimento, mesmo padrão já usado nos módulos pagos (Etapa 2) - evita um 3º campo manual no schema que poderia divergir da data.
+
+### Schema: 2 colunas novas em `Empresa`, reaproveitando `isDoador`/`valorContribuicao` já existentes
+
+`Empresa.doadorDesde`/`doadorProximoVencimento` (`DateTime?`, ambas nullable - migration `20260923134455_adiciona_campos_doador`, segura mesmo com dado real por ser só `ADD COLUMN` nullable, sem precisar do passo 2/3 de backfill que `codigo_usuario` exigiu). `isDoador`/`valorContribuicao`/`plano` (já existentes desde a tarefa de pricing) continuam a fonte da verdade de "é doador e quanto paga" - os 2 campos novos só complementam com QUANDO começou e QUANDO vence.
+
+**Regra de negócio da data de início** (`doadorDesde`), decidida durante a implementação, não literalmente pedida mas necessária pra "há quanto tempo é doador" fazer sentido: preservada em renovações (trocar o valor mensal ou confirmar de novo NÃO reinicia o contador), mas reseta pra `null` se a empresa deixar de ser doadora e voltar depois - decisão deliberada de não guardar histórico, pra "há quanto tempo é doador" sempre refletir o período CONTÍNUO atual, não somar períodos interrompidos.
+
+### Backend: `calcularCiclosDoador` reaproveitada nos 2 únicos lugares que escrevem status de doador
+
+`empresaService.calcularCiclosDoador` (nova, exportada) centraliza a regra acima - usada tanto por `atualizarAssinatura` (self-service, `PUT /empresa/assinatura`, já existia) quanto por `superadmin.service.js#definirDoador` (agora reescrita: antes só alternava um boolean sem nunca gravar `valorContribuicao`, um gap real que existia desde a tarefa do Supra Admin - "conceder doador" pelo admin nunca setava quanto a empresa "doava", ficava sempre em R$0). `definirDoador` do admin exige valor `> 0` (não o mínimo de R$10 do self-service - é uma concessão administrativa, mais flexível, mas não deixa criar um doador de R$0 sem querer). Nova `obterDadosDoador` (delegada em `superadmin.service.js`, mesmo padrão de `obterAssinaturas`) - status derivado, nunca persistido, mesmo princípio de sempre nesta base.
+
+Rotas novas: `GET /superadmin/empresas/:id/doador` (dados pro modal), `PUT /superadmin/empresas/:id/doador` (já existia, corpo estendido com `valor_contribuicao`).
+
+### Frontend: `ModalDoador.jsx` (novo) - 2 estados visuais, `z-[60]` desde o início
+
+Aprendendo com o bug de z-index achado na Etapa 2 (modal atrás da sidebar do `SupraAdminLayout`), este modal já nasceu com `z-[60]` - confirmado visualmente correto de primeira, sem precisar de correção depois. Estado A (formulário "Valor Mensal da Doação" + botão "Tornar Doador") e Estado B ("Doador ativo" + "Doador há X dias/meses/anos", calculado no FRONTEND a partir de `doadorDesde` cru vindo da API - mesmo padrão de formatação de data feita no cliente já usado no resto do Supra Admin - + valor/status/vencimento + botão "Remover status de Doador"). `EmpresasClientes.jsx`: o ícone de presente na tabela deixou de alternar o status direto, agora abre o modal (mesmo padrão autocontido do `ModalAssinaturas` - o modal cuida das próprias chamadas de API).
+
+### Validação
+
+Backend testado de ponta a ponta (script descartável): estado inicial `SEM_DOACAO`, valor `0` rejeitado com 422, tornar doador com R$25 (`doadorDesde` setado, vencimento em +30 dias, status `PAGO`), renovar com R$40 (`doadorDesde` **não** mudou - confirma que preserva a data original), forçar vencimento pro passado direto no banco (status calcula `ATRASADO` corretamente), remover status (os 4 campos - `isDoador`/`valorContribuicao`/`doadorDesde`/`doadorProximoVencimento` - voltam ao estado zerado), virar doador de novo (`doadorDesde` agora É uma data nova - confirma o reset do contador), e confirmado que `empresaService.atualizarAssinatura` (fluxo self-service) segue exatamente a mesma regra. Frontend testado com Playwright de ponta a ponta: Estado A renderizado, formulário preenchido e confirmado, Estado B mostrando todos os dados certos ("Doador há menos de 1 dia", R$ 50,00, Pago, vencimento), persistência confirmada fechando e reabrindo o modal, badge "Doador" aparecendo na tabela, remoção revertendo pro Estado A - 0 erros de console.
+
+---
+
+## Painel Master - Etapa 4: Ajuste no Formulário de Suporte - rastreabilidade de chamados (2026-09-23)
+
+### Decisão de implementação: "Seu ID" mostra o código de 5 dígitos, não o `id` interno do banco
+
+O pedido dizia "ID do Utilizador" sem especificar qual - decidido (sem precisar perguntar, escolha técnica clara) usar `Usuario.codigoUsuario` (o código de 5 dígitos já criado no Painel Master - Etapa 1) em vez do `id` autoincrement interno do banco: é literalmente o campo que já foi feito pra esse cenário exato (comentário original dele em `schema.prisma` já dizia "suporte confirmando identidade por telefone"), mais curto/legível, e não expõe um identificador técnico de banco de dados pro usuário final.
+
+### Segurança: campo `readOnly` na tela é só UX, o backend nunca confia nele
+
+Mesmo princípio já usado em toda a API pra `tenantId` (nunca vindo do body, sempre do token JWT - ver `plugins/auth.js`) aplicado aqui pela primeira vez a um `usuarioId`: `chamados.controller.js#create` passa `request.userId` (do token) pro service como parâmetro **posicional explícito**, nunca lê um campo tipo `usuario_id` do corpo da requisição - mesmo que o frontend mande esse campo (manda, só por transparência - visível na aba de rede), ele é ignorado. **Testado de verdade** com um teste HTTP real (`app.inject`, não só um teste de unidade): Usuário A autenticado tenta abrir um chamado com `usuario_id`/`usuarioId` forjados no corpo apontando pro Usuário B - o chamado criado tem o `usuarioId` do A (o dono real do token), confirmando que a forjadura no corpo não teve efeito nenhum.
+
+### Schema: `ChamadoSuporte.usuarioId` nullable (não backfill necessário)
+
+`Int?` (não obrigatório) - chamados criados ANTES desta tarefa ficam com `usuarioId: null` (não um "usuário desconhecido" fabricado só pra preencher), mesmo padrão já usado em `Venda.clienteId`/`funcionarioId` pra FKs opcionais. `onDelete: Restrict` (não Cascade) - preserva o histórico do chamado, não permite apagar um usuário que já tem chamado registrado (mesmo motivo de `Tarefa.responsavel`). Migration `20260923135729_adiciona_usuario_id_chamados_suporte` seguiu direto (`ADD COLUMN` nullable, sem o passo 2/3 de backfill que `codigo_usuario` exigiu).
+
+### Bônus não pedido explicitamente, mas direto da meta "não ficar difícil de rastrear"
+
+`superadmin.service.js#listarChamados` e `chamados.service.js#listarPorEmpresa` passaram a incluir `usuario: { nome, codigoUsuario }` (`chamado.usuario` pode vir `null` pra chamados antigos) - `ChamadosSuporte.jsx` (aba do Supra Admin) agora mostra "Nome (ID 12345)" ao lado da empresa/data, exatamente o "rastrear quem abriu" que o objetivo da tarefa pedia, sem ter sido literalmente listado no passo a passo.
+
+### Validação
+
+Backend: teste de unidade cobrindo criação/listagem/chamado antigo sem usuário, e um teste HTTP real (`fastify.inject`) provando a propriedade de segurança (corpo forjado não muda o `usuarioId` gravado). Frontend testado com Playwright: campo "Seu ID" carrega o código certo, tentativa de digitar nele não muda o valor (`readOnly` de verdade, não só `disabled` visual), payload enviado ao `POST /chamados` confirmado incluindo `usuario_codigo`, chamado enviado com sucesso, e do lado do Supra Admin (`/supra-admin/chamados`) o chamado aparece com "Nome (ID código)" junto - 0 erros de console nas 2 sessões (lojista e Supra Admin).

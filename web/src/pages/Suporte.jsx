@@ -33,6 +33,18 @@ const classesInput =
  * usuario logado, editaveis), a empresa de quem abriu o chamado ja fica
  * registrada via `empresaId` (tenant do token), sem precisar duplicar isso
  * no chamado.
+ *
+ * "Seu ID" (Ajuste no Formulario de Suporte, 2026-09-23) - mostra
+ * `usuario.codigoUsuario` (o codigo de 5 digitos, ja disponivel no
+ * AuthContext desde o login/registro - ver auth.service.js), NAO o `id`
+ * interno (autoincrement do banco) - o codigo de 5 digitos foi feito
+ * justamente pra esse cenario (ver comentario dele em schema.prisma:
+ * "suporte confirmando identidade por telefone"), mais curto e sem expor
+ * um identificador tecnico do banco pro usuario final. Campo `readOnly` de
+ * proposito - so uma cortesia de UX (evita erro de digitação), NAO uma
+ * fronteira de seguranca: o backend (`chamados.controller.js#create`)
+ * ignora qualquer valor de usuario mandado no corpo da requisicao, sempre
+ * usa `request.userId` (do token) - ver comentario la.
  */
 export default function Suporte() {
   const { usuario } = useAuth();
@@ -56,7 +68,10 @@ export default function Suporte() {
     try {
       await apiFetch('/chamados', {
         method: 'POST',
-        body: JSON.stringify({ titulo, descricao }),
+        // `usuario_codigo` vai no corpo so por transparencia (visivel na aba
+        // de rede, confere o que foi enviado) - o backend NAO confia nele,
+        // sempre deriva o usuario real do token (ver comentario acima).
+        body: JSON.stringify({ titulo, descricao, usuario_codigo: usuario?.codigoUsuario }),
       });
       setEnviado(true);
     } catch (err) {
@@ -103,6 +118,17 @@ export default function Suporte() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
+            <Campo label="Seu ID">
+              <input
+                type="text"
+                value={usuario?.codigoUsuario || '-----'}
+                readOnly
+                aria-readonly="true"
+                title="Preenchido automaticamente - identifica você para nossa equipe de suporte."
+                className={`${classesInput} cursor-not-allowed bg-slate-100 text-slate-500 dark:bg-slate-900/60 dark:text-slate-400`}
+              />
+            </Campo>
+
             <Campo label="Nome">
               <input
                 type="text"

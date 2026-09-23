@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Building2, Ban, Power, Gift, CreditCard, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../services/api';
 import ModalAssinaturas from '../../components/superadmin/ModalAssinaturas';
+import ModalDoador from '../../components/superadmin/ModalDoador';
 
 /**
  * Aba/rota "Empresas/Clientes" (Painel Master, rota `/supra-admin/empresas`)
@@ -19,12 +20,19 @@ import ModalAssinaturas from '../../components/superadmin/ModalAssinaturas';
  * 2026-09-23) - visao detalhada por modulo (antes era so um dropdown de 1
  * modulo por vez); o modal cuida das proprias chamadas de API, aqui so
  * abre/fecha e reusa `carregar()` como callback de "algo mudou".
+ *
+ * "Doador" abre `ModalDoador` (Painel Master - etapa 3, 2026-09-23) -
+ * antes o icone de presente virava/desvirava o status na hora, sem
+ * confirmacao nem detalhe (valor, ha quanto tempo, vencimento) - mesmo
+ * padrao autocontido do `ModalAssinaturas` (o modal cuida das proprias
+ * chamadas de API).
  */
 export default function EmpresasClientes() {
   const [empresas, setEmpresas] = useState(null);
   const [erro, setErro] = useState('');
   const [processandoId, setProcessandoId] = useState(null);
   const [empresaAssinatura, setEmpresaAssinatura] = useState(null);
+  const [empresaDoador, setEmpresaDoador] = useState(null);
 
   function carregar() {
     apiFetch('/superadmin/empresas')
@@ -47,22 +55,6 @@ export default function EmpresasClientes() {
       carregar();
     } catch (err) {
       setErro(err.message || 'Não foi possível atualizar o status desta empresa.');
-    } finally {
-      setProcessandoId(null);
-    }
-  }
-
-  async function alternarDoador(empresa) {
-    setErro('');
-    setProcessandoId(empresa.id);
-    try {
-      await apiFetch(`/superadmin/empresas/${empresa.id}/doador`, {
-        method: 'PUT',
-        body: JSON.stringify({ is_doador: !empresa.isDoador }),
-      });
-      carregar();
-    } catch (err) {
-      setErro(err.message || 'Não foi possível atualizar o status de doador.');
     } finally {
       setProcessandoId(null);
     }
@@ -179,8 +171,8 @@ export default function EmpresasClientes() {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => alternarDoador(empresa)}
-                                title={empresa.isDoador ? 'Remover status de Doador' : 'Tornar Doador'}
+                                onClick={() => setEmpresaDoador(empresa)}
+                                title="Gestão de Doadores"
                                 className={`rounded-lg p-2 transition-colors ${
                                   empresa.isDoador
                                     ? 'text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20'
@@ -216,6 +208,10 @@ export default function EmpresasClientes() {
           onFechar={() => setEmpresaAssinatura(null)}
           onAtualizado={carregar}
         />
+      )}
+
+      {empresaDoador && (
+        <ModalDoador empresa={empresaDoador} onFechar={() => setEmpresaDoador(null)} onAtualizado={carregar} />
       )}
     </div>
   );

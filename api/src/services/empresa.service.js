@@ -474,6 +474,55 @@ async function adicionarUsuario(prisma, tenantId, { nome, email, senha, role }) 
 }
 
 /**
+ * Calcula o novo par `doadorDesde`/`doadorProximoVencimento` pra uma
+ * transicao de status de doador (Painel Master - Etapa 3, 2026-09-23) -
+ * usado tanto por `atualizarAssinatura` (self-service, `PUT /empresa/assinatura`)
+ * quanto por `superadmin.service.js#definirDoador` (concessao manual) -
+ * MESMA regra pros dois caminhos, nao duplicada.
+ *
+ * - Virando doador AGORA (nao era antes): `doadorProximoVencimento` reinicia
+ *   pro ciclo cheio (`DURACAO_CICLO_PAGAMENTO_DIAS`); `doadorDesde` so e
+ *   setado se ainda estiver vazio (`null`) - preserva a data ORIGINAL de
+ *   quando a empresa virou doadora pela primeira vez, mesmo que o valor da
+ *   contribuicao mude depois (nao "reinicia o contador" so por trocar o
+ *   valor mensal).
+ * - Continua doador (ja era antes, so renovando/trocando valor): so
+ *   reinicia `doadorProximoVencimento`, mantem `doadorDesde` como estava.
+ * - Deixando de ser doador: os 2 campos voltam a `null` - decisao
+ *   deliberada (nao guardar historico) pra que, se a empresa virar doadora
+ *   de novo no futuro, o contador de "ha quanto tempo e doador" comece do
+ *   zero, refletindo o periodo continuo ATUAL, nao um periodo antigo que ja
+ *   foi interrompido.
+ */
+function calcularCiclosDoador({ isDoadorAntes, isDoadorNovo, doadorDesdeAtual }) {
+  if (!isDoadorNovo) {
+    return { doadorDesde: null, doadorProximoVencimento: null };
+  }
+
+  const data = new Date();
+  data.setDate(data.getDate() + DURACAO_CICLO_PAGAMENTO_DIAS);
+
+  return {
+    doadorDesde: isDoadorAntes && doadorDesdeAtual ? doadorDesdeAtual : new Date(),
+    doadorProximoVencimento: data,
+  };
+}
+
+/**
+ * Deriva o status de pagamento da doacao a partir de `isDoador`/
+ * `doadorProximoVencimento` - mesmo principio de `calcularStatusPagamento`
+ * (modulos pagos, acima): nunca persistido, sempre calculado na leitura.
+ * So 2 estados reais (`PAGO`/`ATRASADO`, decisao confirmada com o usuario -
+ * "Pendente" no pedido original virou so um sinonimo visual de "em dia",
+ * nao um 3o estado de verdade) + `SEM_DOACAO` pra quem nunca foi doador.
+ */
+function calcularStatusDoador({ isDoador, doadorProximoVencimento }) {
+  if (!isDoador) return 'SEM_DOACAO';
+  if (!doadorProximoVencimento) return 'PAGO';
+  return new Date(doadorProximoVencimento) < new Date() ? 'ATRASADO' : 'PAGO';
+}
+
+/**
  * Atualiza o plano da empresa. "Simulada" porque nao ha integracao real de
  * pagamento aqui - so grava a mudanca de plano direto, como se o pagamento
  * ja tivesse sido confirmado em algum outro lugar.
@@ -499,12 +548,27 @@ async function atualizarAssinatura(prisma, tenantId, { plano, valorContribuicao 
     }
   }
 
+  const empresaAntes = await prisma.empresa.findUnique({
+    where: { id: tenantId },
+    select: { isDoador: true, doadorDesde: true },
+  });
+  if (!empresaAntes) {
+    throw new AppError('Empresa nao encontrada.', 404);
+  }
+
+  const isDoadorNovo = plano === 'apoiador';
+  const ciclos = calcularCiclosDoador({
+    isDoadorAntes: empresaAntes.isDoador,
+    isDoadorNovo,
+    doadorDesdeAtual: empresaAntes.doadorDesde,
+  });
+
   return prisma.empresa.update({
     where: { id: tenantId },
     // `isDoador` gravado na MESMA escrita que `plano` - unico jeito de
     // manter as 2 colunas em sincronia (ver comentario dela em
     // schema.prisma), nao um recalculo derivado em outro lugar.
-    data: { plano, isDoador: plano === 'apoiador', valorContribuicao: valor },
+    data: { plano, isDoador: isDoadorNovo, valorContribuicao: valor, ...ciclos },
     select: {
       id: true,
       razaoSocial: true,
@@ -512,9 +576,32 @@ async function atualizarAssinatura(prisma, tenantId, { plano, valorContribuicao 
       plano: true,
       isDoador: true,
       valorContribuicao: true,
+      doadorDesde: true,
+      doadorProximoVencimento: true,
       atualizadoEm: true,
     },
   });
+}
+
+/**
+ * "Modal de Gestao de Doadores" (Painel Master - Etapa 3, 2026-09-23) -
+ * dados completos de doacao de UMA empresa, pro modal decidir entre
+ * Estado A (nao e doador - formulario "Tornar Doador") e Estado B (ja e
+ * doador - status/vencimento/ha quanto tempo). `status` derivado igual
+ * `calcularStatusDoador` acima; "ha quanto tempo e doador" NAO e calculado
+ * aqui - so devolve `doadorDesde` cru (ISO), o frontend formata (mesmo
+ * padrao de `formatarData` ja usado em outras telas do Supra Admin).
+ */
+async function obterDadosDoador(prisma, empresaId) {
+  const empresa = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: { isDoador: true, valorContribuicao: true, doadorDesde: true, doadorProximoVencimento: true },
+  });
+  if (!empresa) {
+    throw new AppError('Empresa nao encontrada.', 404);
+  }
+
+  return { ...empresa, status: calcularStatusDoador(empresa) };
 }
 
 module.exports = {
@@ -527,6 +614,8 @@ module.exports = {
   listarUsuarios,
   adicionarUsuario,
   atualizarAssinatura,
+  calcularCiclosDoador,
+  obterDadosDoador,
   PLANOS_VALIDOS,
   ROLES_VALIDOS,
   SEGMENTOS_VALIDOS,

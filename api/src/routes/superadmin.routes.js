@@ -24,6 +24,7 @@ module.exports = async function superadminRoutes(fastify) {
   fastify.get('/empresas', superadminController.listarEmpresas);
   fastify.put('/empresas/:id/status', superadminController.atualizarStatusEmpresa);
   fastify.put('/empresas/:id/doador', superadminController.definirDoador);
+  fastify.get('/empresas/:id/doador', superadminController.obterDadosDoador);
   fastify.put('/empresas/:id/pagamentos', superadminController.forcarPagamento);
   fastify.delete('/empresas/:id/pagamentos/:modulo', superadminController.restringirModulo);
   fastify.get('/empresas/:id/assinaturas', superadminController.obterAssinaturas);

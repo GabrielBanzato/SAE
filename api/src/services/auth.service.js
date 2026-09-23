@@ -227,6 +227,10 @@ async function register(
       email: usuario.email,
       role: usuario.role,
       nivelAcesso: usuario.nivelAcesso,
+      // Ajuste no Formulario de Suporte (2026-09-23) - AuthContext precisa
+      // disso disponivel desde o login/registro, sem uma chamada extra, pra
+      // preencher o campo "Seu ID" (so-leitura) em Suporte.jsx.
+      codigoUsuario: usuario.codigoUsuario,
     },
   };
 }
@@ -295,6 +299,9 @@ async function login(fastify, { email, senha }) {
       email: usuario.email,
       role: usuario.role,
       nivelAcesso: usuario.nivelAcesso,
+      // Ajuste no Formulario de Suporte (2026-09-23) - ver comentario
+      // equivalente em `register` acima.
+      codigoUsuario: usuario.codigoUsuario,
     },
   };
 }

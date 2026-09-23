@@ -94,28 +94,28 @@ enum StatusLancamento {
 /// Tabela "raiz" do modelo multi-tenant: Empresa.id E o tenant_id
 /// referenciado por Usuario, Produto e Venda.
 model Empresa {
-  id                Int          @id @default(autoincrement()) @db.UnsignedInt
-  razaoSocial       String       @map("razao_social") @db.VarChar(150)
+  id                      Int          @id @default(autoincrement()) @db.UnsignedInt
+  razaoSocial             String       @map("razao_social") @db.VarChar(150)
   // Apelido/nome fantasia da loja (ex.: usado em recibos e mensagens) -
   // opcional e distinto de `razaoSocial` (a razao social/nome legal, exigida
   // no cadastro). Editavel em Configuracoes > Dados da Loja.
-  nomeLoja          String?      @map("nome_loja") @db.VarChar(150)
-  tipoPessoa        TipoPessoa   @default(PJ) @map("tipo_pessoa")
+  nomeLoja                String?      @map("nome_loja") @db.VarChar(150)
+  tipoPessoa              TipoPessoa   @default(PJ) @map("tipo_pessoa")
   // CPF (11 digitos) ou CNPJ (14 digitos), so numeros, dependendo de
   // `tipoPessoa` - por isso VarChar(14) (tamanho maximo dos dois), nao
   // Char(14) como era so pro CNPJ: Char faz padding com espaco ate o
   // tamanho fixo, o que corromperia um CPF de 11 digitos.
-  documento         String       @unique @db.VarChar(14)
+  documento               String       @unique @db.VarChar(14)
   // Opcionais: nem toda empresa cadastrada vai ter preenchido de imediato.
-  endereco          String?      @db.VarChar(255)
-  telefone          String?      @db.VarChar(20)
+  endereco                String?      @db.VarChar(255)
+  telefone                String?      @db.VarChar(20)
   // Nome do campo no Prisma e "plano" (mais claro que carrega o nivel do
   // plano, nao um booleano) - mapeado pra coluna "plano_ativo" no MySQL.
-  plano             PlanoEmpresa @default(gratuito) @map("plano_ativo")
+  plano                   PlanoEmpresa @default(gratuito) @map("plano_ativo")
   // Valor mensal que um Apoiador contribui (a "mensalidade caridosa") -
   // Decimal (nao Float) pelo mesmo motivo de Produto.custo/precoVenda
   // abaixo: dinheiro nunca deve usar ponto flutuante binario.
-  valorContribuicao Decimal      @default(0.00) @map("valor_contribuicao") @db.Decimal(10, 2)
+  valorContribuicao       Decimal      @default(0.00) @map("valor_contribuicao") @db.Decimal(10, 2)
   // Coluna persistida (pedido explicito, 2026-09-22) - antes era so um valor
   // CALCULADO em runtime (`plano === 'apoiador'`, nunca gravado). Mantida em
   // sincronia com `plano` nos 2 unicos lugares que escrevem `plano`
@@ -123,7 +123,18 @@ model Empresa {
   // superadmin.service.js - ambos gravam os dois campos na MESMA escrita),
   // entao os dois nunca divergem na pratica, apesar de guardados em colunas
   // separadas agora.
-  isDoador          Boolean      @default(false) @map("is_doador")
+  isDoador                Boolean      @default(false) @map("is_doador")
+  // Painel Master - Etapa 3 (2026-09-23): "ha quanto tempo e doador" (data
+  // ORIGINAL de quando virou doadora pela 1a vez - preservada em renovacoes/
+  // trocas de valor, so reseta se deixar de ser doadora e voltar depois, ver
+  // `empresaService.calcularCiclosDoador`) e o ciclo de cobranca simulado
+  // (mesmo espirito de `pagamentosAtivos` pros modulos pagos - "agora + 30
+  // dias" a cada confirmacao, sem cobranca real nem job automatico). `Boolean
+  // isDoador` acima continua a fonte da verdade de "e doador ou nao" - estes
+  // 2 campos so complementam com QUANDO comecou e QUANDO vence, ambos `null`
+  // pra quem nunca foi/deixou de ser doador.
+  doadorDesde             DateTime?    @map("doador_desde")
+  doadorProximoVencimento DateTime?    @map("doador_proximo_vencimento")
   // Segmento de atuacao da empresa - gate de regras de negocio pontuais
   // (ex.: so "varejo_alimentacao" desbloqueia Ficha Tecnica de ingredientes
   // em Produto, ver FichaTecnica abaixo, e as formas de pagamento "Consumo
@@ -137,7 +148,7 @@ model Empresa {
   // auth.service.js) pode crescer sem exigir migration. SEM default
   // proposital (campo obrigatorio) - todo cadastro novo (Cadastro.jsx) exige
   // escolher um segmento explicitamente, nao ha mais um "outros" implicito.
-  segmento          String       @db.VarChar(30)
+  segmento                String       @db.VarChar(30)
   // Arquitetura Modular SaaS (2026-09-22, ultimo passo do roadmap):
   // catalogo de chaves de modulo (String[], as mesmas chaves ja usadas por
   // `ROTAS_POR_MODULO` em web/src/App.jsx e pelos campos `modulo` de
@@ -152,7 +163,7 @@ model Empresa {
   // de schema (linhas antigas sem o campo preenchido) - a aplicacao sempre
   // trata `null` como "usa o default de modulos base", nunca deixa a API
   // devolver `null` pro frontend (ver empresa.service.js).
-  modulosAtivos     Json?        @default("[\"vendas\", \"financeiro\", \"produtos\"]") @map("modulos_ativos")
+  modulosAtivos           Json?        @default("[\"vendas\", \"financeiro\", \"produtos\"]") @map("modulos_ativos")
   // Monetizacao dos modulos opcionais (2026-09-22, motor de pricing da
   // App Store): `{ [chaveDoModulo]: true }` pra modulos de preco unico
   // (ex.: `{"pdv_touch": true}`), ou `{ [chaveDoModulo]: "<plano>" }` pro
@@ -166,7 +177,7 @@ model Empresa {
   // "simulado" de `atualizarAssinatura`, ver comentario dela abaixo neste
   // arquivo) - `PUT /empresa/pagamentos` so grava como se a cobranca ja
   // tivesse sido confirmada.
-  pagamentosAtivos  Json?        @default("{}") @map("pagamentos_ativos")
+  pagamentosAtivos        Json?        @default("{}") @map("pagamentos_ativos")
   // Suspensao de acesso pelo Supra Admin (Painel Master, 2026-09-22,
   // superadmin.routes.js) - `false` bloqueia login de QUALQUER usuario
   // desta empresa (ver auth.service.js#login). Sessoes JA ABERTAS (JWT
@@ -174,9 +185,9 @@ model Empresa {
   // usa JWT stateless, sem blacklist/revogacao de token ativo; suspender
   // corta o acesso na PROXIMA tentativa de login, nao instantaneamente.
   // Limitacao aceita por enquanto (documentada em NOTAS_IMPORTANTES.md).
-  ativo             Boolean      @default(true)
-  criadoEm          DateTime     @default(now()) @map("criado_em")
-  atualizadoEm      DateTime     @default(now()) @updatedAt @map("atualizado_em")
+  ativo                   Boolean      @default(true)
+  criadoEm                DateTime     @default(now()) @map("criado_em")
+  atualizadoEm            DateTime     @default(now()) @updatedAt @map("atualizado_em")
 
   usuarios        Usuario[]
   produtos        Produto[]
@@ -232,13 +243,14 @@ model Usuario {
   criadoEm      DateTime    @default(now()) @map("criado_em")
   atualizadoEm  DateTime    @default(now()) @updatedAt @map("atualizado_em")
 
-  empresa           Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  empresa           Empresa          @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   // 2 relacoes distintas com Venda (quem vendeu vs. quem consumiu
   // internamente) - precisam de nome pra o Prisma saber diferenciar qual
   // FK cada uma representa (ver Venda.usuarioId/funcionarioId acima).
-  vendas            Venda[]  @relation("VendaVendedor")
-  consumosInternos  Venda[]  @relation("VendaFuncionarioConsumo")
+  vendas            Venda[]          @relation("VendaVendedor")
+  consumosInternos  Venda[]          @relation("VendaFuncionarioConsumo")
   tarefasAtribuidas Tarefa[]
+  chamadosAbertos   ChamadoSuporte[]
 
   // Email e unico apenas DENTRO da mesma empresa, nao globalmente - dois
   // tenants diferentes podem ter usuarios com o mesmo e-mail.
@@ -609,6 +621,18 @@ model FichaTecnica {
 model ChamadoSuporte {
   id        Int      @id @default(autoincrement()) @db.UnsignedInt
   empresaId Int      @map("empresa_id") @db.UnsignedInt
+  // Quem abriu o chamado (Ajuste no Formulario de Suporte, 2026-09-23) -
+  // sempre gravado a partir de `request.userId` (o token JWT de quem esta
+  // logado), NUNCA de um valor mandado no corpo da requisicao - mesmo
+  // principio ja aplicado a `empresaId` (tenant isolation, ver
+  // plugins/auth.js): o campo "Seu ID" no formulario (Suporte.jsx) e
+  // so-leitura NA TELA, mas isso e so uma cortesia de UX, nao uma fronteira
+  // de seguranca - um usuario mais tecnico poderia editar o corpo da
+  // requisicao a mao, entao o backend NUNCA confia no que o cliente manda
+  // aqui, so no que o proprio JWT ja provou. `Int?` (nao obrigatorio) -
+  // chamados criados ANTES desta tarefa nao tem essa informacao, ficam com
+  // `NULL` (nao um usuario "desconhecido" fabricado so pra preencher).
+  usuarioId Int?     @map("usuario_id") @db.UnsignedInt
   titulo    String   @db.VarChar(150)
   // Opcional - o pedido original listou so id/empresaId/titulo/status/data,
   // mas um chamado sem nenhum detalhe alem do titulo seria pouco util pra
@@ -620,9 +644,14 @@ model ChamadoSuporte {
 
   // Cascade: historico de chamados nao tem sentido preservado se a empresa
   // inteira for removida.
-  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  empresa Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  // Restrict (nao Cascade) - mesmo motivo ja usado em Tarefa.responsavel:
+  // preserva o historico do chamado (quem abriu), nao permite apagar um
+  // usuario que ja tem chamado registrado.
+  usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@index([empresaId], map: "idx_chamados_suporte_empresa_id")
+  @@index([usuarioId], map: "idx_chamados_suporte_usuario_id")
   @@map("chamados_suporte")
 }
 

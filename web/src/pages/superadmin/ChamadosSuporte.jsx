@@ -11,6 +11,11 @@ function formatarData(valor) {
  * - todos os chamados abertos pelos clientes (pages/Suporte.jsx), com nome
  * da empresa junto. Extraida de SupraAdmin.jsx pro Painel Master - etapa 1
  * (2026-09-23), mesma logica de antes, so virou uma rota propria.
+ *
+ * Nome/codigo de quem abriu (Ajuste no Formulario de Suporte, 2026-09-23) -
+ * `chamado.usuario` pode vir `null` (chamados antigos, de antes desta
+ * tarefa, nao tem essa informacao - ver `ChamadoSuporte.usuarioId` em
+ * schema.prisma).
  */
 export default function ChamadosSuporte() {
   const [chamados, setChamados] = useState(null);
@@ -85,6 +90,12 @@ export default function ChamadosSuporte() {
                     <p className="text-base font-bold text-slate-900 dark:text-slate-100">{chamado.titulo}</p>
                     <p className="text-sm text-slate-400 dark:text-slate-500">
                       {chamado.empresa?.nomeLoja || chamado.empresa?.razaoSocial} - {formatarData(chamado.criadoEm)}
+                      {chamado.usuario && (
+                        <>
+                          {' '}
+                          - {chamado.usuario.nome} (ID {chamado.usuario.codigoUsuario})
+                        </>
+                      )}
                     </p>
                   </div>
                   <span

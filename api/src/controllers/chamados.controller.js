@@ -12,7 +12,13 @@ async function create(request, reply) {
     return reply.code(400).send({ error: 'titulo e obrigatorio.' });
   }
 
-  const chamado = await chamadosService.criar(request.server.prisma, request.tenantId, { titulo, descricao });
+  // `usuarioId` sempre de `request.userId` (do token) - qualquer campo de
+  // "id do usuario" que o corpo da requisicao mande e ignorado de proposito
+  // (ver comentario de `chamadosService.criar`).
+  const chamado = await chamadosService.criar(request.server.prisma, request.tenantId, request.userId, {
+    titulo,
+    descricao,
+  });
   return reply.code(201).send(chamado);
 }
 
