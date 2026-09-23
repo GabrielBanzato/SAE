@@ -6698,3 +6698,18 @@ Esta sessão não tem `DATABASE_URL` nem acesso ao MySQL de produção (Portaine
 3. Se produção **não** tiver essas colunas ainda e tiver dados reais em `tarefas`/`vendas`: a migration novo **derruba colunas com dado real** (`tarefas.status_concluida`, `vendas.produto_id`/`quantidade`/`preco_unitario`) - os 2 avisos com o SQL de backfill necessário estão no cabeçalho do próprio arquivo `migration.sql` (mesmo espírito das seções 2.5/2.7 deste dossiê) - rodar esse backfill ANTES do `prisma migrate deploy`, não depois.
 
 **Sem passar por isso em produção, o sintoma original ("mudanças não refletem") provavelmente continua** para qualquer mudança de schema futura - o problema não é desta tarefa especificamente, é a ausência de um pipeline que rode `prisma migrate deploy` (ou ao menos `db push`) contra produção a cada deploy. Vale considerar isso como item de infraestrutura separado, não só "essa migration".
+
+---
+
+## Terceiro pedido duplicado no mesmo dia: "Fase 3 - Painel Supra Admin" já estava pronta (2026-09-22)
+
+Depois da "Fase 2" duplicada (pricing/doador, ver entrada acima), chegou um pedido de "Fase 3" pedindo o Painel Supra Admin inteiro do zero - também já implementado no mesmo dia (commit `499776a`, ver entrada "Painel Supra Admin..." mais acima neste arquivo). Conferido rota por rota antes de tocar em qualquer coisa: middleware de `nivelAcesso === 'SUPERADMIN'`, `GET/PUT /superadmin/empresas/*`, `GET/PUT /superadmin/chamados/*`, rota `/supra-admin` protegida em `App.jsx`, link condicional na Sidebar, `SupraAdmin.jsx` com abas - tudo já existe.
+
+**2 divergências do spec identificadas, nenhuma implementada**:
+
+1. `Usuario.role` pedido como o campo de nível de plataforma - **mesma pergunta já resolvida** na tarefa original do Supra Admin (ver "`nivelAcesso` virou um campo NOVO e separado de `role`" mais acima) - `role` já é usado pra permissão dentro da empresa (`admin`/`gerente`/`vendedor`), `nivelAcesso` é o campo separado pra `LOJISTA`/`SUPERADMIN`. Não revisitado - decisão já tomada com o usuário antes.
+2. `ChamadoSuporte.id String @default(uuid())` + `empresaId String` pedido no spec - **tecnicamente incompatível** com o resto do schema: `Empresa.id` é `Int @db.UnsignedInt` em toda a aplicação, e o Prisma exige que o tipo da FK bata com o tipo da coluna referenciada. Implementar isso literalmente exigiria migrar `Empresa.id` (e toda FK que aponta pra ela, em praticamente todo model do schema) pra String/UUID - fora de escopo de um pedido que só queria a tabela de chamados.
+
+Perguntado ao usuário antes de mexer em código já testado (mesmo padrão da "Fase 2" duplicada) - confirmado **deixar como está**. Nenhum arquivo de código alterado; só esta entrada.
+
+**Padrão que já se repetiu 2x no mesmo dia**: pedidos chegando descrevendo uma feature "nova" que já foi implementada horas antes, com specs de nomenclatura/tipo ligeiramente diferentes do que foi decidido durante a implementação original (alguns desses specs, como o `ChamadoSuporte` acima, sendo tecnicamente incompatíveis se seguidos à risca). Reforça a lição já registrada na entrada da "Fase 2": sempre conferir `git log --oneline` e grepar pelos nomes-chave do pedido antes de implementar algo descrito como novo.

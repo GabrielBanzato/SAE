@@ -153,6 +153,10 @@ Investigando o relato "mudanças não refletem em produção, servidor diz que s
 
 **Lição de processo**: este projeto não tem nenhum pipeline que rode `prisma migrate deploy` (ou `db push`) contra produção automaticamente a cada deploy - toda evolução de schema até agora dependeu de alguém lembrar de fazer isso manualmente. Enquanto isso não existir, qualquer mudança de schema nova corre o mesmo risco de "não refletir em produção" silenciosamente.
 
+### 2.7.3 Terceiro pedido duplicado no mesmo dia: "Fase 3" (Painel Supra Admin) também já existia (2026-09-22)
+
+Mesmo padrão das entradas 2.7.1/2.7.2 acima: pedido de "Fase 3 - Painel Supra Admin" pediu do zero algo já implementado no commit `499776a` (ver 2.8 logo abaixo). Duas divergências do spec, nenhuma aplicada (usuário confirmou deixar como está): (1) `Usuario.role` pedido como campo de nível de plataforma - já resolvido antes como `nivelAcesso`, campo separado de `role` (permissão intra-empresa); (2) `ChamadoSuporte.id`/`empresaId` como `String`/`uuid()` pedido no spec - **tecnicamente incompatível**, já que `Empresa.id` é `Int` em toda a aplicação e o Prisma exige tipos batendo entre FK e coluna referenciada. Detalhe completo em `NOTAS_IMPORTANTES.md`.
+
 ### 2.8 Painel Supra Admin — "Suspender Acesso" não revoga sessões JWT já abertas (2026-09-22)
 
 Nível mais alto do sistema, exclusivo pro dono do software (`Usuario.nivelAcesso === 'SUPERADMIN'`, campo novo e separado do já existente `Usuario.role` — ver `NOTAS_IMPORTANTES.md` pra o raciocínio completo por trás de não reaproveitar `role`). Ninguém vira SUPERADMIN pelo cadastro self-service (`register()` sempre grava `"LOJISTA"`) — só manualmente, direto no banco.
