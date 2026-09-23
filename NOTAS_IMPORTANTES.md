@@ -6713,3 +6713,60 @@ Depois da "Fase 2" duplicada (pricing/doador, ver entrada acima), chegou um pedi
 Perguntado ao usuário antes de mexer em código já testado (mesmo padrão da "Fase 2" duplicada) - confirmado **deixar como está**. Nenhum arquivo de código alterado; só esta entrada.
 
 **Padrão que já se repetiu 2x no mesmo dia**: pedidos chegando descrevendo uma feature "nova" que já foi implementada horas antes, com specs de nomenclatura/tipo ligeiramente diferentes do que foi decidido durante a implementação original (alguns desses specs, como o `ChamadoSuporte` acima, sendo tecnicamente incompatíveis se seguidos à risca). Reforça a lição já registrada na entrada da "Fase 2": sempre conferir `git log --oneline` e grepar pelos nomes-chave do pedido antes de implementar algo descrito como novo.
+
+---
+
+## Incidente de produção: 500 em `POST /auth/login` - promoção manual a SUPERADMIN gravou o campo errado (2026-09-22/23)
+
+Reportado um `500` em `POST /auth/login`, com infraestrutura (Nginx/MySQL/Cloudflare Tunnel) funcionando normal - indicando falha no backend. Hipótese inicial (schema desatualizado em produção, ver entrada "Causa raiz real..." acima) fazia sentido dado o histórico do dia, mas **não era a causa aqui** - vale registrar como lição de diagnóstico: a hipótese mais "óbvia" (dado o contexto recente) nem sempre é a certa; os logs do container confirmaram algo mais específico.
+
+### Causa raiz: `Usuario.role` com um valor que não existe no enum `RoleUsuario`
+
+Log do container `sae_api` (`docker logs sae_api`) mostrou a stack trace real (o handler genérico de `api/src/app.js` sempre esconde isso do cliente, só loga internamente - ver seção 2.2/4.3 do dossiê):
+
+```
+PrismaClientUnknownRequestError: Invalid `prisma.usuario.findFirst()` invocation in
+/app/src/services/auth.service.js:230:40
+Value 'SUPERADMIN' not found in enum 'RoleUsuario'
+```
+
+`Usuario.role` (enum `admin`/`gerente`/`vendedor` - permissão *dentro* da empresa) tinha o valor literal `'SUPERADMIN'` gravado na linha do usuário `id=1` (`banzatogabriel2@gmail.com`, dono do sistema) - inválido pro enum. Qualquer query que tocasse essa linha (inclusive `login()`, que faz `findFirst` sem excluir `role` do select) quebrava ao tentar desserializar o valor.
+
+**Como isso aconteceu**: promover alguém a Supra Admin é sempre manual, direto no banco (nunca pelo cadastro self-service, ver seção 2.8/entrada "Painel Supra Admin" acima) - o comando documentado é `UPDATE usuarios SET nivel_acesso = 'SUPERADMIN' WHERE ...`. A coluna **certa** pra isso é `nivel_acesso` (String livre, LOJISTA/SUPERADMIN - campo criado justamente pra não conflitar com `role`, ver a decisão registrada na entrada "Painel Supra Admin..." mais acima). Quem promoveu essa conta em produção aparentemente rodou o UPDATE na coluna **errada** (`role` em vez de `nivel_acesso`) - confirmado pelo `SELECT` de diagnóstico, que mostrou `role='SUPERADMIN'` e `nivel_acesso='LOJISTA'` (o default, nunca de fato setado) na mesma linha.
+
+MySQL aceitou a escrita sem reclamar porque a coluna `role`, em produção, não está restrita como um ENUM nativo estrito (mesmo espírito do drift de schema já documentado nas entradas acima) - só o Prisma Client (que espera exatamente 3 valores pro TypeScript enum `RoleUsuario`) rejeitou ao ler de volta.
+
+### Correção aplicada (produção, verificada pelo usuário)
+
+```sql
+UPDATE usuarios SET role = 'admin', nivel_acesso = 'SUPERADMIN' WHERE id = 1;
+```
+
+Confirmado via `SELECT` (`role=admin`, `nivel_acesso=SUPERADMIN`) e testado no navegador - login voltou a funcionar, Painel Master acessível como esperado.
+
+### ⚠️ Aviso reforçado: como promover um Supra Admin corretamente, daqui pra frente
+
+**Nunca escreva `'SUPERADMIN'` na coluna `role`.** As 2 colunas parecem relacionadas mas são eixos DIFERENTES (ver comentário completo de `Usuario.nivelAcesso` em `schema.prisma`, e a entrada "Painel Supra Admin..." mais acima):
+
+| Coluna | Valores válidos | O que decide |
+|---|---|---|
+| `role` (enum `RoleUsuario`) | `admin`, `gerente`, `vendedor` | Permissão **dentro** de uma empresa (ainda sem nenhuma rota checando isso, mas é o campo certo) |
+| `nivel_acesso` (String) | `LOJISTA`, `SUPERADMIN` | Nível de acesso na **plataforma inteira** (`LOJISTA` = qualquer dono/funcionário de empresa cliente; `SUPERADMIN` = dono do software, `superadmin.routes.js`) |
+
+Comando correto pra promover um usuário a Supra Admin (sem tocar em `role` - deixa como já estava, normalmente `admin`):
+
+```sql
+UPDATE usuarios SET nivel_acesso = 'SUPERADMIN' WHERE email = 'email-do-usuario@exemplo.com';
+```
+
+Pra reverter (tirar o acesso de Supra Admin, sem mexer no cargo dentro da empresa):
+
+```sql
+UPDATE usuarios SET nivel_acesso = 'LOJISTA' WHERE email = 'email-do-usuario@exemplo.com';
+```
+
+**Antes de rodar qualquer UPDATE manual em produção, sempre um `SELECT` primeiro** pra confirmar a linha certa (por `email`, não por `id` adivinhado) - foi exatamente esse hábito que permitiu diagnosticar e corrigir este incidente com segurança, em vez de um UPDATE às cegas.
+
+### ⚠️ Achado à parte, fora do escopo deste incidente mas grave: senha root do MySQL de produção é a mesma senha de exemplo do ambiente local
+
+Os comandos colados pelo usuário durante este diagnóstico usaram `docker exec sae_mysql mysql -uroot -p'dev_root_change_me' sae ...` - **`dev_root_change_me` é o valor placeholder usado no `api/.env`/`docker-compose.yml` de desenvolvimento local** (ver seção 3.4 do `dossie-infraestrutura.md`, que já avisa explicitamente "nunca reaproveite os valores de exemplo"). Se essa é de fato a senha root do MySQL em produção, é uma exposição de segurança real - qualquer pessoa com esse valor (documentado neste repositório, mesmo que só como exemplo) tem acesso root ao banco de produção. **Recomendado trocar essa senha em produção o quanto antes** (gerar uma nova senha forte, atualizar a variável `MYSQL_ROOT_PASSWORD` no Portainer/`.env` de produção, e reiniciar o container `mysql` - qualquer serviço que dependa da senha antiga, como scripts de backup, precisa ser atualizado junto). Não fazia parte do pedido original de diagnóstico do 500, mas registrado aqui por gravidade.

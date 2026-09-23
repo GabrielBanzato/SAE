@@ -165,6 +165,27 @@ Nível mais alto do sistema, exclusivo pro dono do software (`Usuario.nivelAcess
 
 Mesma observação vale, por extensão, pra qualquer futuro mecanismo de "banir"/"desativar" usuário individual (não só empresa inteira) que reaproveite o mesmo padrão de JWT sem estado.
 
+### 2.9 Incidente de produção: 500 em `POST /auth/login` — promoção manual a Supra Admin gravou a coluna errada (2026-09-22/23)
+
+**Sintoma**: `500` em `POST /auth/login`, infraestrutura (Nginx/MySQL/Cloudflare Tunnel) toda saudável — indicando falha no backend.
+
+**Causa raiz**: `Usuario.role` (enum `admin`/`gerente`/`vendedor`, permissão *dentro* da empresa) tinha o valor `'SUPERADMIN'` gravado na linha do dono do sistema (`id=1`) — inválido pro enum. Qualquer query tocando essa linha (inclusive `login()`) quebrava com `PrismaClientUnknownRequestError: Value 'SUPERADMIN' not found in enum 'RoleUsuario'` ao tentar desserializar. A causa: alguém promoveu essa conta a Supra Admin rodando o `UPDATE` na coluna **errada** — `role` em vez de `nivel_acesso` (a coluna certa, String livre, separada de `role` de propósito — ver 2.8 acima). MySQL aceitou a escrita sem reclamar porque `role`, em produção, não está restrito como ENUM nativo estrito (mesmo drift de schema documentado em 2.2/2.7.2).
+
+**Correção aplicada e confirmada**: `UPDATE usuarios SET role = 'admin', nivel_acesso = 'SUPERADMIN' WHERE id = 1;` — login voltou a funcionar.
+
+**⚠️ Como promover um Supra Admin corretamente, daqui pra frente** — nunca escreva `'SUPERADMIN'` em `role`:
+
+```sql
+-- Promover (so mexe em nivel_acesso, role fica como estava - normalmente 'admin'):
+UPDATE usuarios SET nivel_acesso = 'SUPERADMIN' WHERE email = 'email-do-usuario@exemplo.com';
+-- Reverter:
+UPDATE usuarios SET nivel_acesso = 'LOJISTA' WHERE email = 'email-do-usuario@exemplo.com';
+```
+
+Sempre `SELECT` por `email` antes de qualquer `UPDATE` manual em produção, pra confirmar a linha certa. Detalhe completo (incluindo a tabela `role` vs. `nivel_acesso`) em `NOTAS_IMPORTANTES.md`.
+
+**⚠️ Achado à parte, mais grave**: durante este diagnóstico, o comando colado pelo usuário usava a senha root do MySQL de produção como `dev_root_change_me` — o placeholder de desenvolvimento local (ver 3.4 abaixo, que já avisa contra isso). Se essa é de fato a senha em produção, é uma exposição de segurança real — troque assim que possível. Ver 4.2 abaixo.
+
 ---
 
 ## 3. Configurações de Ambiente (`.env`)
@@ -226,6 +247,7 @@ Nenhum valor real de produção (senha de banco, `JWT_SECRET`, `TUNNEL_TOKEN`, e
 - **Sem autorização por `role`** — o JWT carrega `role` (admin/gerente/vendedor) mas nenhuma rota do backend a consulta. Qualquer usuário autenticado de uma empresa pode executar qualquer ação dessa empresa (trocar plano, adicionar usuário, excluir produto), independente do cargo.
 - **JWT em `localStorage`** (não cookie `httpOnly`) — padrão aceito mas exposto a roubo de token via XSS, caso algum dia surja um vetor de injeção no frontend.
 - **`TUNNEL_TOKEN` já vazou uma vez no histórico do Git** (ver 3.1) — se a rotação mencionada ali ainda não foi confirmada como feita, trate como pendência de segurança ativa, não como incidente encerrado.
+- **⚠️ Senha root do MySQL de produção igual ao placeholder de dev (`dev_root_change_me`)** — achado em 2026-09-23 durante o diagnóstico do incidente 2.9 acima, ao ver o comando `docker exec sae_mysql mysql -uroot -p'dev_root_change_me' ...` colado pelo usuário. Se essa senha ainda não foi trocada em produção, é uma pendência de segurança ativa e grave — qualquer pessoa que já tenha visto esse valor (documentado como exemplo em `api/.env.example`/`.env.example` da raiz) tem acesso root ao banco de produção. Trocar via `MYSQL_ROOT_PASSWORD` no Portainer/`.env` de produção + reiniciar o container `mysql`, atualizando qualquer script/serviço que dependa da senha antiga.
 
 ### 4.3 Comportamentos específicos de dependências (não são bugs, são esperados)
 
