@@ -131,6 +131,12 @@ Mudança de comportamento importante pra quem for depurar "por que trocar o segm
 
 **Renomeação de chave que pode confundir quem procurar `'pdv'` no código**: a chave de módulo `'pdv'` (cobria Vendas + PDV Rápido/Frente de Loja juntos) foi separada em `'vendas'` (módulo base, sempre ativo) e `'pdv_touch'` (opcional, toggle próprio). Do mesmo jeito, `'tarefas'` (Quadro Kanban) deixou de compartilhar a chave `'agenda'` — agora é um módulo independente. Ver `MODULOS_BASE`/`MODULOS_VALIDOS`/`MAPA_MODULOS` em `api/src/services/auth.service.js` pro catálogo atual completo.
 
+### 2.7 Motor de monetização: `pdv_touch`/`clientes`/`tarefas` viraram pagos — empresas antigas continuam com acesso de graça (2026-09-22)
+
+No mesmo dia da 2.6, um motor de pricing foi adicionado à App Store: `pdv_touch` (Frente de Loja), `clientes` (CRM), `tarefas` (Kanban) e `ia_whatsapp` (Inbox de IA) agora exigem pagamento simulado (`Empresa.pagamentosAtivos`, `PUT /empresa/pagamentos`) antes de poderem ser ligados (`PUT /empresa/modulos` recusa com `402` quem tentar ligar sem pagar). Os 3 primeiros **eram gratuitos** até então, liberados automaticamente pelo `MAPA_MODULOS` do cadastro (ver 2.6) — foram removidos dos arrays de `MAPA_MODULOS` nesta tarefa (senão o bloqueio de pagamento não valeria pra empresa nova nenhuma, ver `NOTAS_IMPORTANTES.md`).
+
+**Pendência de produto pra antes do deploy**: essa mudança só afeta cadastros **novos** — qualquer empresa que já tinha `pdv_touch`/`clientes`/`tarefas` em `modulosAtivos` (seja por ter se cadastrado no mesmo dia antes desta tarefa, seja num eventual banco de produção anterior a ela) **continua com o módulo ativo e nunca pagou por ele** (`pagamentosAtivos` fica vazio pra esses módulos). Efeito colateral: se essa empresa desligar o módulo no toggle e tentar religar depois, vai esbarrar no `402` — parece um bug pro usuário ("eu já tinha isso, por que agora está pedindo pra pagar?"), mas é esperado dado como a migração foi feita. Antes de considerar esse motor de pricing "pronto pra produção": rodar uma migração de dados retroativa marcando como pago (`pagamentosAtivos[chave] = true`) qualquer módulo que já constava em `modulosAtivos` de uma empresa existente, pra não cobrar por algo que já era de graça.
+
 ---
 
 ## 3. Configurações de Ambiente (`.env`)

@@ -37,6 +37,21 @@ async function atualizarModulos(request, reply) {
   return reply.send(resultado);
 }
 
+/** PUT /empresa/pagamentos - checkout simulado (ModalPagamento, Modulos.jsx): marca um modulo pago e ja o ativa. */
+async function confirmarPagamento(request, reply) {
+  const { modulo, plano_ia: planoIa } = request.body || {};
+
+  if (!modulo) {
+    return reply.code(400).send({ error: 'modulo e obrigatorio.' });
+  }
+
+  const resultado = await empresaService.confirmarPagamento(request.server.prisma, request.tenantId, {
+    modulo,
+    planoIa,
+  });
+  return reply.send(resultado);
+}
+
 async function listarUsuarios(request, reply) {
   const usuarios = await empresaService.listarUsuarios(request.server.prisma, request.tenantId);
   return reply.send(usuarios);
@@ -77,6 +92,7 @@ module.exports = {
   obterDados,
   atualizarDados,
   atualizarModulos,
+  confirmarPagamento,
   listarUsuarios,
   adicionarUsuario,
   atualizarAssinatura,

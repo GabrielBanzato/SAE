@@ -11,6 +11,19 @@ const SALT_ROUNDS = 10;
 const PLANOS_VALIDOS = ['gratuito', 'apoiador'];
 const ROLES_VALIDOS = ['admin', 'gerente', 'vendedor'];
 
+// Modulos opcionais que exigem pagamento antes de poderem ser ligados em
+// `modulosAtivos` (ver `atualizarModulos`/`confirmarPagamento` abaixo) -
+// subconjunto de MODULOS_VALIDOS (auth.service.js). "Emissao de Notas
+// Fiscais" (mostrada com preco na App Store, Modulos.jsx) fica de fora de
+// proposito - e uma pagina mock, sem modulo/rota real pra cobrar por algo
+// que nao existe ainda.
+const MODULOS_PAGOS = ['pdv_touch', 'clientes', 'tarefas', 'ia_whatsapp'];
+
+// Unico modulo pago com mais de uma oferta - `pagamentosAtivos.ia_whatsapp`
+// guarda qual dessas 2 chaves foi paga (String, nao Boolean, ver
+// schema.prisma).
+const PLANOS_IA_WHATSAPP = ['whatsapp_web', 'meta_api'];
+
 // Quantos usuarios cada plano pode ter vinculados ao mesmo tenant_id.
 const LIMITE_USUARIOS_POR_PLANO = { gratuito: 2, apoiador: 5 };
 
@@ -36,6 +49,7 @@ async function obterDados(prisma, tenantId) {
       plano: true,
       segmento: true,
       modulosAtivos: true,
+      pagamentosAtivos: true,
       valorContribuicao: true,
       criadoEm: true,
       atualizadoEm: true,
@@ -55,8 +69,23 @@ async function obterDados(prisma, tenantId) {
   // login/Modulos.jsx tinham acabado de definir - por isso o `select`
   // acima sempre inclui `modulosAtivos`, e o fallback abaixo (so pra linhas
   // antigas sem o campo preenchido) nunca deixa `modulos` sair `null`.
-  const { modulosAtivos, ...dadosPublicos } = empresa;
-  return { ...dadosPublicos, modulos: modulosAtivos ?? modulosDoSegmento(empresa.segmento) };
+  //
+  // `isDoador` NAO e uma coluna nova - e derivado de `plano === 'apoiador'`
+  // (motor de pricing, 2026-09-22). `Empresa.plano`/`valorContribuicao` ja
+  // representavam exatamente esse conceito ("Apoiador", a mensalidade
+  // caridosa - ver Assinatura.jsx) desde antes desta tarefa; guardar um
+  // segundo campo booleano redundante arriscaria os dois saírem de
+  // sincronia (ex.: `isDoador=true` com `plano='gratuito'`), entao o
+  // frontend so recebe o valor ja calculado, nunca grava nele direto.
+  // `pagamentos` (o que ja foi pago, ver `MODULOS_PAGOS`/`confirmarPagamento`
+  // abaixo) segue o mesmo padrao defensivo de `modulos`: nunca sai `null`.
+  const { modulosAtivos, pagamentosAtivos, ...dadosPublicos } = empresa;
+  return {
+    ...dadosPublicos,
+    modulos: modulosAtivos ?? modulosDoSegmento(empresa.segmento),
+    pagamentos: pagamentosAtivos ?? {},
+    isDoador: empresa.plano === 'apoiador',
+  };
 }
 
 /**
@@ -105,6 +134,7 @@ async function atualizarDados(prisma, tenantId, { razaoSocial, nomeLoja, enderec
       plano: true,
       segmento: true,
       modulosAtivos: true,
+      pagamentosAtivos: true,
       valorContribuicao: true,
       atualizadoEm: true,
     },
@@ -113,11 +143,16 @@ async function atualizarDados(prisma, tenantId, { razaoSocial, nomeLoja, enderec
   // Trocar de segmento AQUI NAO mexe mais em `modulosAtivos` (arquitetura
   // modular de 2026-09-22, ver auth.service.js) - segmento agora so gateia
   // regras de negocio pontuais (Ficha Tecnica, Consumo Interno/Doacao).
-  // `modulos` ainda vai na resposta (mesmo padrao de sempre, pro
-  // DadosDaLoja.jsx repassar pro AuthContext via `refreshEmpresa`) - so que
-  // agora e o valor persistido, nao mais recalculado do novo segmento.
-  const { modulosAtivos, ...dadosPublicos } = empresa;
-  return { ...dadosPublicos, modulos: modulosAtivos ?? modulosDoSegmento(empresa.segmento) };
+  // `modulos`/`pagamentos`/`isDoador` ainda vao na resposta (mesmo padrao
+  // de sempre, pro DadosDaLoja.jsx repassar pro AuthContext via
+  // `refreshEmpresa`, ver comentario de `obterDados` acima).
+  const { modulosAtivos, pagamentosAtivos, ...dadosPublicos } = empresa;
+  return {
+    ...dadosPublicos,
+    modulos: modulosAtivos ?? modulosDoSegmento(empresa.segmento),
+    pagamentos: pagamentosAtivos ?? {},
+    isDoador: empresa.plano === 'apoiador',
+  };
 }
 
 /**
@@ -130,6 +165,15 @@ async function atualizarDados(prisma, tenantId, { razaoSocial, nomeLoja, enderec
  * presente, mesmo que o body nao mande ou mande sem eles - reforca no
  * backend o que a UI (Modulos.jsx) ja nao oferece como toggle, protege
  * contra uma chamada direta a API tentando desligar o essencial.
+ *
+ * Motor de pricing (2026-09-22): qualquer chave de `MODULOS_PAGOS` sendo
+ * LIGADA precisa constar (truthy) em `pagamentosAtivos` - reforca no
+ * backend a mesma regra que a Sidebar/Modulos.jsx ja aplicam na UI (Switch
+ * so clicavel se pago), pra uma chamada direta a API nao conseguir ligar
+ * um modulo pago sem passar por `confirmarPagamento` antes. So valida
+ * quem esta sendo LIGADO agora - desligar um modulo pago de volta nunca
+ * exige pagamento (obvio, mas registrado aqui pra nao confundir com a
+ * regra acima).
  */
 async function atualizarModulos(prisma, tenantId, modulos) {
   if (!Array.isArray(modulos)) {
@@ -139,6 +183,25 @@ async function atualizarModulos(prisma, tenantId, modulos) {
   const invalidos = modulos.filter((chave) => !MODULOS_VALIDOS.includes(chave));
   if (invalidos.length > 0) {
     throw new AppError(`modulos contem chaves invalidas: ${invalidos.join(', ')}.`, 422);
+  }
+
+  const empresaAtual = await prisma.empresa.findUnique({
+    where: { id: tenantId },
+    select: { modulosAtivos: true, pagamentosAtivos: true },
+  });
+  if (!empresaAtual) {
+    throw new AppError('Empresa nao encontrada.', 404);
+  }
+
+  const modulosAntes = empresaAtual.modulosAtivos ?? [];
+  const pagamentos = empresaAtual.pagamentosAtivos ?? {};
+  const sendoLigados = modulos.filter((chave) => !modulosAntes.includes(chave));
+  const semPagamento = sendoLigados.filter((chave) => MODULOS_PAGOS.includes(chave) && !pagamentos[chave]);
+  if (semPagamento.length > 0) {
+    throw new AppError(
+      `Pagamento pendente pra ligar: ${semPagamento.join(', ')}. Confirme o pagamento antes de ativar.`,
+      402
+    );
   }
 
   // Set (nao array) so pra deduplicar antes de persistir - o body pode
@@ -152,6 +215,56 @@ async function atualizarModulos(prisma, tenantId, modulos) {
   });
 
   return { modulos: empresa.modulosAtivos };
+}
+
+/**
+ * Checkout simulado (`ModalPagamento`, Modulos.jsx) - mesmo espirito de
+ * `atualizarAssinatura` abaixo: nao ha gateway de pagamento real integrado
+ * ainda, entao "confirmar pagamento" so grava como se a cobranca ja
+ * tivesse sido aprovada. Ativa o modulo em `modulosAtivos` NA HORA (junto
+ * com marcar `pagamentosAtivos[modulo]`) - evita um segundo passo confuso
+ * ("paguei, por que o modulo continua desligado?"); dali em diante o
+ * Switch em Modulos.jsx volta a ligar/desligar livremente, sem pedir
+ * pagamento de novo (ja consta em `pagamentosAtivos`).
+ *
+ * `planoIa` so e usado (e exigido) quando `modulo === 'ia_whatsapp'` - o
+ * unico modulo pago com mais de 1 oferta (ver PLANOS_IA_WHATSAPP acima).
+ * Trocar de plano depois (ex.: de `whatsapp_web` pra `meta_api`) passa por
+ * aqui de novo - um novo "pagamento" simplesmente sobrescreve qual plano
+ * esta ativo.
+ */
+async function confirmarPagamento(prisma, tenantId, { modulo, planoIa }) {
+  if (!MODULOS_PAGOS.includes(modulo)) {
+    throw new AppError(`modulo deve ser um dos seguintes: ${MODULOS_PAGOS.join(', ')}.`, 422);
+  }
+
+  let valorPago = true;
+  if (modulo === 'ia_whatsapp') {
+    if (!PLANOS_IA_WHATSAPP.includes(planoIa)) {
+      throw new AppError(`planoIa deve ser um dos seguintes: ${PLANOS_IA_WHATSAPP.join(', ')}.`, 422);
+    }
+    valorPago = planoIa;
+  }
+
+  const empresaAtual = await prisma.empresa.findUnique({
+    where: { id: tenantId },
+    select: { modulosAtivos: true, pagamentosAtivos: true },
+  });
+  if (!empresaAtual) {
+    throw new AppError('Empresa nao encontrada.', 404);
+  }
+
+  const pagamentos = { ...(empresaAtual.pagamentosAtivos ?? {}), [modulo]: valorPago };
+  const modulosAntes = empresaAtual.modulosAtivos ?? [];
+  const modulosFinais = modulosAntes.includes(modulo) ? modulosAntes : [...modulosAntes, modulo];
+
+  const empresa = await prisma.empresa.update({
+    where: { id: tenantId },
+    data: { pagamentosAtivos: pagamentos, modulosAtivos: modulosFinais },
+    select: { pagamentosAtivos: true, modulosAtivos: true },
+  });
+
+  return { pagamentos: empresa.pagamentosAtivos, modulos: empresa.modulosAtivos };
 }
 
 /**
@@ -264,6 +377,7 @@ module.exports = {
   obterDados,
   atualizarDados,
   atualizarModulos,
+  confirmarPagamento,
   listarUsuarios,
   adicionarUsuario,
   atualizarAssinatura,
@@ -272,4 +386,6 @@ module.exports = {
   SEGMENTOS_VALIDOS,
   LIMITE_USUARIOS_POR_PLANO,
   VALOR_MINIMO_CONTRIBUICAO,
+  MODULOS_PAGOS,
+  PLANOS_IA_WHATSAPP,
 };

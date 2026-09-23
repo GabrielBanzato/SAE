@@ -29,67 +29,43 @@ const TAMANHO_DOCUMENTO = { PF: 11, PJ: 14 };
  *   toda empresa, nunca aparecem como toggle na App Store, nem podem ser
  *   removidos via `atualizarModulos` (reforcado no service): 'vendas',
  *   'financeiro', 'produtos'.
- * - Opcionais com toggle real na App Store (Modulos.jsx): 'pdv_touch' (PDV
- *   Rapido/Frente de Loja em tela cheia - ANTES chamado soh de 'pdv', que
- *   cobria Vendas+PDV Touch juntos; separado nesta tarefa pra Vendas virar
- *   base e PDV Touch virar opcional de verdade), 'clientes' (CRM/Perfil
- *   360), 'ia_whatsapp' (Inbox Unificado de WhatsApp), 'tarefas' (Quadro
- *   de Tarefas Kanban - ANTES compartilhava a chave 'agenda' com a Agenda,
- *   desacoplado nesta tarefa pra virar um toggle independente).
- * - Opcionais legados (ainda liberados via `modulosDoSegmento` no
- *   cadastro, mas sem card proprio na App Store ainda - fora do escopo
- *   desta tarefa, ver NOTAS_IMPORTANTES.md): 'precificacao',
+ * - Opcionais PAGOS, com toggle + preco na App Store (Modulos.jsx,
+ *   `MODULOS_PAGOS` em empresa.service.js): 'pdv_touch' (PDV Rapido/Frente
+ *   de Loja em tela cheia), 'clientes' (CRM/Perfil 360), 'ia_whatsapp'
+ *   (Inbox Unificado de WhatsApp), 'tarefas' (Quadro de Tarefas Kanban).
+ *   **NAO entram em nenhum array abaixo** (motor de pricing, 2026-09-22) -
+ *   ate a tarefa anterior eram opcionais gratuitos, liberados de graca no
+ *   cadastro conforme o segmento; agora exigem pagamento simulado
+ *   (`PUT /empresa/pagamentos`) antes de poderem ser ligados
+ *   (`empresaService.atualizarModulos` rejeita com 402 quem tentar ligar
+ *   sem pagar) - deixa-los no MAPA_MODULOS continuaria concedendo-os de
+ *   graca a toda empresa nova, furando o bloqueio de pagamento por
+ *   completo.
+ * - Opcionais legados/gratuitos (ainda liberados via `modulosDoSegmento`
+ *   no cadastro, sem preco nem card proprio na App Store): 'precificacao',
  *   'estoque_avancado', 'agenda', 'relatorios'.
  * Dashboard, Configuracoes, Modulos e Suporte ficam de fora deste mapa de
  * proposito - sao paginas sempre acessiveis, independentes de modulo.
  */
 const MAPA_MODULOS = {
-  // Ex.: padarias, mercados, restaurantes - precisa do catalogo completo,
-  // inclusive controle de estoque fino (perecivel) e Ficha Tecnica de
-  // ingredientes (gate a parte, ver Empresa.segmento no schema.prisma).
-  varejo_alimentacao: [
-    'vendas',
-    'pdv_touch',
-    'produtos',
-    'precificacao',
-    'estoque_avancado',
-    'clientes',
-    'financeiro',
-    'agenda',
-    'tarefas',
-    'relatorios',
-  ],
+  // Ex.: padarias, mercados, restaurantes - precisa do catalogo completo
+  // gratuito, inclusive controle de estoque fino (perecivel) e Ficha
+  // Tecnica de ingredientes (gate a parte, ver Empresa.segmento no
+  // schema.prisma). PDV Touch/CRM/Kanban (pagos) NAO entram aqui - ver
+  // comentario acima.
+  varejo_alimentacao: ['vendas', 'produtos', 'precificacao', 'estoque_avancado', 'financeiro', 'agenda', 'relatorios'],
   // Ex.: lojas de roupa/calcados/acessorios - varejo com estoque por
   // grade (tamanho/cor), mas sem a rotina de agendamento de um prestador
   // de servico.
-  moda_vestuario: [
-    'vendas',
-    'pdv_touch',
-    'produtos',
-    'precificacao',
-    'estoque_avancado',
-    'clientes',
-    'financeiro',
-    'relatorios',
-  ],
-  // Ex.: personal trainers, estudios, clinicas pequenas - foco em
-  // clientes/agenda (a rotina e "hora marcada", nao "balcao"); ainda vende
+  moda_vestuario: ['vendas', 'produtos', 'precificacao', 'estoque_avancado', 'financeiro', 'relatorios'],
+  // Ex.: personal trainers, estudios, clinicas pequenas - ainda vende
   // produtos (suplementos, planos) mas sem o peso de um controle de
   // estoque avancado.
-  saude_fitness: ['vendas', 'pdv_touch', 'produtos', 'clientes', 'agenda', 'tarefas', 'financeiro', 'relatorios'],
+  saude_fitness: ['vendas', 'produtos', 'agenda', 'financeiro', 'relatorios'],
   // Ex.: oficinas mecanicas - servico agendado (ordem de servico) +
   // pecas/produtos vendidos junto, sem necessidade de um modulo de
   // precificacao/estoque tao fino quanto o varejo.
-  servicos_automotivos: [
-    'vendas',
-    'pdv_touch',
-    'produtos',
-    'clientes',
-    'agenda',
-    'tarefas',
-    'financeiro',
-    'relatorios',
-  ],
+  servicos_automotivos: ['vendas', 'produtos', 'agenda', 'financeiro', 'relatorios'],
 };
 
 const SEGMENTOS_VALIDOS = Object.keys(MAPA_MODULOS);

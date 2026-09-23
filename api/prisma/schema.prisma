@@ -145,6 +145,20 @@ model Empresa {
   // trata `null` como "usa o default de modulos base", nunca deixa a API
   // devolver `null` pro frontend (ver empresa.service.js).
   modulosAtivos     Json?        @default("[\"vendas\", \"financeiro\", \"produtos\"]") @map("modulos_ativos")
+  // Monetizacao dos modulos opcionais (2026-09-22, motor de pricing da
+  // App Store): `{ [chaveDoModulo]: true }` pra modulos de preco unico
+  // (ex.: `{"pdv_touch": true}`), ou `{ [chaveDoModulo]: "<plano>" }` pro
+  // unico modulo com mais de uma oferta (`ia_whatsapp`, guarda qual das 2
+  // conexoes foi paga - "whatsapp_web" ou "meta_api"). Json (mesmo motivo
+  // de `modulosAtivos` acima - catalogo pequeno, sem tabela relacional) -
+  // DISTINTO de `modulosAtivos`: este aqui e o "ja pagou", aquele e o "esta
+  // ligado" - um modulo so pode entrar em `modulosAtivos` se antes constar
+  // (truthy) aqui, reforcado em `empresaService.atualizarModulos`. NAO
+  // reflete pagamento real (nenhum gateway integrado ainda - mesmo espirito
+  // "simulado" de `atualizarAssinatura`, ver comentario dela abaixo neste
+  // arquivo) - `PUT /empresa/pagamentos` so grava como se a cobranca ja
+  // tivesse sido confirmada.
+  pagamentosAtivos  Json?        @default("{}") @map("pagamentos_ativos")
   criadoEm          DateTime     @default(now()) @map("criado_em")
   atualizadoEm      DateTime     @default(now()) @updatedAt @map("atualizado_em")
 

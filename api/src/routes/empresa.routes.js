@@ -6,6 +6,7 @@ module.exports = async function empresaRoutes(fastify) {
   fastify.get('/dados', empresaController.obterDados);
   fastify.put('/dados', empresaController.atualizarDados);
   fastify.put('/modulos', empresaController.atualizarModulos);
+  fastify.put('/pagamentos', empresaController.confirmarPagamento);
   fastify.get('/usuarios', empresaController.listarUsuarios);
   fastify.post('/usuarios', empresaController.adicionarUsuario);
   fastify.put('/assinatura', empresaController.atualizarAssinatura);
