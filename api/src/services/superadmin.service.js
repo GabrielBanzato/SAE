@@ -23,15 +23,12 @@ const STATUS_CHAMADO_VALIDOS = ['ABERTO', 'EM_ANALISE', 'SENDO_SOLUCIONADO', 'RE
  * `totalUsuarios` e que continua calculado nesta funcao pra a tabela da aba
  * "Empresas/Clientes" nao precisar de N chamadas extras.
  *
- * `codigoUsuarioAdmin` (achado de 2026-09-23, correcao de bug - a tabela
- * nao tinha NENHUMA coluna de ID visivel) - o codigo de 5 digitos (ver
- * Usuario.codigoUsuario em schema.prisma) do usuario ADMIN da empresa, nao
- * um "ID da empresa" (esse codigo e um atributo de Usuario, nao de
- * Empresa - uma empresa pode ter varios usuarios, cada um com seu proprio
- * codigo). `role: 'admin'` + mais antigo (`criadoEm: 'asc'`) pega
- * consistentemente o usuario criado no cadastro (`register()` sempre cria
- * o primeiro usuario como admin) - `take: 1` porque so precisamos de 1
- * pra exibir na tabela, nao a equipe toda.
+ * `codigoLoja` (2026-09-24) - o "ID da Loja" de 5 digitos (Empresa.codigoLoja),
+ * o mesmo numero que TODOS os usuarios da empresa veem no Suporte. Substituiu
+ * o antigo `codigoUsuarioAdmin` (codigo pessoal do admin mais antigo,
+ * calculado aqui a cada listagem) - a migration gravou esse mesmo valor em
+ * `codigo_loja`, entao nenhum numero exibido mudou. `totalUsuarios` conta so
+ * a equipe ATIVA (removidos da equipe nao contam).
  */
 async function listarEmpresas(prisma) {
   const empresas = await prisma.empresa.findMany({
@@ -47,21 +44,19 @@ async function listarEmpresas(prisma) {
       modulosAtivos: true,
       pagamentosAtivos: true,
       criadoEm: true,
-      _count: { select: { usuarios: true } },
-      usuarios: {
-        where: { role: 'admin' },
-        orderBy: { criadoEm: 'asc' },
-        take: 1,
-        select: { codigoUsuario: true },
-      },
+      // "ID da Loja" persistido na propria empresa (2026-09-24) - substitui o
+      // antigo `codigoUsuarioAdmin` (codigo do admin mais antigo, calculado
+      // aqui a cada listagem). O backfill da migration gravou exatamente
+      // esse mesmo valor, entao a coluna "ID" do painel nao muda de numero.
+      codigoLoja: true,
+      _count: { select: { usuarios: { where: { ativo: true } } } },
     },
     orderBy: { criadoEm: 'desc' },
   });
 
-  return empresas.map(({ _count, usuarios, ...empresa }) => ({
+  return empresas.map(({ _count, ...empresa }) => ({
     ...empresa,
     totalUsuarios: _count.usuarios,
-    codigoUsuarioAdmin: usuarios[0]?.codigoUsuario ?? null,
   }));
 }
 
@@ -194,7 +189,9 @@ async function obterAssinaturas(prisma, empresaId) {
 async function listarChamados(prisma) {
   return prisma.chamadoSuporte.findMany({
     include: {
-      empresa: { select: { id: true, razaoSocial: true, nomeLoja: true } },
+      // codigoLoja = identificacao do CLIENTE pro suporte (2026-09-24) - o
+      // mesmo numero que qualquer usuario da loja ve na tela de Suporte.
+      empresa: { select: { id: true, razaoSocial: true, nomeLoja: true, codigoLoja: true } },
       usuario: { select: { nome: true, codigoUsuario: true } },
       // Qtd. de mensagens do chat (2026-09-23) - mostrada na miniatura do chamado.
       _count: { select: { mensagens: true } },

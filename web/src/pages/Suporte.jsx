@@ -16,14 +16,18 @@ import { formatarVersao } from '../utils/versao';
  * Base pronta pro chat de suporte (MensagemChamado) entrar como componentes
  * novos dessa mesma pasta, sem inchar a pagina de novo.
  *
- * `codigoUsuario` ("Seu ID"): vem do AuthContext, reidratado por
- * `GET /auth/me` a cada boot (antes so vinha do login, e sessoes antigas
- * ficavam com "-----"). Enquanto a reidratacao nao chega, mostra
- * "Carregando..." em vez de um placeholder que parece um valor.
+ * "ID da Loja" (correcao de 2026-09-24): `empresa.codigoLoja` - o codigo da
+ * EMPRESA, igual pra TODOS os usuarios dela (o suporte e prestado por loja).
+ * Antes mostrava `usuario.codigoUsuario` (pessoal): o dono via 12176 e um
+ * funcionario via o proprio codigo, 38316. Vem de GET /empresa/dados
+ * (AuthContext#refreshEmpresa, a cada boot) - nao do JWT. O chamado em si
+ * e ligado a empresa pelo `tenantId` do token no backend; este numero e
+ * so exibicao.
  */
 export default function Suporte() {
-  const { usuario } = useAuth();
-  const codigoUsuario = usuario?.codigoUsuario ?? null;
+  const { usuario, empresa } = useAuth();
+  // ID da LOJA (nao do usuario logado) - ver comentario acima.
+  const codigoLoja = empresa?.codigoLoja ?? null;
 
   const [chamados, setChamados] = useState(null);
   const [erroLista, setErroLista] = useState('');
@@ -67,20 +71,20 @@ export default function Suporte() {
           </p>
         </div>
 
-        {/* ID sempre visivel no topo - e o que a equipe de suporte pede primeiro por telefone/WhatsApp. */}
+        {/* ID da LOJA sempre visivel no topo - e o que a equipe de suporte pede primeiro por telefone/WhatsApp. */}
         <div className="flex items-center gap-3 rounded-2xl bg-blue-50 px-4 py-3 dark:bg-blue-950/30">
           <IdCard size={24} className="shrink-0 text-blue-600 dark:text-blue-400" aria-hidden="true" />
           <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-blue-600/80 dark:text-blue-300/80">Seu ID</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-blue-600/80 dark:text-blue-300/80">ID da Loja</p>
             <p className="font-mono text-xl font-extrabold tracking-widest text-blue-700 dark:text-blue-300">
-              {codigoUsuario ?? '…'}
+              {codigoLoja ?? '…'}
             </p>
           </div>
         </div>
       </div>
 
       <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700 sm:p-8">
-        <FormularioChamado usuario={usuario} codigoUsuario={codigoUsuario} onEnviado={carregarChamados} />
+        <FormularioChamado usuario={usuario} codigoLoja={codigoLoja} onEnviado={carregarChamados} />
       </div>
 
       <MeusChamados

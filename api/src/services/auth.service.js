@@ -116,7 +116,13 @@ async function gerarCodigoUsuario(prisma) {
   let jaExiste;
   do {
     codigo = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
-    jaExiste = await prisma.usuario.findUnique({ where: { codigoUsuario: codigo } });
+    // Tambem nao repete um "ID da Loja" (Empresa.codigoLoja, 2026-09-24):
+    // o codigo do admin fundador VIRA o codigo da loja em `register()`, entao
+    // os dois espacos precisam ser disjuntos pra esse reaproveitamento nunca
+    // bater no UNIQUE de empresas.codigo_loja.
+    jaExiste =
+      (await prisma.usuario.findUnique({ where: { codigoUsuario: codigo }, select: { id: true } })) ||
+      (await prisma.empresa.findUnique({ where: { codigoLoja: codigo }, select: { id: true } }));
   } while (jaExiste);
   return codigo;
 }
@@ -181,6 +187,9 @@ async function register(
   const modulosIniciais = modulosDoSegmento(segmento);
 
   const { empresa, usuario } = await prisma.$transaction(async (tx) => {
+    // Codigo do admin fundador = "ID da Loja" (Empresa.codigoLoja) - o dono
+    // ve o mesmo numero como ID dele e da loja; o resto da equipe ve o da loja.
+    const codigoFundador = await gerarCodigoUsuario(tx);
     const empresa = await tx.empresa.create({
       // `segmento` agora e obrigatorio (schema.prisma nao tem mais
       // @default) - o controller ja garante que sempre chega preenchido
@@ -192,6 +201,7 @@ async function register(
         segmento,
         nomeLoja: nome_loja || null,
         modulosAtivos: modulosIniciais,
+        codigoLoja: codigoFundador,
       },
     });
 
@@ -204,7 +214,7 @@ async function register(
         email,
         senhaHash,
         role: 'admin',
-        codigoUsuario: await gerarCodigoUsuario(tx),
+        codigoUsuario: codigoFundador,
       },
     });
 
@@ -222,6 +232,7 @@ async function register(
       tipoPessoa: empresa.tipoPessoa,
       documento: empresa.documento,
       segmento: empresa.segmento,
+      codigoLoja: empresa.codigoLoja,
       // Modulos de negocio liberados pra essa empresa - o valor persistido
       // em `modulosAtivos` (nao mais recalculado do segmento a cada
       // resposta). Nunca guardados no JWT (payload do token continua so

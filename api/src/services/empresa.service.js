@@ -48,6 +48,20 @@ const VALOR_MINIMO_CONTRIBUICAO = 10;
  * (request.tenantId), nunca de parametro de rota/query - do contrario um
  * usuario poderia consultar dados de outra empresa trocando um id na URL.
  */
+/**
+ * Garante que a empresa tem "ID da Loja" (Empresa.codigoLoja) - gera um
+ * novo (disjunto de codigos de usuario E de loja, via gerarCodigoUsuario)
+ * pra empresa que ficou sem na migration por nao ter nenhum admin. O
+ * `updateMany ... codigoLoja: null` evita sobrescrever se duas requisicoes
+ * gerarem ao mesmo tempo; relê no fim pra devolver o valor que ficou.
+ */
+async function garantirCodigoLoja(prisma, empresaId) {
+  const codigo = await gerarCodigoUsuario(prisma);
+  await prisma.empresa.updateMany({ where: { id: empresaId, codigoLoja: null }, data: { codigoLoja: codigo } });
+  const empresa = await prisma.empresa.findUnique({ where: { id: empresaId }, select: { codigoLoja: true } });
+  return empresa?.codigoLoja ?? null;
+}
+
 async function obterDados(prisma, tenantId) {
   const empresa = await prisma.empresa.findUnique({
     where: { id: tenantId },
@@ -65,6 +79,7 @@ async function obterDados(prisma, tenantId) {
       modulosAtivos: true,
       pagamentosAtivos: true,
       valorContribuicao: true,
+      codigoLoja: true,
       criadoEm: true,
       atualizadoEm: true,
     },
@@ -73,6 +88,9 @@ async function obterDados(prisma, tenantId) {
   if (!empresa) {
     throw new AppError('Empresa nao encontrada.', 404);
   }
+
+  // Empresa sem codigo (nenhum admin na hora da migration) ganha um agora.
+  if (!empresa.codigoLoja) empresa.codigoLoja = await garantirCodigoLoja(prisma, tenantId);
 
   // `modulos` (exposto ao frontend, ver App.jsx/Sidebar.jsx) vem direto do
   // campo persistido `modulosAtivos` - deixou de ser recalculado do
@@ -149,6 +167,7 @@ async function atualizarDados(prisma, tenantId, { razaoSocial, nomeLoja, enderec
       modulosAtivos: true,
       pagamentosAtivos: true,
       valorContribuicao: true,
+      codigoLoja: true,
       atualizadoEm: true,
     },
   });

@@ -133,11 +133,12 @@ export default function ChamadosSuporte() {
                   <span className="inline-flex items-center gap-1">
                     <Building2 size={13} aria-hidden="true" />
                     {chamado.empresa?.nomeLoja || chamado.empresa?.razaoSocial}
+                    {chamado.empresa?.codigoLoja && <strong className="font-mono">· Loja ID {chamado.empresa.codigoLoja}</strong>}
                   </span>
                   {chamado.usuario && (
                     <span className="inline-flex items-center gap-1">
                       <UserRound size={13} aria-hidden="true" />
-                      {chamado.usuario.nome} (ID {chamado.usuario.codigoUsuario})
+                      {chamado.usuario.nome}
                     </span>
                   )}
                   <span>{formatarDataHora(chamado.criadoEm)}</span>

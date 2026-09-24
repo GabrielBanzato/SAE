@@ -71,7 +71,7 @@ async function obterChamado(prisma, chamadoId, tenantId, { aposId } = {}) {
   const chamado = await prisma.chamadoSuporte.findFirst({
     where: whereChamado(chamadoId, tenantId),
     include: {
-      empresa: { select: { id: true, razaoSocial: true, nomeLoja: true } },
+      empresa: { select: { id: true, razaoSocial: true, nomeLoja: true, codigoLoja: true } },
       usuario: { select: { nome: true, codigoUsuario: true } },
       mensagens: {
         where: aposId ? { id: { gt: aposId } } : undefined,

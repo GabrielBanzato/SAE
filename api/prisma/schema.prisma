@@ -189,6 +189,16 @@ model Empresa {
   criadoEm                DateTime     @default(now()) @map("criado_em")
   atualizadoEm            DateTime     @default(now()) @updatedAt @map("atualizado_em")
 
+  // "ID da Loja" (2026-09-24) - codigo de 5 digitos da EMPRESA, mostrado a
+  // TODOS os usuarios dela no Suporte e usado pelo Supra Admin pra
+  // identificar o cliente. Antes a tela mostrava `Usuario.codigoUsuario`
+  // (pessoal - cada funcionario via um numero diferente). Valor = codigo do
+  // admin fundador (backfill na migration + `register()`), entao lojas
+  // existentes mantem o numero que o dono ja conhecia. Unico: codigos de
+  // usuario ja sao unicos globalmente. Nullable so por seguranca de
+  // migracao (empresa sem nenhum admin) - o service gera um se faltar.
+  codigoLoja      String?      @unique(map: "uq_empresas_codigo_loja") @map("codigo_loja") @db.VarChar(5)
+
   usuarios        Usuario[]
   produtos        Produto[]
   vendas          Venda[]

@@ -35,13 +35,13 @@ function montarTitulo(tipo, descricao) {
  * Formulario de abertura de chamado (extraido de pages/Suporte.jsx na
  * reestruturacao de 2026-09-23 - a pagina virou so composicao).
  *
- * "Seu ID" = `codigoUsuario` (codigo de 5 digitos), recebido pronto via
- * prop - a pagina ja resolve o valor a partir do AuthContext (reidratado
- * por `GET /auth/me` a cada boot, ver AuthContext.jsx). `readOnly` e so
- * UX: o backend (`chamados.controller.js#create`) ignora qualquer id de
- * usuario do corpo e usa sempre `request.userId` do token.
+ * "ID da Loja" = `empresa.codigoLoja` (codigo de 5 digitos da EMPRESA, igual
+ * pra toda a equipe - correcao de 2026-09-24; antes era o codigo pessoal do
+ * usuario). `readOnly` e so UX: o backend (`chamados.controller.js#create`)
+ * nao le nenhum id do corpo - a empresa vem do `tenantId` e quem abriu vem
+ * do `userId`, ambos do token.
  */
-export default function FormularioChamado({ usuario, codigoUsuario, onEnviado }) {
+export default function FormularioChamado({ usuario, codigoLoja, onEnviado }) {
   const [nome, setNome] = useState(usuario?.nome || '');
   const [email, setEmail] = useState(usuario?.email || '');
   const [tipo, setTipo] = useState('duvida');
@@ -98,13 +98,13 @@ export default function FormularioChamado({ usuario, codigoUsuario, onEnviado })
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      <Campo label="Seu ID">
+      <Campo label="ID da Loja">
         <input
           type="text"
-          value={codigoUsuario ?? 'Carregando...'}
+          value={codigoLoja ?? 'Carregando...'}
           readOnly
           aria-readonly="true"
-          title="Preenchido automaticamente - identifica você para nossa equipe de suporte."
+          title="Preenchido automaticamente - identifica a sua loja para a nossa equipe de suporte."
           className={`${classesInput} cursor-not-allowed bg-slate-100 font-mono tracking-widest text-slate-500 dark:bg-slate-900/60 dark:text-slate-400`}
         />
       </Campo>

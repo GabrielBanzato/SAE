@@ -27,10 +27,10 @@ import ModalDoador from '../../components/superadmin/ModalDoador';
  * padrao autocontido do `ModalAssinaturas` (o modal cuida das proprias
  * chamadas de API).
  *
- * Coluna "ID" (correcao de bug, 2026-09-23) - mostra `codigoUsuarioAdmin`
- * (o codigo de 5 digitos do usuario ADMIN da empresa, ver comentario em
- * superadmin.service.js#listarEmpresas) - a tabela nao tinha NENHUM jeito
- * de identificar rapidamente uma empresa por um codigo curto antes disso.
+ * Coluna "ID" = `codigoLoja` (ID da Loja, 2026-09-24) - o mesmo codigo de 5
+ * digitos que qualquer usuario da empresa ve na tela de Suporte (antes era
+ * `codigoUsuarioAdmin`, o codigo pessoal do admin; a migration copiou esse
+ * mesmo valor pra `empresas.codigo_loja`, entao o numero exibido nao mudou).
  */
 export default function EmpresasClientes() {
   const [empresas, setEmpresas] = useState(null);
@@ -129,7 +129,7 @@ export default function EmpresasClientes() {
                   return (
                     <tr key={empresa.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-900/30">
                       <td className="px-6 py-4 font-mono text-sm font-semibold text-slate-500 dark:text-slate-400">
-                        {empresa.codigoUsuarioAdmin ?? '-'}
+                        {empresa.codigoLoja ?? '-'}
                       </td>
                       <td className="px-6 py-4">
                         <p className="text-base font-bold text-slate-900 dark:text-slate-100">

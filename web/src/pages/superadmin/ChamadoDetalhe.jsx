@@ -65,11 +65,12 @@ export default function ChamadoDetalhe() {
                 <span className="inline-flex items-center gap-1">
                   <Building2 size={14} aria-hidden="true" />
                   {nomeEmpresa}
+                  {chamado.empresa?.codigoLoja && <strong className="font-mono">· Loja ID {chamado.empresa.codigoLoja}</strong>}
                 </span>
                 {chamado.usuario && (
                   <span className="inline-flex items-center gap-1">
                     <UserRound size={14} aria-hidden="true" />
-                    {chamado.usuario.nome} (ID {chamado.usuario.codigoUsuario})
+                    {chamado.usuario.nome}
                   </span>
                 )}
                 <span className="inline-flex items-center gap-1">

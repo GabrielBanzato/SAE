@@ -7304,3 +7304,25 @@ O mesmo hook global checa `empresa.ativo` a cada requisição → "Suspender Ace
 ### Deploy
 
 Backup → "Pull and redeploy" → `docker exec sae_api npx prisma migrate deploy` (aplica as 2 migrations do RBAC, se ainda não aplicadas).
+
+---
+
+## "Seu ID" do Suporte mostrava o código PESSOAL do usuário - virou "ID da Loja" (2026-09-24)
+
+**Relato**: na loja "Teste", o dono via `12176` no Suporte e um funcionário ("Weider") via `38316`. Esperado: suporte é prestado por LOJA - todos os usuários da mesma empresa devem ver o mesmo ID, e o Supra Admin deve identificar o cliente pela empresa.
+
+**Diagnóstico (diferente do que o relato supunha)**: não era o `id` (chave primária) de ninguém - PKs aqui são números pequenos (ex.: 34). A tela mostrava `usuario.codigoUsuario`, o **código de 5 dígitos PESSOAL** de cada usuário (Painel Master - Etapa 1). `12176` era simplesmente o código pessoal do dono. A `Empresa` **não tinha código curto próprio** - o Painel Master "fingia" um, mostrando o código do admin mais antigo (`codigoUsuarioAdmin`, calculado a cada listagem). O JWT já trazia `empresa_id`, e o chamado já era gravado com a empresa do token (nunca do formulário) - o problema era só de **exibição/identificação**, não de autenticação.
+
+**Decisão: `Empresa.codigoLoja` persistido, não mais um código no JWT.** O pedido sugeria pôr o id da loja no token; não foi necessário nem desejável: o token já carrega `empresa_id` (a chave interna que protege os dados), e um código de exibição no JWT ficaria "congelado" por até 8h e inflaria o token. O código vem de `GET /empresa/dados` (já chamado pelo AuthContext em todo boot).
+
+**Mudanças:**
+- Schema: `Empresa.codigoLoja` (`codigo_loja`, VarChar(5), `@unique`, nullable só por segurança de migração).
+- Migration `20260924210000_empresa_codigo_loja` com **backfill no mesmo arquivo**: cada empresa recebe o código do seu **admin fundador** (admin de menor id) - exatamente o número que o dono já via e que a coluna "ID" do Painel Master já mostrava. **Nenhum número conhecido muda** (a loja "Teste" continua `12176`, agora pra toda a equipe).
+- `register()`: empresa nova nasce com `codigoLoja` = código do admin fundador (o dono vê o mesmo número como ID dele e da loja; a equipe vê o da loja). `gerarCodigoUsuario` passou a checar também `empresas.codigo_loja` - os dois espaços ficam disjuntos, então esse reaproveitamento nunca bate no UNIQUE.
+- `empresa.service.js#obterDados`/`atualizarDados` devolvem `codigoLoja`; `garantirCodigoLoja` gera um se faltar (empresa sem nenhum admin na hora da migration), com `updateMany ... codigoLoja: null` pra não sobrescrever em corrida.
+- Supra Admin: aba Empresas usa `empresa.codigoLoja` (saiu `codigoUsuarioAdmin`; `totalUsuarios` passou a contar só a equipe ativa); lista de chamados e chat mostram "Empresa · **Loja ID 12176**" + nome de quem abriu (sem o código pessoal).
+- Frontend: `Suporte.jsx`/`FormularioChamado.jsx` - rótulo "Seu ID" → **"ID da Loja"**, valor `empresa.codigoLoja` (AuthContext), não mais `usuario.codigoUsuario`.
+
+**Validação** (API + Playwright, MySQL local): **13/13** - com um funcionário convidado (código pessoal 94146) na mesma loja do dono (27501): `/empresa/dados` devolve `27501` pros dois; o funcionário NÃO vê o próprio código; chamado aberto pelo funcionário (mesmo mandando `usuario_codigo: 99999` forjado no corpo) aparece no Supra Admin como Loja `27501` na lista, no chat e na aba Empresas; empresa nova nasce com `codigoLoja` = código do fundador; empresa sem código ganha um de 5 dígitos na 1ª leitura e ele fica estável. UI: cartão "ID da Loja" e campo do formulário mostram `27501` tanto pro dono quanto pro funcionário. Backfill conferido: `codigo_loja` = código do admin fundador em todas as empresas locais. Dados de teste apagados.
+
+**Deploy**: migration aditiva + backfill idempotente (`WHERE codigo_loja IS NULL`) - backup → "Pull and redeploy" → `docker exec sae_api npx prisma migrate deploy`. Depois, conferir no Painel Master > Empresas que a coluna "ID" continua com os mesmos números de antes.
