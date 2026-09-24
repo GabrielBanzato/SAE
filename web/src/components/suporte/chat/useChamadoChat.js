@@ -77,10 +77,19 @@ export default function useChamadoChat(baseUrl) {
     async (corpo) => {
       setEnviando(true);
       try {
-        const mensagem = await apiFetch(`${baseUrl}/mensagens`, { method: 'POST', body: JSON.stringify(corpo) });
+        const { chamado: cabecalho, ...mensagem } = await apiFetch(`${baseUrl}/mensagens`, {
+          method: 'POST',
+          body: JSON.stringify(corpo),
+        });
         mesclarMensagens([mensagem]);
-        // Atualiza "ultima alteracao" do cabecalho sem esperar o proximo polling.
-        setChamado((atual) => (atual ? { ...atual, atualizadoEm: mensagem.criadoEm } : atual));
+        // Cabecalho (status + ultima alteracao) na hora, sem esperar o
+        // proximo polling - inclui a REABERTURA automatica (RESOLVIDO ->
+        // ABERTO) que a API faz ao receber mensagem num chamado finalizado.
+        setChamado((atual) =>
+          atual
+            ? { ...atual, status: cabecalho?.status ?? atual.status, atualizadoEm: cabecalho?.atualizadoEm ?? mensagem.criadoEm }
+            : atual
+        );
         return true;
       } catch (err) {
         setErro(err.message || 'Não foi possível enviar a mensagem.');

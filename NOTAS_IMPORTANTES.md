@@ -7167,3 +7167,29 @@ Conferir o carimbo "Versão do sistema" no rodapé de `/suporte` depois do deplo
 **Validação** (Playwright, microfone simulado, áudio webm REAL gravado pelo MediaRecorder): tempo total "0:04" nos 2 balões (Infinity corrigido); `<audio>` nativo invisível; play → tempo avança e o botão vira "Pausar"; play no 2º áudio pausa o 1º (só 1 "Pausar" na tela); seek pra 75% pela barra → "0:03 / 0:04". Screenshots conferidos: balão azul (lojista) e claro (suporte) no tema claro, azul e cinza-escuro no tema escuro, roxo e cinza-escuro no Painel Master. 0 erros de console; chamado/áudios de teste apagados, usuário de teste revertido a LOJISTA. `npm run build` + `oxlint` limpos.
 
 **Deploy**: só frontend - "Pull and redeploy" no Portainer (rebuilda `web`); conferir o carimbo "Versão do sistema" em `/suporte`.
+
+---
+
+## Reabertura automática de chamado ao receber mensagem + deadlock corrigido no envio (2026-09-24)
+
+**Regra nova (pedido)**: mensagem nova (do lojista OU do suporte) num chamado com status finalizado (`RESOLVIDO`) volta o chamado pra `ABERTO` automaticamente, na mesma transação da inserção da mensagem.
+
+**Implementação** - só `api/src/services/chatChamado.service.js#enviarMensagem` (controller e rotas intactos, já repassavam o retorno do service):
+- `STATUS_FINALIZADOS = ['RESOLVIDO']` (lista, não comparação fixa - um futuro FECHADO/CANCELADO entra na regra só adicionando aqui) e `STATUS_REABERTO = 'ABERTO'`.
+- Troca de `$transaction([...])` (array) por **transação interativa** `$transaction(async (tx) => ...)`: 1) reabertura, 2) toque em `atualizadoEm` + leitura do status final, 3) insert da mensagem.
+- **Reabertura como `updateMany` CONDICIONAL** (`where: { id, status: { in: STATUS_FINALIZADOS } }`), não "ler status e depois atualizar": no MySQL (REPEATABLE READ) um SELECT comum dentro da transação é leitura de snapshot SEM lock - uma troca de status concorrente do admin entre a leitura e a escrita seria sobrescrita. O UPDATE com a condição no WHERE é checado e aplicado pelo banco numa instrução atômica; `count > 0` = reabriu.
+- **Resposta do `POST .../mensagens` ganhou `chamado: { id, status, atualizadoEm, reaberto }`** junto da mensagem. `useChamadoChat.js` usa isso pra atualizar o badge de status na hora (sem esperar os 5 s do polling). Aviso de chamado resolvido no chat do lojista passou a dizer "o chamado será reaberto".
+
+**🐞 Deadlock achado nos testes (bug que JÁ EXISTIA na versão anterior)**: com envios simultâneos no mesmo chamado, 3 de 5 requisições caíam com 500 (`P2034 - Transaction failed due to a write conflict or a deadlock`). Causa clássica do InnoDB: o INSERT em `mensagens_chamado` pega lock **compartilhado (S)** na linha do chamado (checagem da FK); o UPDATE do chamado logo depois precisa do lock **exclusivo (X)** - duas transações segurando S e esperando X uma da outra. A versão anterior (array: insert → update) tinha exatamente essa ordem. **Correção**: atualizar o chamado ANTES de inserir a mensagem - a 1ª instrução já pega o X e as concorrentes esperam na fila. Segunda defesa: `comRetryDeDeadlock` re-executa a transação inteira até 3x em caso de `P2034` (atraso de 25/50 ms). **Confirmado que a ordem sozinha resolve**: 30 envios simultâneos com contador de abortos → 0 transações abortadas pelo banco (o retry nem foi acionado).
+
+**Validação** (contra MySQL local, `fastify.inject` + chamada direta ao service):
+1. RESOLVIDO + mensagem do lojista → `201`, `chamado.status = ABERTO`, `reaberto: true`, banco `ABERTO`.
+2. EM_ANALISE + mensagem → continua `EM_ANALISE`, `reaberto: false` (só finalizados reabrem).
+3. RESOLVIDO + mensagem do ADMIN → também reabre.
+4. **Rollback**: falha forçada no meio da transação (depois da reabertura, antes do insert), com mensagem de ÁUDIO → nenhuma mensagem gravada, status continua `RESOLVIDO`, arquivo de áudio apagado do disco.
+5. 20 envios simultâneos num RESOLVIDO → 20× `201`, exatamente 1 reabertura. 30 simultâneos direto no service → 0 deadlocks.
+Chamados de teste apagados. `npm run build` + `oxlint` limpos.
+
+**⚠️ Efeito colateral de UX a saber (regra aplicada como pedida, sem exceção por remetente)**: se o Supra Admin marcar "Resolvido" e DEPOIS mandar uma mensagem de encerramento ("Resolvido! Qualquer coisa, chama."), essa mensagem **reabre o chamado**. Fluxo certo pro suporte: mandar a mensagem final primeiro, marcar "Resolvido" depois. Se isso incomodar na prática, a alternativa é reabrir só com mensagem do `LOJISTA` (uma condição a mais no `updateMany`) - não aplicada, a regra pedida vale pros dois lados.
+
+**Deploy**: sem migration. "Pull and redeploy" (api + web).

@@ -116,11 +116,61 @@ function decodificarAudio(audioBase64, mimeInformado) {
 }
 
 /**
+ * Status considerados "finalizados" - uma mensagem nova (de qualquer lado)
+ * num chamado assim o REABRE automaticamente (regra de 2026-09-24). Lista
+ * (nao comparacao fixa com 'RESOLVIDO') pra um futuro status final, ex.
+ * FECHADO/CANCELADO, entrar na regra so adicionando aqui.
+ */
+const STATUS_FINALIZADOS = ['RESOLVIDO'];
+const STATUS_REABERTO = 'ABERTO';
+
+/**
+ * Re-executa a transacao se o banco a abortar por deadlock/conflito de
+ * escrita (Prisma P2034) - segunda linha de defesa: a ordem de locks em
+ * `enviarMensagem` ja evita o deadlock conhecido, mas outra escrita
+ * concorrente no mesmo chamado (ex.: troca de status pelo admin) nao deve
+ * virar 500 pro usuario. A transacao e reexecutada INTEIRA (o banco ja
+ * desfez a anterior), com um pequeno atraso crescente.
+ */
+async function comRetryDeDeadlock(executar, tentativas = 3) {
+  for (let tentativa = 1; ; tentativa += 1) {
+    try {
+      return await executar();
+    } catch (err) {
+      if (err?.code !== 'P2034' || tentativa >= tentativas) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 25 * tentativa));
+    }
+  }
+}
+
+/**
  * Nova mensagem no chat. `remetente` ('LOJISTA'/'ADMIN') vem da ROTA, nunca
- * do corpo. Grava a mensagem e "toca" `chamado.atualizadoEm` na mesma
- * transacao (data da ultima alteracao do cabecalho do chat). Se o banco
- * falhar depois do arquivo de audio ja gravado, o arquivo e apagado - nao
- * sobra audio orfao em disco.
+ * do corpo.
+ *
+ * Numa UNICA transacao interativa (`prisma.$transaction(async (tx) => ...)`):
+ *   1. cria a mensagem;
+ *   2. REABRE o chamado se ele estava finalizado (RESOLVIDO -> ABERTO);
+ *   3. "toca" `atualizadoEm` (data da ultima alteracao do cabecalho do chat)
+ *      e le o status final pra devolver ao cliente.
+ * Se qualquer passo falhar, nada fica gravado (nem mensagem sem reabertura,
+ * nem reabertura sem mensagem).
+ *
+ * Por que a reabertura e um `updateMany` CONDICIONAL (`where status IN
+ * finalizados`) e nao "ler o status e depois atualizar": no MySQL
+ * (REPEATABLE READ) um SELECT comum dentro da transacao e uma leitura de
+ * snapshot SEM lock - se o Supra Admin trocasse o status entre a leitura e a
+ * escrita, o valor dele seria sobrescrito com base num dado velho. O
+ * UPDATE com a condicao no WHERE e verificado e aplicado pelo proprio banco
+ * numa instrucao atomica (com lock de linha); `count` diz se reabriu.
+ *
+ * Se o banco falhar depois do arquivo de audio ja gravado, o arquivo e
+ * apagado - nao sobra audio orfao em disco (o arquivo e gravado ANTES da
+ * transacao de proposito: I/O de disco dentro dela seguraria o lock da
+ * linha do chamado a toa).
+ *
+ * Retorno: a mensagem serializada + `chamado: { id, status, atualizadoEm,
+ * reaberto }` - o frontend atualiza o cabecalho (badge de status) na hora,
+ * sem esperar o proximo polling.
  */
 async function enviarMensagem(prisma, chamadoId, tenantId, remetente, { tipo, conteudo, audioBase64, mime }) {
   const tipoMensagem = String(tipo || 'TEXTO').toUpperCase();
@@ -155,13 +205,43 @@ async function enviarMensagem(prisma, chamadoId, tenantId, remetente, { tipo, co
   }
 
   try {
-    const [mensagem] = await prisma.$transaction([
-      prisma.mensagemChamado.create({
-        data: { chamadoId, remetente, tipoMensagem, conteudo: valorConteudo },
-      }),
-      prisma.chamadoSuporte.update({ where: { id: chamadoId }, data: { atualizadoEm: new Date() } }),
-    ]);
-    return serializarMensagem(mensagem);
+    const { mensagem, chamado: chamadoAtualizado } = await comRetryDeDeadlock(() =>
+      prisma.$transaction(async (tx) => {
+        const agora = new Date();
+
+        // ORDEM IMPORTA (deadlock real encontrado em teste com envios
+        // simultaneos): o chamado e atualizado ANTES de inserir a mensagem.
+        // O INSERT em `mensagens_chamado` pega um lock COMPARTILHADO na
+        // linha do chamado (checagem da FK); se o UPDATE do chamado viesse
+        // depois, duas transacoes segurariam o lock S e esperariam o X uma
+        // da outra -> deadlock (P2034). Atualizando primeiro, a 1a
+        // instrucao ja pega o lock EXCLUSIVO da linha e as concorrentes
+        // simplesmente esperam na fila.
+        //
+        // 1) Reabertura atomica - so altera se o status AINDA for
+        //    finalizado no momento do UPDATE (ver comentario da funcao).
+        const reabertura = await tx.chamadoSuporte.updateMany({
+          where: { id: chamadoId, status: { in: STATUS_FINALIZADOS } },
+          data: { status: STATUS_REABERTO },
+        });
+
+        // 2) "Toca" a ultima alteracao e le o status final.
+        const chamado = await tx.chamadoSuporte.update({
+          where: { id: chamadoId },
+          data: { atualizadoEm: agora },
+          select: { id: true, status: true, atualizadoEm: true },
+        });
+
+        // 3) Mensagem por ultimo (linha do chamado ja travada por esta transacao).
+        const mensagem = await tx.mensagemChamado.create({
+          data: { chamadoId, remetente, tipoMensagem, conteudo: valorConteudo, criadoEm: agora },
+        });
+
+        return { mensagem, chamado: { ...chamado, reaberto: reabertura.count > 0 } };
+      })
+    );
+
+    return { ...serializarMensagem(mensagem), chamado: chamadoAtualizado };
   } catch (err) {
     if (arquivoGravado) await fs.unlink(arquivoGravado).catch(() => {});
     throw err;
@@ -210,4 +290,5 @@ module.exports = {
   TAMANHO_MAX_AUDIO,
   TAMANHO_MAX_TEXTO,
   UPLOADS_DIR,
+  STATUS_FINALIZADOS,
 };

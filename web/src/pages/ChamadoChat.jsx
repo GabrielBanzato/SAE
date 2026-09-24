@@ -78,7 +78,7 @@ export default function ChamadoChat() {
 
       {resolvido && (
         <p className="shrink-0 bg-emerald-50 px-4 py-2 text-center text-sm text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
-          Este chamado foi marcado como resolvido. Se o problema voltou, é só mandar uma mensagem.
+          Este chamado foi marcado como resolvido. Se o problema voltou, é só mandar uma mensagem — o chamado será reaberto.
         </p>
       )}
 
