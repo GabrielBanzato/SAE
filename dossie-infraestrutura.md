@@ -159,7 +159,9 @@ Investigando o relato "mudanças não refletem em produção, servidor diz que s
 
 Mesmo padrão das entradas 2.7.1/2.7.2 acima: pedido de "Fase 3 - Painel Supra Admin" pediu do zero algo já implementado no commit `499776a` (ver 2.8 logo abaixo). Duas divergências do spec, nenhuma aplicada (usuário confirmou deixar como está): (1) `Usuario.role` pedido como campo de nível de plataforma - já resolvido antes como `nivelAcesso`, campo separado de `role` (permissão intra-empresa); (2) `ChamadoSuporte.id`/`empresaId` como `String`/`uuid()` pedido no spec - **tecnicamente incompatível**, já que `Empresa.id` é `Int` em toda a aplicação e o Prisma exige tipos batendo entre FK e coluna referenciada. Detalhe completo em `NOTAS_IMPORTANTES.md`.
 
-### 2.8 Painel Supra Admin — "Suspender Acesso" não revoga sessões JWT já abertas (2026-09-22)
+### 2.8 Painel Supra Admin — "Suspender Acesso" não revogava sessões JWT já abertas (2026-09-22) — ✅ RESOLVIDO em 2026-09-24
+
+> **Atualização 2026-09-24**: resolvido como efeito das pendências do RBAC (ver 2.13). Um hook global da API (`api/src/plugins/permissoes.js`) relê o usuário e a empresa do banco a cada requisição autenticada — empresa suspensa (`ativo = false`) ou usuário removido da equipe passam a receber **401 na próxima requisição** e o frontend desloga. O texto abaixo é o registro histórico da limitação original.
 
 Nível mais alto do sistema, exclusivo pro dono do software (`Usuario.nivelAcesso === 'SUPERADMIN'`, campo novo e separado do já existente `Usuario.role` — ver `NOTAS_IMPORTANTES.md` pra o raciocínio completo por trás de não reaproveitar `role`). Ninguém vira SUPERADMIN pelo cadastro self-service (`register()` sempre grava `"LOJISTA"`) — só manualmente, direto no banco.
 
@@ -224,6 +226,23 @@ O chat lojista ↔ Supra Admin (texto + áudio gravado no navegador) guarda os *
 - **Player de áudio é customizado** (`CustomAudioPlayer.jsx`, 2026-09-24), não o `<audio controls>` do navegador. Se um áudio aparecer com tempo total "0:00" ou com o botão girando pra sempre, suspeitar do cálculo de duração de webm do MediaRecorder (ver 4.3) antes de suspeitar do arquivo/servidor — o arquivo em si se confere direto na rota `GET .../mensagens/:id/audio`.
 - Excluir empresa/chamado apaga as mensagens (cascade), mas **não** os arquivos — ficam órfãos no volume (sem impacto hoje; não há exclusão de chamado pela UI).
 
+### 2.13 RBAC — Perfis de Acesso: o que muda na operação (2026-09-24)
+
+Multiusuário com controle de acesso por perfil (cargo com lista de permissões). Migration `20260924160000_rbac_perfis_de_acesso` (aditiva, sem backfill) — aplicar com `migrate deploy` depois do rebuild, backup antes.
+
+**Para quem dá suporte/opera — respostas rápidas:**
+- **"Um funcionário diz que não vê uma tela / recebe 'Sem permissão'"** → é o perfil dele (Configurações > Perfis de Acesso / Equipe), não bug. Um item de menu só aparece se a empresa **contratou o módulo** (App Store) **E** o perfil **libera a área** — conferir as duas coisas.
+- **"Um erro 403 com `permissaoNecessaria` no log/rede"** → mesma causa (perfil). 403 de "Apenas o administrador..." → ação reservada ao admin da loja (configurações, equipe, perfis, módulos, assinatura).
+- **Mudança de perfil vale na hora** (a API lê as permissões do banco a cada requisição, não do JWT); o menu no navegador da pessoa atualiza no próximo F5.
+- **Admin da loja (`role = 'admin'`) sempre tem acesso total**, com ou sem perfil. Promover alguém a admin continua sendo só direto no banco (`UPDATE usuarios SET role = 'admin' ...`) — o convite nunca cria admin.
+- **Convite não envia e-mail** (o sistema não tem serviço de e-mail): a senha temporária aparece **uma única vez** na tela do admin. Perdeu a senha / esqueceu a senha → o admin usa **"Redefinir senha"** na aba Equipe (gera outra, também mostrada uma vez). Não existe "esqueci minha senha" self-service (dependeria de e-mail).
+- **Senha temporária obriga troca no 1º acesso** (`usuarios.deve_trocar_senha`): enquanto a pessoa não define a própria senha, a API responde 403 `TROCA_SENHA_OBRIGATORIA` em tudo (menos `/auth/me` e `/auth/senha`) e o app mostra só a tela "Defina sua senha". Na Equipe, essa pessoa aparece com a etiqueta "Aguardando 1º acesso".
+- **"Remover da equipe" = desativar** (`usuarios.ativo = 0`), nunca apagar — todas as FKs para `usuarios` são RESTRICT e o histórico (vendas, tarefas, chamados) precisa continuar com o autor. A sessão aberta da pessoa cai na hora (401). Para trazer de volta: convidar o mesmo e-mail de novo (reativa a mesma conta, com senha temporária nova). **Não apagar linhas de `usuarios` direto no banco** — falha pela FK de qualquer forma se a pessoa tiver histórico.
+- **E-mail precisa ser único entre contas ATIVAS do SAE inteiro** (convite e cadastro de empresa nova): o login procura o usuário só pelo e-mail.
+- **Não-admins antigos sem perfil = acesso total (legado)** — a aba Equipe mostra um aviso amarelo com quantas pessoas estão nessa situação; o admin de cada loja deve escolher um perfil para cada uma depois do deploy.
+- **Cada requisição autenticada relê usuário/empresa do banco** (1 SELECT por PK, cacheado por requisição) — é o que permite revogar acesso na hora (remoção, suspensão de empresa, troca de perfil). Se a latência da API subir de forma geral, esse ponto é um dos lugares a olhar, mas o custo medido é o de uma busca por chave primária.
+- **Excluir perfil em uso é bloqueado** (409 + FK `ON DELETE RESTRICT`) de propósito: zerar o perfil daria acesso total à pessoa.
+
 ---
 
 ## 3. Configurações de Ambiente (`.env`)
@@ -282,7 +301,7 @@ Nenhum valor real de produção (senha de banco, `JWT_SECRET`, `TUNNEL_TOKEN`, e
 ### 4.2 Segurança — pontos abertos conhecidos (ver também `direcionamento.md`, seção 6)
 
 - **CORS totalmente aberto** (`origin: '*'`) em `api/src/app.js` — comentado no próprio código como decisão só para desenvolvimento, nunca revisitada para produção. Qualquer origem pode chamar a API hoje.
-- **Sem autorização por `role`** — o JWT carrega `role` (admin/gerente/vendedor) mas nenhuma rota do backend a consulta. Qualquer usuário autenticado de uma empresa pode executar qualquer ação dessa empresa (trocar plano, adicionar usuário, excluir produto), independente do cargo.
+- ~~**Sem autorização por `role`**~~ — **resolvido em 2026-09-24 (RBAC, ver 2.13)**: rotas de negócio exigem permissão do perfil do usuário (`requirePermission`) e tudo que altera a empresa/equipe exige admin (`requireAdmin`). **Ainda aberto (visível, não mais silencioso)**: usuários não-admin criados antes do RBAC (sem perfil) continuam com acesso total até o admin atribuir um perfil — a aba Equipe mostra um aviso com a contagem.
 - **JWT em `localStorage`** (não cookie `httpOnly`) — padrão aceito mas exposto a roubo de token via XSS, caso algum dia surja um vetor de injeção no frontend.
 - **`TUNNEL_TOKEN` já vazou uma vez no histórico do Git** (ver 3.1) — se a rotação mencionada ali ainda não foi confirmada como feita, trate como pendência de segurança ativa, não como incidente encerrado.
 - **⚠️ Senha root do MySQL de produção igual ao placeholder de dev (`dev_root_change_me`)** — achado em 2026-09-23 durante o diagnóstico do incidente 2.9 acima, ao ver o comando `docker exec sae_mysql mysql -uroot -p'dev_root_change_me' ...` colado pelo usuário. Se essa senha ainda não foi trocada em produção, é uma pendência de segurança ativa e grave — qualquer pessoa que já tenha visto esse valor (documentado como exemplo em `api/.env.example`/`.env.example` da raiz) tem acesso root ao banco de produção. Trocar via `MYSQL_ROOT_PASSWORD` no Portainer/`.env` de produção + reiniciar o container `mysql`, atualizando qualquer script/serviço que dependa da senha antiga.

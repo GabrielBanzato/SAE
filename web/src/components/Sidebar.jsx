@@ -27,6 +27,7 @@ import {
   Zap,
   FileBarChart,
   ExternalLink,
+  KeyRound,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -53,40 +54,39 @@ const GRUPOS_MENU = [
       // que o PDV Rápido ja tinha antes de entrar no grupo - continua
       // sendo a rota de tela cheia sem Sidebar (pages/PDV.jsx), so mudou
       // de posicao (antes ficava sozinho acima de todos os grupos).
-      { label: 'PDV Rápido', to: '/pdv', icon: Zap, modulo: 'pdv_touch', destaque: true },
-      { label: 'Vendas', to: '/vendas', icon: ShoppingCart, modulo: 'vendas' },
-      { label: 'Histórico de Vendas', to: '/historico-vendas', icon: History, modulo: 'vendas' },
-      { label: 'Clientes', to: '/clientes', icon: Users, modulo: 'clientes' },
+      { label: 'PDV Rápido', to: '/pdv', icon: Zap, modulo: 'pdv_touch', permissao: 'VER_VENDAS', destaque: true },
+      { label: 'Vendas', to: '/vendas', icon: ShoppingCart, modulo: 'vendas', permissao: 'VER_VENDAS' },
+      { label: 'Histórico de Vendas', to: '/historico-vendas', icon: History, modulo: 'vendas', permissao: 'VER_VENDAS' },
+      { label: 'Clientes', to: '/clientes', icon: Users, modulo: 'clientes', permissao: 'VER_CLIENTES' },
     ],
   },
   {
     titulo: 'Catálogo',
     itens: [
-      { label: 'Produtos', to: '/produtos', icon: Package, modulo: 'produtos' },
-      { label: 'Precificação', to: '/precificacao', icon: Calculator, modulo: 'precificacao' },
-      { label: 'Estoque', to: '/estoque', icon: Boxes, modulo: 'estoque_avancado' },
+      { label: 'Produtos', to: '/produtos', icon: Package, modulo: 'produtos', permissao: 'VER_PRODUTOS' },
+      { label: 'Precificação', to: '/precificacao', icon: Calculator, modulo: 'precificacao', permissao: 'VER_PRODUTOS' },
+      { label: 'Estoque', to: '/estoque', icon: Boxes, modulo: 'estoque_avancado', permissao: 'VER_ESTOQUE' },
     ],
   },
   {
     titulo: 'Financeiro',
     itens: [
-      { label: 'Lançamentos', to: '/lancamentos', icon: Receipt, modulo: 'financeiro' },
-      { label: 'Controle Financeiro', to: '/financeiro', icon: Wallet, modulo: 'financeiro' },
-      { label: 'DRE', to: '/dre', icon: FileBarChart, modulo: 'financeiro' },
-      { label: 'Relatórios', to: '/relatorios', icon: BarChart3, modulo: 'relatorios' },
-      // Sem `modulo` de proposito - "/notas" e sempre acessivel (ver
-      // App.jsx), a pagina em si e que avisa "Módulo Fiscal em
-      // Desenvolvimento" (Notas.jsx). Removido do menu numa reformulacao
-      // anterior da Sidebar, adicionado de volta nesta tarefa.
-      { label: 'Emissor Fiscal', to: '/notas', icon: ScrollText },
+      { label: 'Lançamentos', to: '/lancamentos', icon: Receipt, modulo: 'financeiro', permissao: 'VER_FINANCEIRO' },
+      { label: 'Controle Financeiro', to: '/financeiro', icon: Wallet, modulo: 'financeiro', permissao: 'VER_FINANCEIRO' },
+      { label: 'DRE', to: '/dre', icon: FileBarChart, modulo: 'financeiro', permissao: 'VER_FINANCEIRO' },
+      { label: 'Relatórios', to: '/relatorios', icon: BarChart3, modulo: 'relatorios', permissao: 'VER_RELATORIOS' },
+      // Sem `modulo` de proposito - "/notas" nao depende de modulo contratado
+      // (a pagina em si avisa "Módulo Fiscal em Desenvolvimento", Notas.jsx).
+      // RBAC (2026-09-24): area fiscal - so aparece pra quem ve o Financeiro.
+      { label: 'Emissor Fiscal', to: '/notas', icon: ScrollText, permissao: 'VER_FINANCEIRO' },
     ],
   },
   {
     titulo: 'Gestão',
     itens: [
-      { label: 'Agenda', to: '/agenda', icon: CalendarDays, modulo: 'agenda' },
-      { label: 'Tarefas', to: '/tarefas', icon: Kanban, modulo: 'tarefas' },
-      { label: 'Inbox WhatsApp', to: '/inbox', icon: MessageCircle, modulo: 'ia_whatsapp' },
+      { label: 'Agenda', to: '/agenda', icon: CalendarDays, modulo: 'agenda', permissao: 'VER_AGENDA' },
+      { label: 'Tarefas', to: '/tarefas', icon: Kanban, modulo: 'tarefas', permissao: 'VER_TAREFAS' },
+      { label: 'Inbox WhatsApp', to: '/inbox', icon: MessageCircle, modulo: 'ia_whatsapp', permissao: 'VER_INBOX' },
     ],
   },
 ];
@@ -176,7 +176,7 @@ function ItemGrupo({ label, to, icon: Icon, destaque, isExpanded, aoNavegar }) {
  */
 export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFecharNoMobile }) {
   const { theme, toggleTheme } = useTheme();
-  const { logout, empresa, usuario } = useAuth();
+  const { logout, empresa, usuario, ehAdmin, pode } = useAuth();
   const navigate = useNavigate();
   const escuro = theme === 'dark';
   // `empresa` comeca `null` ate o AuthContext popular (ver
@@ -270,13 +270,18 @@ export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFechar
         className="flex h-full min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 pb-24 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         aria-label="Navegacao principal"
       >
-        <ItemDireto {...ITEM_DASHBOARD} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
+        {pode('VER_DASHBOARD') && <ItemDireto {...ITEM_DASHBOARD} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />}
 
         {GRUPOS_MENU.map(({ titulo, itens }) => {
-          const itensVisiveis = itens.filter((item) => !item.modulo || modulos.includes(item.modulo));
-          // Grupo inteiro some se nenhum dos modulos dele estiver ativo pra
-          // esta empresa - um titulo de grupo sem nenhum link embaixo seria
-          // um cabecalho orfao.
+          // DUAS camadas, as duas precisam passar:
+          //  1) `modulo`    - a EMPRESA contratou/ativou o modulo (App Store);
+          //  2) `permissao` - o PERFIL deste usuario libera a area (RBAC).
+          // Item sem `modulo`/`permissao` = sem aquela restricao.
+          const itensVisiveis = itens.filter(
+            (item) => (!item.modulo || modulos.includes(item.modulo)) && (!item.permissao || pode(item.permissao))
+          );
+          // Grupo inteiro some se nenhum item dele sobrou - um titulo de
+          // grupo sem nenhum link embaixo seria um cabecalho orfao.
           if (itensVisiveis.length === 0) return null;
 
           return (
@@ -296,7 +301,8 @@ export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFechar
         })}
 
         <div className="mt-4">
-          <ItemDireto {...ITEM_MODULOS} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
+          {/* App Store (contratar/pagar modulos) - so o admin. */}
+          {ehAdmin && <ItemDireto {...ITEM_MODULOS} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />}
           <ItemDireto {...ITEM_SUPORTE} isExpanded={isExpanded} aoNavegar={onFecharNoMobile} />
         </div>
 
@@ -365,31 +371,54 @@ export default function Sidebar({ isExpanded, onToggle, abertaNoMobile, onFechar
             </span>
           </button>
 
+          {/* RBAC: Configuracoes (dados, equipe, perfis, assinatura) e so do admin. */}
+          {ehAdmin && (
+            <button
+              type="button"
+              onClick={handleAbrirConfiguracoes}
+              aria-label="Configurações"
+              title="Configurações"
+              className={`flex shrink-0 items-center justify-center rounded-xl p-3 text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 ${
+                !isExpanded ? 'md:h-11 md:w-11 md:p-0' : ''
+              }`}
+            >
+              <Settings size={22} className="shrink-0" aria-hidden="true" />
+            </button>
+          )}
+        </div>
+
+        {/* Acoes da CONTA na mesma linha: Sair + Alterar senha (pra TODOS -
+            Configuracoes e so do admin desde o RBAC). Ficou aqui e nao na
+            linha do tema porque 3 botoes la espremiam o "Modo Escuro" em 2
+            linhas. Recolhido: empilha, igual a linha de cima. */}
+        <div className={`mt-1 flex items-center gap-2 ${!isExpanded ? 'md:mt-4 md:flex-col md:gap-4' : ''}`}>
           <button
             type="button"
-            onClick={handleAbrirConfiguracoes}
-            aria-label="Configurações"
-            title="Configurações"
+            onClick={handleLogout}
+            aria-label="Sair"
+            title={!isExpanded ? 'Sair' : undefined}
+            className={`flex flex-1 items-center gap-3 rounded-xl px-4 py-3 text-lg font-semibold text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 ${
+              !isExpanded ? 'md:h-11 md:w-11 md:flex-none md:justify-center md:p-0' : ''
+            }`}
+          >
+            <LogOut size={22} className="shrink-0" aria-hidden="true" />
+            <span className={`flex-1 text-left ${!isExpanded ? 'md:hidden' : ''}`}>Sair</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onFecharNoMobile?.();
+              navigate('/conta/senha');
+            }}
+            aria-label="Alterar senha"
+            title="Alterar senha"
             className={`flex shrink-0 items-center justify-center rounded-xl p-3 text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 ${
               !isExpanded ? 'md:h-11 md:w-11 md:p-0' : ''
             }`}
           >
-            <Settings size={22} className="shrink-0" aria-hidden="true" />
+            <KeyRound size={22} className="shrink-0" aria-hidden="true" />
           </button>
         </div>
-
-        <button
-          type="button"
-          onClick={handleLogout}
-          aria-label="Sair"
-          title={!isExpanded ? 'Sair' : undefined}
-          className={`mt-1 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-lg font-semibold text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 ${
-            !isExpanded ? 'md:mt-4 md:h-11 md:w-11 md:justify-center md:p-0 md:mx-auto' : ''
-          }`}
-        >
-          <LogOut size={22} className="shrink-0" aria-hidden="true" />
-          <span className={`flex-1 text-left ${!isExpanded ? 'md:hidden' : ''}`}>Sair</span>
-        </button>
       </div>
     </aside>
   );

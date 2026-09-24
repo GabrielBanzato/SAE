@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const AppError = require('../utils/AppError');
+const { resolverAcesso } = require('./permissoes');
 
 const SALT_ROUNDS = 10;
 
@@ -161,6 +162,15 @@ async function register(
     throw new AppError('Ja existe uma empresa cadastrada com este documento.', 409);
   }
 
+  // E-mail unico entre usuarios ATIVOS do SAE inteiro (pendencia do RBAC,
+  // 2026-09-24): `login()` procura so por e-mail, sem empresa - um e-mail
+  // repetido em outra empresa deixaria uma das contas sem conseguir entrar.
+  // Mesma regra ja aplicada no convite (empresa.service.js#adicionarUsuario).
+  const emailEmUso = await prisma.usuario.findFirst({ where: { email, ativo: true }, select: { id: true } });
+  if (emailEmUso) {
+    throw new AppError('Este e-mail ja esta cadastrado no SAE. Use outro e-mail ou entre com a conta existente.', 409);
+  }
+
   const senhaHash = await bcrypt.hash(senha, SALT_ROUNDS);
 
   // Ponto de partida dos modulos desta empresa - calculado UMA VEZ aqui, a
@@ -231,6 +241,8 @@ async function register(
       // disso disponivel desde o login/registro, sem uma chamada extra, pra
       // preencher o campo "Seu ID" (so-leitura) em Suporte.jsx.
       codigoUsuario: usuario.codigoUsuario,
+      // RBAC (2026-09-24) - ver comentario em `me()`.
+      ...(await acessoParaResposta(prisma, usuario.id, usuario.empresaId)),
     },
   };
 }
@@ -254,7 +266,9 @@ async function login(fastify, { email, senha }) {
   // `usuario`). `segmento` continua selecionado so pro fallback defensivo
   // de `modulosAtivos` nulo (ver comentario abaixo).
   const usuario = await prisma.usuario.findFirst({
-    where: { email },
+    // So contas ATIVAS - quem foi removido da equipe cai em "credenciais
+    // invalidas" (mensagem generica de proposito, nao revela que a conta existe).
+    where: { email, ativo: true },
     include: { empresa: { select: { segmento: true, modulosAtivos: true, ativo: true } } },
   });
   if (!usuario) {
@@ -302,6 +316,8 @@ async function login(fastify, { email, senha }) {
       // Ajuste no Formulario de Suporte (2026-09-23) - ver comentario
       // equivalente em `register` acima.
       codigoUsuario: usuario.codigoUsuario,
+      // RBAC (2026-09-24) - ver comentario em `me()`.
+      ...(await acessoParaResposta(prisma, usuario.id, usuario.empresaId)),
     },
   };
 }
@@ -315,7 +331,7 @@ async function login(fastify, { email, senha }) {
  * Suporte.jsx mostrava "-----" ate um novo login. AuthContext chama esta
  * rota a cada boot pra reidratar o usuario com o schema atual.
  */
-async function me(prisma, usuarioId) {
+async function me(prisma, usuarioId, tenantId) {
   const usuario = await prisma.usuario.findUnique({
     where: { id: usuarioId },
     select: { id: true, nome: true, email: true, role: true, nivelAcesso: true, codigoUsuario: true },
@@ -323,13 +339,69 @@ async function me(prisma, usuarioId) {
   if (!usuario) {
     throw new AppError('Usuario nao encontrado.', 404);
   }
-  return usuario;
+  // RBAC (2026-09-24) - permissoes EFETIVAS junto do usuario: o frontend
+  // usa pra esconder menu/rotas (so UX - quem barra de verdade e o
+  // requirePermission de cada rota da API). Como /auth/me roda a cada boot,
+  // uma troca de perfil pelo admin chega na tela no proximo F5.
+  return { ...usuario, ...(await acessoParaResposta(prisma, usuarioId, tenantId)) };
+}
+
+/** { ehAdmin, perfil, permissoes } no formato que o frontend guarda em `usuario`. */
+async function acessoParaResposta(prisma, usuarioId, tenantId) {
+  const acesso = await resolverAcesso(prisma, usuarioId, tenantId);
+  return {
+    ehAdmin: acesso?.ehAdmin ?? false,
+    perfil: acesso?.perfil ?? null,
+    permissoes: acesso?.permissoes ?? [],
+    // Senha temporaria pendente - o frontend mostra so a tela de troca (ver PUT /auth/senha).
+    deveTrocarSenha: acesso?.deveTrocarSenha ?? false,
+  };
+}
+
+const TAMANHO_MIN_SENHA = 8;
+
+/**
+ * PUT /auth/senha - a propria pessoa troca a senha (pendencia do RBAC,
+ * 2026-09-24): obrigatoria depois de uma senha temporaria (convite ou
+ * "Redefinir senha" pelo admin) e disponivel pra qualquer um em "Alterar
+ * senha". Exige a senha ATUAL (inclusive a temporaria) - um token roubado
+ * sozinho nao basta pra trocar a senha e sequestrar a conta. Zera
+ * `deveTrocarSenha`.
+ */
+async function alterarSenha(prisma, usuarioId, tenantId, { senhaAtual, novaSenha }) {
+  if (typeof novaSenha !== 'string' || novaSenha.length < TAMANHO_MIN_SENHA) {
+    throw new AppError(`A nova senha precisa ter pelo menos ${TAMANHO_MIN_SENHA} caracteres.`, 400);
+  }
+  if (novaSenha.length > 72) {
+    // bcrypt ignora tudo depois de 72 bytes - melhor recusar que truncar em silencio.
+    throw new AppError('A nova senha pode ter no maximo 72 caracteres.', 400);
+  }
+
+  const usuario = await prisma.usuario.findFirst({
+    where: { id: usuarioId, empresaId: tenantId, ativo: true },
+    select: { senhaHash: true },
+  });
+  if (!usuario) throw new AppError('Usuario nao encontrado.', 404);
+
+  if (typeof senhaAtual !== 'string' || !(await bcrypt.compare(senhaAtual, usuario.senhaHash))) {
+    throw new AppError('A senha atual esta incorreta.', 400);
+  }
+  if (await bcrypt.compare(novaSenha, usuario.senhaHash)) {
+    throw new AppError('A nova senha precisa ser diferente da atual.', 400);
+  }
+
+  await prisma.usuario.update({
+    where: { id: usuarioId },
+    data: { senhaHash: await bcrypt.hash(novaSenha, SALT_ROUNDS), deveTrocarSenha: false },
+  });
 }
 
 module.exports = {
   register,
   login,
   me,
+  alterarSenha,
+  TAMANHO_MIN_SENHA,
   MAPA_MODULOS,
   SEGMENTOS_VALIDOS,
   MODULOS_BASE,

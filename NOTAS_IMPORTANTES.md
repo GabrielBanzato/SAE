@@ -7193,3 +7193,114 @@ Chamados de teste apagados. `npm run build` + `oxlint` limpos.
 **⚠️ Efeito colateral de UX a saber (regra aplicada como pedida, sem exceção por remetente)**: se o Supra Admin marcar "Resolvido" e DEPOIS mandar uma mensagem de encerramento ("Resolvido! Qualquer coisa, chama."), essa mensagem **reabre o chamado**. Fluxo certo pro suporte: mandar a mensagem final primeiro, marcar "Resolvido" depois. Se isso incomodar na prática, a alternativa é reabrir só com mensagem do `LOJISTA` (uma condição a mais no `updateMany`) - não aplicada, a regra pedida vale pros dois lados.
 
 **Deploy**: sem migration. "Pull and redeploy" (api + web).
+
+---
+
+## RBAC - Multiusuários com Perfis de Acesso (2026-09-24)
+
+**Pedido**: perfis (cargos) com conjunto de permissões de páginas/menus; `Usuario.perfilId`; middleware `requirePermission('VER_VENDAS')` + CRUD de perfis; tela "Perfis de Acesso" com checkboxes; modal "Convidar Usuário" na Equipe (e-mail + select de perfil); menu lateral escondendo o que o usuário não pode ver.
+
+**Achados antes de implementar**: não existia nenhum RBAC (o `role` admin/gerente/vendedor nunca foi checado por rota - lacuna já registrada no dossiê 4.2); o "Convidar Usuário" da Equipe era só visual; o sistema **não tem serviço de e-mail**; o menu já filtrava por módulo contratado (`empresa.modulos`) - RBAC entrou como **segunda camada**, não substituto.
+
+### Etapa 1 - Schema (migration `20260924160000_rbac_perfis_de_acesso`, 100% aditiva)
+
+- `Perfil` (`perfis`): `id`, `empresaId` (tenant, cascade), `nome` (VarChar 60, `@@unique([empresaId, nome])`), `permissoes` (**Json com array de chaves** - MySQL não tem array nativo; tabela de junção seria excesso pra um catálogo fixo em código), `criadoEm`/`atualizadoEm`.
+- `Usuario.perfilId` (`Int?`, `perfil_id`) com **`onDelete: Restrict` de propósito** (não SetNull): um usuário sem perfil cai em "acesso total legado" - se apagar o perfil zerasse o campo, a pessoa GANHARIA acesso total (escalada de privilégio).
+- Regras de acesso efetivo (`services/permissoes.js#resolverAcesso`): `role 'admin'` → tudo; perfil definido → só as permissões dele; não-admin **sem** perfil → tudo (legado: usuários de antes do RBAC continuam como estavam; o convite novo sempre exige perfil).
+
+### Etapa 2 - Backend
+
+- **Catálogo único** `api/src/services/permissoes.js#CATALOGO_PERMISSOES` (10 chaves agrupadas como o menu: `VER_DASHBOARD`, `VER_VENDAS`, `VER_CLIENTES`, `VER_PRODUTOS` ("Módulo de Produção"), `VER_ESTOQUE`, `VER_FINANCEIRO`, `VER_RELATORIOS`, `VER_AGENDA`, `VER_TAREFAS`, `VER_INBOX`). O frontend **não duplica** a lista - busca em `GET /perfis/catalogo`. `normalizarPermissoes` recusa chave desconhecida (422) e remove duplicatas.
+- **Middleware** `api/src/plugins/permissoes.js` (registrado depois do auth): `fastify.requirePermission('A', 'B')` (passa com QUALQUER uma - necessário pra endpoints usados por mais de uma tela) e `fastify.requireAdmin()`. Chave inexistente num `requirePermission` **quebra no boot** (typo não vira bloqueio silencioso em produção).
+- **Acesso lido do BANCO a cada requisição protegida, não do JWT**: troca de perfil/edição de permissões vale na próxima requisição, sem esperar o token de 8h expirar (1 SELECT por PK com join, cacheado em `request.acesso`). Filtra também por `empresaId` do token.
+- **CRUD** `/perfis` (só admin - senão um não-admin daria permissões a si mesmo): `GET /catalogo`, `GET /` (com `totalUsuarios`), `POST /`, `PUT /:id`, `DELETE /:id` (**409 se houver usuários no perfil** - mover as pessoas antes).
+- **Rotas existentes protegidas** com o mapa de dependências real entre telas (levantado grepando cada chamada de API do frontend): ex. `GET /produtos` aceita `VER_PRODUTOS|VER_VENDAS|VER_ESTOQUE` (Vendas/PDV e Estoque listam produtos), `GET/POST /clientes` aceitam `VER_VENDAS` (atrelar/cadastro rápido na venda), `PUT /lancamentos/:id` aceita `VER_AGENDA` (Agenda marca conta como paga), `GET /ingredientes` aceita `VER_PRODUTOS` (Ficha Técnica), `GET /empresa/usuarios` aceita `VER_TAREFAS|VER_VENDAS` (responsável / consumo interno). Webhook do WhatsApp (público) protegido por rota, não por hook do plugin. Livres: `GET /empresa/dados`, `/auth/*`, `/chamados`.
+- **Só admin**: `PUT /empresa/dados|modulos|pagamentos|assinatura`, `POST /empresa/usuarios`, `PUT /empresa/usuarios/:id/perfil`, `/perfis`.
+- **Convite** (`POST /empresa/usuarios` agora `{ email, perfil_id, nome? }`): gera **senha temporária** (10 caracteres, sem ambíguos 0/O/1/l) devolvida **uma única vez** na resposta; convidado entra sempre com `role 'vendedor'` (convite nunca cria admin); perfil validado como da MESMA empresa (a FK sozinha aceitaria de outro tenant); **e-mail recusado se já existir em QUALQUER empresa** - `login()` procura só por e-mail (`findFirst` sem empresa), um e-mail repetido entre tenants deixaria uma das contas sem conseguir entrar. `PUT /empresa/usuarios/:id/perfil` recusa admins (perfil não se aplica) e "sem perfil".
+- `POST /auth/login`, `/auth/register` e `GET /auth/me` passam a devolver `ehAdmin`, `perfil` e `permissoes` efetivas.
+
+### Etapa 3 - Frontend
+
+- `AuthContext`: `ehAdmin` e `pode(...permissoes)` expostos. Sessão antiga sem `permissoes` no localStorage não esconde nada até o `/auth/me` responder (a API barra de qualquer jeito).
+- **Sidebar** (exemplo pedido): cada item tem `permissao`; filtro = `modulo` contratado **E** `pode(permissao)`; grupo some se ficar vazio; Dashboard exige `VER_DASHBOARD`; "Módulos" e a engrenagem de Configurações só pra admin; "Emissor Fiscal" passou a exigir `VER_FINANCEIRO`.
+- **App.jsx**: rota com módulo ativo mas sem permissão mostra "Acesso restrito / Sem permissão" (em vez da tela quebrando com 403 em todo fetch); `/configuracoes` e `/modulos` só admin; sem `VER_DASHBOARD`, `/` redireciona pra primeira tela liberada pelo perfil.
+- **Configurações > "Perfis de Acesso"** (`PerfisAcesso.jsx` + `ModalPerfil.jsx`): cartões com chips das áreas e nº de pessoas; modal com nome do cargo + checkboxes agrupados (com "Marcar todos" por grupo); exclusão com confirmação inline.
+- **Equipe**: `ModalConvidarUsuario.jsx` (e-mail, nome opcional, select de perfil - atalho pra criar perfil se não houver nenhum) → tela de sucesso com a senha temporária, "Copiar dados de acesso" e aviso de que não aparece de novo; cada membro não-admin tem select pra trocar o perfil.
+
+### 🐞 Bugs pegos nos testes (antes de sair desta sessão)
+
+1. **Senha temporária perdida para sempre**: depois do convite, `onConvidado` fazia `setUsuarios(null)` pra recarregar a equipe → Configurações mostrava "Carregando..." → **desmontava** `UsuariosEquipe` e, com ele, o modal que guardava a senha (que só aparece uma vez). Corrigido recarregando a lista no lugar (sem desmontar) + o passo da senha não fecha mais por Esc/clique fora (só X/Concluir).
+2. **Crash da árvore de rotas** (`Cannot access 'modulos' before initialization`): `primeiraRotaPermitida` declarado antes de `const modulos` (TDZ). Reordenado.
+3. Escape do PowerShell: `` `n `` dentro de string com aspas duplas quebrou um comentário JSX no meio (build falhou, pego na hora). Lição: editar `.jsx` por script PowerShell só com strings de aspas simples/here-string literal.
+
+### Validação
+
+- Backend (`fastify.inject` contra MySQL local, ~35 checagens, todas conforme esperado): catálogo; normalização de duplicata; 422 permissão inexistente; 409 nome repetido; convite 201 com senha temporária; 400 sem perfil; 409 e-mail repetido; **login REAL com a senha temporária** → `permissoes: ["VER_VENDAS"]`; matriz do vendedor (200 em /vendas, /produtos, /clientes, /empresa/usuarios, /empresa/dados, /chamados, /auth/me; 403 em POST /produtos, /lancamentos, /dashboard, /relatorios, /tarefas, /perfis, PUT /empresa/dados); vendedor tentando convidar/se dar permissão → 403; troca de perfil e remoção de permissão valendo **com o mesmo token**; 409 excluir perfil em uso; 204 excluir perfil vazio; 400 perfil em admin; 404 perfil de outra empresa (convite e edição); 401 token com `sub` de outra empresa; legado sem perfil → 10/10 permissões.
+- E2E Playwright: admin cria perfil "Caixa" (Vendas + Clientes) → convida "Maria do Caixa" → senha exibida (e clique fora NÃO fecha) → equipe mostra Maria com select "Caixa" → **login real pela tela com a senha temporária** → cai em `/vendas`; menu = Vendas, Histórico de Vendas, Suporte (Clientes não aparece porque a empresa de teste não contratou o módulo CRM - as duas camadas funcionando); sem engrenagem; `/financeiro` e `/configuracoes` por URL direta → "Sem permissão"; tela de Vendas carrega produtos/clientes sem nenhum 403. 0 erros de console. Tudo criado pelo teste apagado; plano da empresa de teste restaurado.
+
+### ⚠️ Pendências conhecidas
+
+- **Sem troca obrigatória da senha temporária no 1º login** (nem tela de "alterar minha senha" - não existe hoje no sistema). O funcionário continua com a senha gerada até alguém implementar isso.
+- **Não existe exclusão de usuário da equipe nem "redefinir senha"** pela interface/API - senha temporária perdida (ou funcionário que saiu) hoje só se resolve direto no banco.
+- **Usuários não-admin já existentes (sem perfil) mantêm acesso total** até o admin atribuir um perfil na aba Equipe - decisão pra não trancar ninguém no deploy. Revisar a equipe de cada empresa depois do deploy.
+- `register()` (cadastro de empresa nova) ainda não checa e-mail duplicado entre empresas - mesma colisão de login que o convite agora evita.
+
+### Deploy
+
+Migration aditiva: backup → "Pull and redeploy" → `docker exec sae_api npx prisma migrate deploy`. Conferir "Versão do sistema" em `/suporte`.
+
+---
+
+## RBAC - pendências resolvidas: troca obrigatória de senha, redefinir senha, remover da equipe, e-mail único no cadastro (2026-09-24)
+
+**Pedido**: "resolva e complete estas pendências antes de prosseguirmos" - as 4 pendências listadas no fim da entrada do RBAC.
+
+### 1) Troca obrigatória da senha temporária + "Alterar senha"
+
+- Schema: `Usuario.deveTrocarSenha` (`deve_trocar_senha`, default false). Convite e "Redefinir senha" gravam `true`.
+- **Quem obriga é a API**: hook GLOBAL novo em `plugins/permissoes.js` (vale pra toda rota autenticada) responde **403 `{ codigo: 'TROCA_SENHA_OBRIGATORIA' }`** enquanto `deveTrocarSenha`, exceto nas rotas marcadas com `config: { permitidoComSenhaTemporaria: true }` (só `GET /auth/me` e `PUT /auth/senha`). Testado: até `GET /chamados` (rota sem RBAC) é barrada.
+- `PUT /auth/senha` `{ senha_atual, nova_senha }` (`auth.service.js#alterarSenha`): exige a senha ATUAL (inclusive a temporária - token roubado sozinho não sequestra a conta), mínimo 8 / máximo 72 caracteres (bcrypt ignora além de 72 bytes - melhor recusar que truncar em silêncio), nova ≠ atual, zera `deveTrocarSenha`.
+- Frontend: com `usuario.deveTrocarSenha`, `App.jsx` troca a árvore de rotas INTEIRA por `pages/TrocarSenhaObrigatoria.jsx` (layout de login, sem Sidebar; URL direta pra qualquer tela continua nela). Se o admin redefinir a senha com a sessão da pessoa aberta, o interceptor do axios pega o 403 com esse código e dispara `sae:troca-senha-obrigatoria` → o AuthContext muda a tela na hora. "Alterar senha" voluntário: `pages/AlterarSenha.jsx` (`/conta/senha`), botão de chave no rodapé da Sidebar pra TODOS (Configurações é só do admin). Formulário compartilhado: `components/conta/FormAlterarSenha.jsx`.
+
+### 2) Redefinir senha e remover da equipe
+
+- **Remover = DESATIVAR** (`Usuario.ativo`, default true), não apagar: TODA FK que aponta pra `usuarios` (vendas, consumo interno, tarefas, chamados) é `Restrict` - apagar quem já vendeu seria impossível e perderia o autor do histórico. `DELETE /empresa/usuarios/:id` (admin) grava `ativo = false` e zera `perfilId` (senão o perfil nunca mais poderia ser excluído).
+- **Sessão da pessoa removida cai NA HORA**: o hook global lê o usuário do banco a cada requisição - inativo → **401** → o frontend desloga. Login de inativo = "credenciais inválidas" (mensagem genérica de propósito). Inativos somem da lista da equipe, não contam no limite do plano, e não podem mais receber tarefa nem consumo interno (`tarefas.service.js`/`vendas.service.js` passaram a filtrar `ativo: true`).
+- **Reconvidar o mesmo e-mail REATIVA a mesma conta** (mesmo id - o histórico continua dela), com perfil novo e nova senha temporária.
+- `POST /empresa/usuarios/:id/redefinir-senha` (admin): nova senha temporária (devolvida uma vez) + troca obrigatória; a senha antiga para de valer na hora.
+- Ambas recusam (400) a própria conta do admin e outros administradores (`buscarMembroGerenciavel`).
+- Unicidade de e-mail passou a considerar só contas ATIVAS (é o que o login enxerga: `findFirst({ email, ativo: true })`).
+- UI (Equipe): botões "Redefinir senha"/"Remover" com confirmação inline explicando a consequência; etiqueta **"Aguardando 1º acesso"** pra quem ainda não trocou a senha temporária; modal da nova senha (só fecha pelo botão - mesma proteção do convite). Bloco da senha temporária extraído pra `SenhaTemporaria.jsx` (convite e redefinição usam o mesmo, sem código duplicado).
+
+### 3) Não-admins antigos sem perfil
+
+Não dá pra "resolver" por código sem escolher o perfil no lugar do admin - mas deixou de ser invisível: **aviso amarelo na aba Equipe** ("N pessoas estão sem perfil de acesso e por isso veem o sistema inteiro") + o select dessas pessoas fica destacado em âmbar com "Sem perfil (acesso total)".
+
+### 4) E-mail único no cadastro de empresa nova
+
+`auth.service.js#register` recusa (409) e-mail já usado por uma conta ATIVA de qualquer empresa - mesma regra do convite, fecha a colisão de login.
+
+### ✨ Efeito colateral positivo: suspender empresa agora derruba sessões abertas
+
+O mesmo hook global checa `empresa.ativo` a cada requisição → "Suspender Acesso" no Painel Master passa a encerrar na hora as sessões JÁ ABERTAS de todos os usuários da empresa (401), não só o próximo login. Era a limitação estrutural registrada no dossiê 2.8 desde 2026-09-22. Custo: 1 SELECT por PK por requisição autenticada (que a maioria das rotas já fazia desde o RBAC, agora cacheado em `request.acesso` e reaproveitado pelo `requirePermission`).
+
+### Migration
+
+`20260924190000_usuario_ativo_troca_senha` - 100% aditiva (`ADD COLUMN ativo BOOLEAN NOT NULL DEFAULT true, deve_trocar_senha BOOLEAN NOT NULL DEFAULT false`): todo usuário existente nasce ativo e sem troca obrigatória - ninguém é forçado a nada no deploy.
+
+### Validação
+
+- Backend (`fastify.inject`, MySQL local): **28/28** - convite com `deveTrocarSenha`; login com temporária; 403 TROCA em `/vendas` e `/chamados`; `/auth/me` liberada; troca com senha atual errada/curta/igual → 400; troca correta → 204 e o MESMO token volta a funcionar; senha temporária antiga não loga mais; redefinição pelo admin (sessão aberta passa a receber TROCA, senha anterior invalidada; admin não redefine a própria → 400); remoção → **sessão já aberta recebe 401**, login recusado, some da lista, conta preservada (`ativo=false`, perfil zerado), **venda da pessoa continua ligada a ela**; admin não remove a si mesmo; perfil excluível depois; reconvite reativa a MESMA conta; `register` com e-mail já usado → 409; **empresa suspensa → token de admin já aberto recebe 401**, reativada → mesmo token volta.
+- E2E Playwright com **dois navegadores simultâneos** (admin e funcionária): aviso "sem perfil" e etiqueta "Aguardando 1º acesso" na Equipe; 1º login da funcionária cai em "Olá, Maria! Defina sua senha" (URL direta `/vendas` continua nela); senha temporária errada → erro na tela; correta → entra em `/vendas`; "Alterar senha" voluntário funciona; admin redefine a senha → a sessão aberta da funcionária cai na troca obrigatória; admin remove → a sessão aberta da funcionária é deslogada pra `/login`. 0 erros de página.
+- **Ajuste visual pego no screenshot**: com o botão novo na linha do tema, o rodapé do admin tinha 3 botões e "Modo Escuro" quebrava em 2 linhas → a chave foi pra linha do "Sair" (ações da conta juntas); conferido expandido e recolhido.
+- Tudo criado pelos testes apagado; empresa de teste restaurada (plano, ativa).
+
+### Ainda em aberto (novas, menores)
+
+- Não há "esqueci minha senha" self-service (depende de envio de e-mail, que o sistema não tem) - quem esquece pede ao admin "Redefinir senha".
+- Não há reativação sem reconvite (reconvidar o mesmo e-mail é o caminho, e já gera senha nova).
+- Admin da loja continua não gerenciável pela UI (trocar/remover outro admin só no banco) - de propósito.
+
+### Deploy
+
+Backup → "Pull and redeploy" → `docker exec sae_api npx prisma migrate deploy` (aplica as 2 migrations do RBAC, se ainda não aplicadas).

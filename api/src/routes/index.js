@@ -17,4 +17,5 @@ module.exports = async function routes(fastify) {
   fastify.register(require('./chamados.routes'), { prefix: '/chamados' });
   fastify.register(require('./configuracoes.routes'), { prefix: '/configuracoes' });
   fastify.register(require('./superadmin.routes'), { prefix: '/superadmin' });
+  fastify.register(require('./perfis.routes'), { prefix: '/perfis' });
 };

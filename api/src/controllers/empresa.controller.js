@@ -57,21 +57,32 @@ async function listarUsuarios(request, reply) {
   return reply.send(usuarios);
 }
 
+/**
+ * POST /empresa/usuarios - "Convidar Usuario" (RBAC, 2026-09-24):
+ * { email, perfil_id, nome? }. A resposta traz `senhaTemporaria` UMA vez
+ * (ver empresaService.adicionarUsuario). `senha`/`role` do corpo antigo
+ * sao ignorados de proposito (convidado nunca vira admin).
+ */
 async function adicionarUsuario(request, reply) {
-  const { nome, email, senha, role } = request.body || {};
+  const { nome, email, perfil_id: perfilId } = request.body || {};
 
-  if (!nome || !email || !senha) {
-    return reply.code(400).send({ error: 'nome, email e senha sao obrigatorios.' });
+  if (!email || !perfilId) {
+    return reply.code(400).send({ error: 'email e perfil_id sao obrigatorios.' });
   }
 
-  const usuario = await empresaService.adicionarUsuario(request.server.prisma, request.tenantId, {
-    nome,
-    email,
-    senha,
-    role,
-  });
-
+  const usuario = await empresaService.adicionarUsuario(request.server.prisma, request.tenantId, { nome, email, perfilId });
   return reply.code(201).send(usuario);
+}
+
+/** PUT /empresa/usuarios/:id/perfil - { perfil_id } - troca o perfil de acesso de alguem da equipe. */
+async function atualizarPerfilUsuario(request, reply) {
+  const usuarioId = Number(request.params.id);
+  if (!Number.isInteger(usuarioId) || usuarioId <= 0) {
+    return reply.code(400).send({ error: 'id deve ser um numero inteiro positivo.' });
+  }
+  const { perfil_id: perfilId } = request.body || {};
+  const usuario = await empresaService.atualizarPerfilUsuario(request.server.prisma, request.tenantId, usuarioId, perfilId);
+  return reply.send(usuario);
 }
 
 async function atualizarAssinatura(request, reply) {
@@ -88,12 +99,40 @@ async function atualizarAssinatura(request, reply) {
   return reply.send(empresa);
 }
 
+function parseUsuarioId(request, reply) {
+  const id = Number(request.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    reply.code(400).send({ error: 'id deve ser um numero inteiro positivo.' });
+    return null;
+  }
+  return id;
+}
+
+/** POST /empresa/usuarios/:id/redefinir-senha - nova senha temporaria (devolvida uma vez) + troca obrigatoria. */
+async function redefinirSenhaUsuario(request, reply) {
+  const usuarioId = parseUsuarioId(request, reply);
+  if (usuarioId === null) return;
+  const resultado = await empresaService.redefinirSenhaUsuario(request.server.prisma, request.tenantId, request.userId, usuarioId);
+  return reply.send(resultado);
+}
+
+/** DELETE /empresa/usuarios/:id - "Remover da equipe" (desativa; historico preservado, sessoes caem na hora). */
+async function removerUsuario(request, reply) {
+  const usuarioId = parseUsuarioId(request, reply);
+  if (usuarioId === null) return;
+  await empresaService.removerUsuario(request.server.prisma, request.tenantId, request.userId, usuarioId);
+  return reply.code(204).send();
+}
+
 module.exports = {
+  redefinirSenhaUsuario,
+  removerUsuario,
   obterDados,
   atualizarDados,
   atualizarModulos,
   confirmarPagamento,
   listarUsuarios,
   adicionarUsuario,
+  atualizarPerfilUsuario,
   atualizarAssinatura,
 };

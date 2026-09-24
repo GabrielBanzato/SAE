@@ -1,11 +1,14 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { Loader2, Lock } from 'lucide-react';
+import { Loader2, Lock, ShieldOff } from 'lucide-react';
 import Layout from './components/Layout';
 import PrivateRoute from './components/PrivateRoute';
 import Placeholder from './components/Placeholder';
 import Login from './pages/Login';
 import Cadastro from './pages/Cadastro';
+// Import estatico (nao lazy) pelo mesmo motivo de Login/Cadastro: e o caminho
+// obrigatorio de quem acabou de entrar com senha temporaria.
+import TrocarSenhaObrigatoria from './pages/TrocarSenhaObrigatoria';
 import { useAuth } from './context/AuthContext';
 
 // Paginas de negocio via import dinamico (code splitting por rota - cada
@@ -33,6 +36,7 @@ const Configuracoes = lazy(() => import('./pages/Configuracoes'));
 const Modulos = lazy(() => import('./pages/Modulos'));
 const Suporte = lazy(() => import('./pages/Suporte'));
 const ChamadoChat = lazy(() => import('./pages/ChamadoChat'));
+const AlterarSenha = lazy(() => import('./pages/AlterarSenha'));
 const InboxUnificado = lazy(() => import('./pages/InboxUnificado'));
 // Painel Master (Supra Admin) - layout e rotas PROPRIAS, deliberadamente
 // fora da arvore de <Layout /> normal (ver comentario de `ehSuperAdmin`
@@ -62,27 +66,40 @@ const ConfiguracoesGlobais = lazy(() => import('./pages/superadmin/Configuracoes
  * empresa, nunca aparecem como toggle removível em Modulos.jsx.
  */
 const ROTAS_POR_MODULO = [
-  { modulo: 'vendas', path: '/vendas', element: <Vendas /> },
-  { modulo: 'vendas', path: '/historico-vendas', element: <HistoricoVendas /> },
-  { modulo: 'produtos', path: '/produtos', element: <Produtos /> },
-  { modulo: 'precificacao', path: '/precificacao', element: <CalculadoraPrecificacao /> },
-  { modulo: 'estoque_avancado', path: '/estoque', element: <Estoque /> },
-  { modulo: 'clientes', path: '/clientes', element: <Clientes /> },
-  { modulo: 'financeiro', path: '/lancamentos', element: <Lancamentos /> },
-  { modulo: 'financeiro', path: '/financeiro', element: <ControleFinanceiro /> },
-  { modulo: 'financeiro', path: '/dre', element: <DRE /> },
-  { modulo: 'agenda', path: '/agenda', element: <Agenda /> },
+  { modulo: 'vendas', permissao: 'VER_VENDAS', path: '/vendas', element: <Vendas /> },
+  { modulo: 'vendas', permissao: 'VER_VENDAS', path: '/historico-vendas', element: <HistoricoVendas /> },
+  { modulo: 'produtos', permissao: 'VER_PRODUTOS', path: '/produtos', element: <Produtos /> },
+  { modulo: 'precificacao', permissao: 'VER_PRODUTOS', path: '/precificacao', element: <CalculadoraPrecificacao /> },
+  { modulo: 'estoque_avancado', permissao: 'VER_ESTOQUE', path: '/estoque', element: <Estoque /> },
+  { modulo: 'clientes', permissao: 'VER_CLIENTES', path: '/clientes', element: <Clientes /> },
+  { modulo: 'financeiro', permissao: 'VER_FINANCEIRO', path: '/lancamentos', element: <Lancamentos /> },
+  { modulo: 'financeiro', permissao: 'VER_FINANCEIRO', path: '/financeiro', element: <ControleFinanceiro /> },
+  { modulo: 'financeiro', permissao: 'VER_FINANCEIRO', path: '/dre', element: <DRE /> },
+  { modulo: 'agenda', permissao: 'VER_AGENDA', path: '/agenda', element: <Agenda /> },
   // Desacoplado de 'agenda' nesta tarefa - o Quadro de Tarefas Kanban virou
   // um modulo opcional com toggle proprio na App Store (card "Gestão de
   // Equipe/Kanban"), independente de a empresa usar a Agenda ou nao (mesmo
   // que as duas ainda compartilhem a tabela `Tarefa`, ver schema.prisma).
-  { modulo: 'tarefas', path: '/tarefas', element: <QuadroTarefas /> },
-  { modulo: 'relatorios', path: '/relatorios', element: <Relatorios /> },
+  { modulo: 'tarefas', permissao: 'VER_TAREFAS', path: '/tarefas', element: <QuadroTarefas /> },
+  { modulo: 'relatorios', permissao: 'VER_RELATORIOS', path: '/relatorios', element: <Relatorios /> },
   // Inbox Unificado de WhatsApp - antes sempre acessivel (sem modulo), agora
   // com toggle proprio na App Store (card "Inbox de Inteligência
   // Artificial").
-  { modulo: 'ia_whatsapp', path: '/inbox', element: <InboxUnificado /> },
+  { modulo: 'ia_whatsapp', permissao: 'VER_INBOX', path: '/inbox', element: <InboxUnificado /> },
 ];
+
+/** Rota existe, modulo ativo, mas o PERFIL do usuario nao libera (RBAC). */
+function SemPermissao() {
+  return (
+    <Placeholder
+      titulo="Acesso restrito"
+      icon={ShieldOff}
+      descricao="Seu perfil de acesso não inclui esta área."
+      corpoTitulo="Sem permissão"
+      corpoTexto="Se você precisa desta tela para o seu trabalho, peça ao administrador da loja para ajustar o seu perfil."
+    />
+  );
+}
 
 function CarregandoRota() {
   return (
@@ -103,9 +120,16 @@ function CarregandoRota() {
  * a mensagem de bloqueio por um instante antes da lista real chegar.
  */
 function RotasDaAplicacao() {
-  const { empresa, usuario } = useAuth();
+  const { empresa, usuario, ehAdmin, pode } = useAuth();
+  // RBAC (2026-09-24): rota registrada mas SEM permissao mostra um aviso
+  // claro em vez da tela (que so receberia 403 da API em todo fetch).
+  const guardar = (permissao, elemento) => (pode(permissao) ? elemento : <SemPermissao />);
   const carregandoEmpresa = empresa === null;
   const modulos = empresa?.modulos ?? [];
+  // Sem VER_DASHBOARD, "/" redireciona pra primeira tela que o perfil libera.
+  const primeiraRotaPermitida = ROTAS_POR_MODULO.find(
+    ({ modulo, permissao }) => modulos.includes(modulo) && pode(permissao)
+  )?.path;
   // Painel Supra Admin (2026-09-22) - gate SEPARADO do mecanismo de modulo
   // (nao e um "modulo" de negocio de uma empresa, e um nivel de acesso da
   // PLATAFORMA inteira, ver Usuario.nivelAcesso no schema.prisma). Sem
@@ -113,6 +137,21 @@ function RotasDaAplicacao() {
   // populado desde o primeiro render via localStorage (AuthContext
   // #obterUsuarioInicial), nao existe um estado transitorio "ainda nao sei".
   const ehSuperAdmin = usuario?.nivelAcesso === 'SUPERADMIN';
+
+  // Senha temporaria pendente (convite / redefinida pelo admin): o app
+  // inteiro vira SO a tela de troca - nenhuma rota de negocio monta ate a
+  // pessoa definir a senha dela (a API tambem recusa, 403
+  // TROCA_SENHA_OBRIGATORIA). Login/Cadastro continuam acessiveis (sair e
+  // entrar com outra conta).
+  if (usuario?.deveTrocarSenha) {
+    return (
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/cadastro" element={<Cadastro />} />
+        <Route path="*" element={<TrocarSenhaObrigatoria />} />
+      </Routes>
+    );
+  }
 
   return (
     <Suspense fallback={<CarregandoRota />}>
@@ -124,18 +163,37 @@ function RotasDaAplicacao() {
         {/* Tudo daqui pra baixo exige sessao ativa (ver PrivateRoute). */}
         <Route element={<PrivateRoute />}>
           <Route element={<Layout />}>
-            <Route path="/" element={<Dashboard />} />
+            {/* Sem VER_DASHBOARD: "/" (pagina de entrada pos-login) leva pra
+                primeira tela que o perfil libera, em vez de "Acesso restrito". */}
+            <Route
+              path="/"
+              element={
+                pode('VER_DASHBOARD') ? (
+                  <Dashboard />
+                ) : carregandoEmpresa ? (
+                  <CarregandoRota />
+                ) : primeiraRotaPermitida ? (
+                  <Navigate to={primeiraRotaPermitida} replace />
+                ) : (
+                  <SemPermissao />
+                )
+              }
+            />
 
             {!carregandoEmpresa &&
               ROTAS_POR_MODULO.map(
-                ({ modulo, path, element }) => modulos.includes(modulo) && <Route key={path} path={path} element={element} />
+                ({ modulo, permissao, path, element }) =>
+                  modulos.includes(modulo) && <Route key={path} path={path} element={guardar(permissao, element)} />
               )}
 
             {/* Sempre acessiveis, independente de segmento/modulo. */}
-            <Route path="/notas" element={<Notas />} />
-            <Route path="/configuracoes" element={<Configuracoes />} />
-            <Route path="/modulos" element={<Modulos />} />
+            <Route path="/notas" element={guardar('VER_FINANCEIRO', <Notas />)} />
+            {/* Configuracoes/Modulos (equipe, perfis, assinatura, App Store) - so admin. */}
+            <Route path="/configuracoes" element={ehAdmin ? <Configuracoes /> : <SemPermissao />} />
+            <Route path="/modulos" element={ehAdmin ? <Modulos /> : <SemPermissao />} />
             <Route path="/suporte" element={<Suporte />} />
+            {/* Sempre acessivel (admin ou nao) - botao da chave no rodape da Sidebar. */}
+            <Route path="/conta/senha" element={<AlterarSenha />} />
             {/* Chat de um chamado (2026-09-23) - dentro do Layout, mantem a Sidebar. */}
             <Route path="/suporte/chamado/:id" element={<ChamadoChat />} />
 
@@ -170,7 +228,7 @@ function RotasDaAplicacao() {
               "Módulo indisponível") - especificidade de rota do React
               Router sempre prioriza este match exato sobre aquele wildcard
               quando os dois estao presentes. */}
-          {!carregandoEmpresa && modulos.includes('pdv_touch') && <Route path="/pdv" element={<PDV />} />}
+          {!carregandoEmpresa && modulos.includes('pdv_touch') && <Route path="/pdv" element={guardar('VER_VENDAS', <PDV />)} />}
 
           {/* Painel Master (Supra Admin): de proposito FORA do
               `<Route element={<Layout />}>` acima, mesmo espirito do PDV -

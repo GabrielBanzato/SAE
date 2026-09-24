@@ -6,8 +6,9 @@ module.exports = async function whatsappRoutes(fastify) {
   fastify.post('/webhook/:empresaId', { config: { public: true } }, whatsappController.webhook);
 
   // Sem config.public -> passam pelo hook global de autenticacao, exigem JWT valido.
-  fastify.get('/atendimentos', whatsappController.listarAtendimentosAbertos);
-  fastify.get('/atendimentos/:id/mensagens', whatsappController.listarMensagens);
-  fastify.post('/atendimentos/:id/mensagens', whatsappController.enviarMensagemManual);
-  fastify.patch('/atendimentos/:id/ia-ativa', whatsappController.alternarIaAtiva);
+  // RBAC por rota (nao hook do plugin): o webhook acima e publico, sem usuario.
+  fastify.get('/atendimentos', { preHandler: fastify.requirePermission('VER_INBOX') }, whatsappController.listarAtendimentosAbertos);
+  fastify.get('/atendimentos/:id/mensagens', { preHandler: fastify.requirePermission('VER_INBOX') }, whatsappController.listarMensagens);
+  fastify.post('/atendimentos/:id/mensagens', { preHandler: fastify.requirePermission('VER_INBOX') }, whatsappController.enviarMensagemManual);
+  fastify.patch('/atendimentos/:id/ia-ativa', { preHandler: fastify.requirePermission('VER_INBOX') }, whatsappController.alternarIaAtiva);
 };

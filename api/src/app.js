@@ -3,6 +3,7 @@ const cors = require('@fastify/cors');
 
 const prismaPlugin = require('./plugins/prisma');
 const authPlugin = require('./plugins/auth');
+const permissoesPlugin = require('./plugins/permissoes');
 const routes = require('./routes');
 
 function buildApp(opts = {}) {
@@ -51,6 +52,9 @@ function buildApp(opts = {}) {
   // (middleware global de JWT + tenant), depois as rotas.
   app.register(prismaPlugin);
   app.register(authPlugin);
+  // Autorizacao (RBAC) - depois do auth (precisa de request.userId/tenantId)
+  // e antes das rotas (elas usam fastify.requirePermission/requireAdmin).
+  app.register(permissoesPlugin);
   app.register(routes);
 
   app.setErrorHandler((err, request, reply) => {

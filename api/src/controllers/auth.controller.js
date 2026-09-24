@@ -57,8 +57,15 @@ async function login(request, reply) {
 
 /** GET /auth/me - usuario logado (id sempre do token, ver auth.service.js#me). */
 async function me(request, reply) {
-  const usuario = await authService.me(request.server.prisma, request.userId);
+  const usuario = await authService.me(request.server.prisma, request.userId, request.tenantId);
   return reply.send(usuario);
 }
 
-module.exports = { register, login, me };
+/** PUT /auth/senha - { senha_atual, nova_senha } - a propria pessoa troca a senha (id sempre do token). */
+async function alterarSenha(request, reply) {
+  const { senha_atual: senhaAtual, nova_senha: novaSenha } = request.body || {};
+  await authService.alterarSenha(request.server.prisma, request.userId, request.tenantId, { senhaAtual, novaSenha });
+  return reply.code(204).send();
+}
+
+module.exports = { register, login, me, alterarSenha };

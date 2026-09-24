@@ -102,7 +102,7 @@ async function registrarVenda(
       if (!funcionarioId) {
         throw new AppError("funcionario_id e obrigatorio quando forma_pagamento e 'consumo_interno'.", 400);
       }
-      funcionario = await tx.usuario.findFirst({ where: { id: funcionarioId, empresaId: tenantId } });
+      funcionario = await tx.usuario.findFirst({ where: { id: funcionarioId, empresaId: tenantId, ativo: true } });
       if (!funcionario) {
         throw new AppError('Funcionario nao encontrado.', 404);
       }

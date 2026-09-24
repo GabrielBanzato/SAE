@@ -22,7 +22,7 @@ async function findById(prisma, tenantId, id) {
 async function validarResponsavel(prisma, tenantId, responsavelId) {
   if (responsavelId === undefined || responsavelId === null) return;
 
-  const usuario = await prisma.usuario.findFirst({ where: { id: responsavelId, empresaId: tenantId } });
+  const usuario = await prisma.usuario.findFirst({ where: { id: responsavelId, empresaId: tenantId, ativo: true } });
   if (!usuario) {
     throw new AppError('responsavelId nao corresponde a um usuario desta empresa.', 422);
   }

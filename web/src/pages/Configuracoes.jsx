@@ -1,17 +1,20 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Store, Users, HeartHandshake, Lock } from 'lucide-react';
+import { Store, Users, HeartHandshake, Lock, ShieldCheck } from 'lucide-react';
 import { apiFetch } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import DadosDaLoja from '../components/configuracoes/DadosDaLoja';
 import UsuariosEquipe from '../components/configuracoes/UsuariosEquipe';
 import Assinatura from '../components/configuracoes/Assinatura';
+import PerfisAcesso from '../components/configuracoes/PerfisAcesso';
 
 const MENSAGEM_EQUIPE_BLOQUEADA = 'Recurso exclusivo para Apoiadores do sistema.';
 
 const ABAS = [
   { id: 'dados', label: 'Dados da Loja', icon: Store },
   { id: 'usuarios', label: 'Equipe', icon: Users },
+  // RBAC (2026-09-24) - cargos e o que cada um acessa (Equipe escolhe o perfil de cada pessoa).
+  { id: 'perfis', label: 'Perfis de Acesso', icon: ShieldCheck },
   { id: 'assinatura', label: 'Assinatura', icon: HeartHandshake },
 ];
 
@@ -133,7 +136,7 @@ export default function Configuracoes() {
       <div>
         <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 sm:text-3xl">Configurações</h1>
         <p className="mt-1 text-lg text-slate-500 dark:text-slate-400">
-          Dados da loja, sua equipe e a assinatura do sistema.
+          Dados da loja, sua equipe, perfis de acesso e a assinatura do sistema.
         </p>
       </div>
 
@@ -186,8 +189,20 @@ export default function Configuracoes() {
               usuarios={usuarios}
               plano={empresa?.plano}
               onIrParaAssinatura={() => setAbaAtiva('assinatura')}
+              onIrParaPerfis={() => setAbaAtiva('perfis')}
+              // Recarrega a equipe NO LUGAR (convite/troca de perfil). NAO usar
+              // setUsuarios(null): isso mostra "Carregando..." e DESMONTA o
+              // UsuariosEquipe - junto com o modal de convite aberto, perdendo a
+              // senha temporaria que so aparece uma vez (bug pego no teste E2E).
+              onUsuariosAtualizados={() =>
+                apiFetch('/empresa/usuarios')
+                  .then(setUsuarios)
+                  .catch(() => {})
+              }
             />
           ))}
+
+        {abaAtiva === 'perfis' && <PerfisAcesso />}
 
         {abaAtiva === 'assinatura' &&
           (carregandoEmpresa ? (

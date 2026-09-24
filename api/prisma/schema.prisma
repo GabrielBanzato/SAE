@@ -198,8 +198,37 @@ model Empresa {
   ingredientes    Ingrediente[]
   atendimentos    Atendimento[]
   chamadosSuporte ChamadoSuporte[]
+  perfis          Perfil[]
 
   @@map("empresas")
+}
+
+/// Perfil de acesso (RBAC, 2026-09-24) - um "cargo" criado pelo admin da
+/// empresa (ex.: Producao, Vendas, Financeiro) com o conjunto de permissoes
+/// que ele libera. Cada Usuario (nao-admin) aponta pra no maximo 1 Perfil.
+///
+/// `permissoes`: Json com um ARRAY de chaves de permissao (ex.:
+/// ["VER_VENDAS","VER_CLIENTES"]) - MySQL nao tem tipo array nativo, e uma
+/// tabela de juncao perfil<->permissao seria excesso pra um catalogo FIXO
+/// definido em codigo (api/src/services/permissoes.js#CATALOGO_PERMISSOES).
+/// O service sempre normaliza antes de gravar (so chaves do catalogo, sem
+/// duplicata) - nunca confia no array vindo do cliente.
+model Perfil {
+  id           Int      @id @default(autoincrement()) @db.UnsignedInt
+  empresaId    Int      @map("empresa_id") @db.UnsignedInt
+  nome         String   @db.VarChar(60)
+  permissoes   Json
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @default(now()) @updatedAt @map("atualizado_em")
+
+  // Cascade: perfis nao existem fora da empresa (tenant) que os criou.
+  empresa  Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  usuarios Usuario[]
+
+  // Nome unico POR empresa (duas empresas podem ter um perfil "Vendas").
+  @@unique([empresaId, nome], map: "uq_perfis_empresa_nome")
+  @@index([empresaId], map: "idx_perfis_empresa_id")
+  @@map("perfis")
 }
 
 model Usuario {
@@ -240,10 +269,35 @@ model Usuario {
   // nunca escolhido pelo usuario, nunca reaproveitado como credencial de
   // login (email+senha continua sendo o unico jeito de entrar).
   codigoUsuario String      @unique(map: "uq_usuarios_codigo_usuario") @map("codigo_usuario") @db.VarChar(5)
+  // Perfil de acesso (RBAC, 2026-09-24) - decide quais paginas/menus e
+  // rotas da API este usuario acessa (ver plugins/permissoes.js). Regras:
+  //   - role 'admin'  -> acesso TOTAL, perfil ignorado;
+  //   - perfilId set  -> so as permissoes do perfil;
+  //   - perfilId null (nao-admin) -> acesso total LEGADO (usuarios criados
+  //     antes do RBAC; o convite novo sempre exige perfil).
+  // `onDelete: Restrict` DE PROPOSITO (nao SetNull): se apagar o perfil
+  // zerasse este campo, o usuario cairia no caso "null" e GANHARIA acesso
+  // total - escalada de privilegio. O service tambem recusa (409) antes.
+  // O perfil precisa ser da MESMA empresa do usuario - garantido no
+  // service (a FK sozinha nao checa tenant).
+  perfilId      Int?        @map("perfil_id") @db.UnsignedInt
+  // "Remover da equipe" (2026-09-24) = DESATIVAR, nao apagar: toda FK que
+  // aponta pra Usuario (vendas, consumo interno, tarefas, chamados) e
+  // Restrict - apagar quem ja vendeu perderia o autor do historico. Inativo:
+  // login recusado e QUALQUER sessao aberta cai na proxima requisicao (o
+  // acesso e lido do banco a cada request, plugins/permissoes.js). Nao conta
+  // no limite de usuarios do plano; convidar o mesmo e-mail de novo REATIVA.
+  ativo         Boolean     @default(true)
+  // Senha temporaria (convite ou "Redefinir senha" pelo admin) - enquanto
+  // true, a API so aceita GET /auth/me e PUT /auth/senha (403
+  // TROCA_SENHA_OBRIGATORIA no resto) e o frontend mostra so a tela de
+  // troca de senha. Vira false quando a propria pessoa define a senha dela.
+  deveTrocarSenha Boolean   @default(false) @map("deve_trocar_senha")
   criadoEm      DateTime    @default(now()) @map("criado_em")
   atualizadoEm  DateTime    @default(now()) @updatedAt @map("atualizado_em")
 
   empresa           Empresa          @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  perfil            Perfil?          @relation(fields: [perfilId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   // 2 relacoes distintas com Venda (quem vendeu vs. quem consumiu
   // internamente) - precisam de nome pra o Prisma saber diferenciar qual
   // FK cada uma representa (ver Venda.usuarioId/funcionarioId acima).
@@ -256,6 +310,7 @@ model Usuario {
   // tenants diferentes podem ter usuarios com o mesmo e-mail.
   @@unique([empresaId, email], map: "uq_usuarios_empresa_email")
   @@index([empresaId], map: "idx_usuarios_empresa_id")
+  @@index([perfilId], map: "idx_usuarios_perfil_id")
   @@map("usuarios")
 }
 

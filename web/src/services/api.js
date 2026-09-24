@@ -42,6 +42,11 @@ api.interceptors.response.use(
       localStorage.removeItem(USER_KEY);
       window.dispatchEvent(new Event('sae:unauthorized'));
     }
+    // Senha temporaria pendente (ex.: o admin redefiniu a senha desta pessoa
+    // com a sessao aberta) - o AuthContext troca a tela pra "Defina sua senha".
+    if (error.response?.status === 403 && error.response?.data?.codigo === 'TROCA_SENHA_OBRIGATORIA') {
+      window.dispatchEvent(new Event('sae:troca-senha-obrigatoria'));
+    }
     return Promise.reject(error);
   }
 );

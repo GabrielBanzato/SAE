@@ -65,6 +65,26 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('sae:unauthorized', logout);
   }, [logout]);
 
+  // Senha temporaria (2026-09-24): `usuario.deveTrocarSenha` decide se o app
+  // mostra SO a tela de troca (App.jsx). Vem do login//auth/me; este helper
+  // tambem e usado quando a API responde 403 TROCA_SENHA_OBRIGATORIA com a
+  // sessao ja aberta (evento disparado pelo interceptor em services/api.js)
+  // e, com `false`, logo depois de PUT /auth/senha dar certo.
+  const definirDeveTrocarSenha = useCallback((valor) => {
+    setUsuario((atual) => {
+      if (!atual || atual.deveTrocarSenha === valor) return atual;
+      const novo = { ...atual, deveTrocarSenha: valor };
+      localStorage.setItem(USER_KEY, JSON.stringify(novo));
+      return novo;
+    });
+  }, []);
+
+  useEffect(() => {
+    const exigirTroca = () => definirDeveTrocarSenha(true);
+    window.addEventListener('sae:troca-senha-obrigatoria', exigirTroca);
+    return () => window.removeEventListener('sae:troca-senha-obrigatoria', exigirTroca);
+  }, [definirDeveTrocarSenha]);
+
   // Busca os dados da empresa (inclui `plano`, usado por telas como
   // Relatorios.jsx pra decidir qual variante renderizar) sempre que o
   // usuario logado muda - login, registro, reidratacao do localStorage no
@@ -162,15 +182,34 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  // RBAC (2026-09-24) - `usuario.permissoes`/`ehAdmin` vem do login e do
+  // GET /auth/me (reidratado a cada boot). Isto e SO UX (esconder menu/
+  // rotas): quem barra de verdade e o `requirePermission` de cada rota da
+  // API. Sessao antiga no localStorage (sem `permissoes` ainda) = nao
+  // esconde nada ate o /auth/me responder - melhor que piscar "sem acesso"
+  // pra quem tem acesso; a API continua barrando o que nao pode.
+  const ehAdmin = Boolean(usuario?.ehAdmin ?? usuario?.role === 'admin');
+  const pode = useCallback(
+    (...permissoes) => {
+      if (!usuario) return false;
+      if (ehAdmin || !Array.isArray(usuario.permissoes)) return true;
+      return permissoes.some((p) => usuario.permissoes.includes(p));
+    },
+    [usuario, ehAdmin]
+  );
+
   const value = {
     usuario,
     empresa,
+    ehAdmin,
+    pode,
     estaAutenticado: Boolean(usuario),
     carregando,
     login,
     register,
     logout,
     refreshEmpresa,
+    definirDeveTrocarSenha,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

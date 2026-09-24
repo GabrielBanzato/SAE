@@ -1,4 +1,5 @@
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const AppError = require('../utils/AppError');
 // SEGMENTOS_VALIDOS/modulosDoSegmento/MODULOS_BASE/MODULOS_VALIDOS moram em
 // auth.service.js, ao lado de MAPA_MODULOS (a fonte da verdade do catalogo
@@ -409,41 +410,82 @@ async function obterAssinaturas(prisma, empresaId) {
  * Usuarios vinculados a empresa. `senhaHash` e deliberadamente excluido do
  * `select` - nunca deve sair da API, nem pra tela de configuracoes.
  */
+// `perfil` (RBAC, 2026-09-24) incluido - a tela de Equipe mostra o perfil
+// de cada pessoa e permite troca-lo.
+const SELECT_USUARIO_EQUIPE = {
+  id: true,
+  nome: true,
+  email: true,
+  role: true,
+  codigoUsuario: true,
+  criadoEm: true,
+  // Ainda nao trocou a senha temporaria -> Equipe mostra "Aguardando 1º acesso".
+  deveTrocarSenha: true,
+  perfil: { select: { id: true, nome: true } },
+};
+
 async function listarUsuarios(prisma, tenantId) {
   return prisma.usuario.findMany({
-    where: { empresaId: tenantId },
-    select: {
-      id: true,
-      nome: true,
-      email: true,
-      role: true,
-      codigoUsuario: true,
-      criadoEm: true,
-    },
+    // So a equipe ATIVA - removidos (ativo = false) somem da lista e dos selects (Tarefas/Vendas).
+    where: { empresaId: tenantId, ativo: true },
+    select: SELECT_USUARIO_EQUIPE,
     orderBy: { nome: 'asc' },
   });
 }
 
-/**
- * Adiciona um novo usuario a equipe da empresa, respeitando o limite de
- * usuarios do plano atual (gratuito: 2, apoiador: 5). O limite conta TODOS
- * os usuarios ja vinculados a esse tenant_id, incluindo o admin criado no
- * registro - ou seja, no plano gratuito so cabe mais 1 pessoa alem do
- * admin.
- */
-async function adicionarUsuario(prisma, tenantId, { nome, email, senha, role }) {
-  const empresa = await prisma.empresa.findUnique({
-    where: { id: tenantId },
-    select: { plano: true },
-  });
-
-  if (!empresa) {
-    throw new AppError('Empresa nao encontrada.', 404);
+/** Garante que o perfil existe E pertence a esta empresa - a FK sozinha aceitaria um perfil de OUTRO tenant. */
+async function validarPerfilDoTenant(prisma, tenantId, perfilId) {
+  const id = Number(perfilId);
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new AppError('perfil_id e obrigatorio - escolha o perfil de acesso da pessoa.', 400);
   }
+  const perfil = await prisma.perfil.findFirst({ where: { id, empresaId: tenantId }, select: { id: true } });
+  if (!perfil) throw new AppError('Perfil nao encontrado.', 404);
+  return id;
+}
 
+// Sem caracteres ambiguos (0/O, 1/l/I) - a senha e ditada/copiada por uma pessoa.
+const ALFABETO_SENHA = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+function gerarSenhaTemporaria(tamanho = 10) {
+  const bytes = crypto.randomBytes(tamanho);
+  return Array.from(bytes, (b) => ALFABETO_SENHA[b % ALFABETO_SENHA.length]).join('');
+}
+
+const REGEX_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * "Convidar Usuario" (RBAC, 2026-09-24) - adiciona uma pessoa a equipe com
+ * um PERFIL de acesso obrigatorio. Respeita o limite de usuarios do plano
+ * (conta todos do tenant, inclusive o admin).
+ *
+ * Sem servico de e-mail no sistema: a API gera uma SENHA TEMPORARIA
+ * aleatoria e a devolve UMA UNICA VEZ nesta resposta (`senhaTemporaria`) -
+ * o admin repassa pro funcionario. Ela nunca e gravada em texto puro (so o
+ * hash) nem aparece em nenhuma outra rota.
+ *
+ * Convidados entram SEMPRE com role 'vendedor' (nunca 'admin') - o que o
+ * usuario acessa passa a ser decidido pelo perfil; nao ha como um convite
+ * criar outro administrador.
+ *
+ * E-mail recusado se ja existir em QUALQUER empresa (nao so nesta):
+ * `auth.service.js#login` procura o usuario so por e-mail (`findFirst`,
+ * sem empresa) - um e-mail repetido entre tenants faria uma das contas
+ * nunca conseguir entrar.
+ */
+async function adicionarUsuario(prisma, tenantId, { nome, email, perfilId }) {
+  const emailNormalizado = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  if (!REGEX_EMAIL.test(emailNormalizado) || emailNormalizado.length > 150) {
+    throw new AppError('Informe um e-mail valido.', 400);
+  }
+  const nomeFinal = (typeof nome === 'string' && nome.trim()) || emailNormalizado.split('@')[0];
+  if (nomeFinal.length > 120) throw new AppError('nome deve ter no maximo 120 caracteres.', 400);
+
+  const empresa = await prisma.empresa.findUnique({ where: { id: tenantId }, select: { plano: true } });
+  if (!empresa) throw new AppError('Empresa nao encontrada.', 404);
+
+  // So ATIVOS contam no limite - quem foi removido da equipe libera a vaga.
   const limite = LIMITE_USUARIOS_POR_PLANO[empresa.plano];
-  const totalUsuarios = await prisma.usuario.count({ where: { empresaId: tenantId } });
-
+  const totalUsuarios = await prisma.usuario.count({ where: { empresaId: tenantId, ativo: true } });
   if (totalUsuarios >= limite) {
     throw new AppError(
       `Limite de usuarios do plano '${empresa.plano}' atingido (maximo ${limite}). Vire Apoiador para adicionar mais pessoas a equipe.`,
@@ -451,26 +493,127 @@ async function adicionarUsuario(prisma, tenantId, { nome, email, senha, role }) 
     );
   }
 
-  const roleFinal = role || 'vendedor';
-  if (!ROLES_VALIDOS.includes(roleFinal)) {
-    throw new AppError(`role deve ser um dos seguintes: ${ROLES_VALIDOS.join(', ')}.`, 422);
+  const perfilIdValido = await validarPerfilDoTenant(prisma, tenantId, perfilId);
+
+  // Unicidade de e-mail so entre contas ATIVAS (e o que o login enxerga).
+  const emailEmUso = await prisma.usuario.findFirst({ where: { email: emailNormalizado, ativo: true }, select: { empresaId: true } });
+  if (emailEmUso) {
+    throw new AppError(
+      emailEmUso.empresaId === tenantId
+        ? 'Ja existe um usuario com este e-mail na sua equipe.'
+        : 'Este e-mail ja esta cadastrado no SAE. Use outro e-mail para esta pessoa.',
+      409
+    );
   }
 
-  const senhaHash = await bcrypt.hash(senha, SALT_ROUNDS);
+  const senhaTemporaria = gerarSenhaTemporaria();
+  const senhaHash = await bcrypt.hash(senhaTemporaria, SALT_ROUNDS);
+
+  // Pessoa que ja foi desta equipe e foi removida (conta inativa, mesmo
+  // e-mail): REATIVA a mesma conta em vez de criar outra - o @@unique
+  // (empresaId, email) nao deixaria criar, e assim o historico dela
+  // (vendas, tarefas) continua ligado a mesma pessoa.
+  const contaInativa = await prisma.usuario.findFirst({
+    where: { empresaId: tenantId, email: emailNormalizado, ativo: false },
+    select: { id: true },
+  });
+  if (contaInativa) {
+    const usuario = await prisma.usuario.update({
+      where: { id: contaInativa.id },
+      data: { ativo: true, nome: nomeFinal, senhaHash, perfilId: perfilIdValido, role: 'vendedor', deveTrocarSenha: true },
+      select: SELECT_USUARIO_EQUIPE,
+    });
+    return { ...usuario, senhaTemporaria, reativado: true };
+  }
+
   const codigoUsuario = await gerarCodigoUsuario(prisma);
 
   try {
-    return await prisma.usuario.create({
-      data: { empresaId: tenantId, nome, email, senhaHash, role: roleFinal, codigoUsuario },
-      select: { id: true, nome: true, email: true, role: true, codigoUsuario: true, criadoEm: true },
+    const usuario = await prisma.usuario.create({
+      data: {
+        empresaId: tenantId,
+        nome: nomeFinal,
+        email: emailNormalizado,
+        senhaHash,
+        role: 'vendedor',
+        codigoUsuario,
+        perfilId: perfilIdValido,
+        // Obriga a trocar a senha temporaria no 1o login (ver plugins/permissoes.js).
+        deveTrocarSenha: true,
+      },
+      select: SELECT_USUARIO_EQUIPE,
     });
+    return { ...usuario, senhaTemporaria };
   } catch (err) {
-    // P2002 = violacao de unique constraint - aqui, @@unique([empresaId, email]).
-    if (err.code === 'P2002') {
-      throw new AppError('Ja existe um usuario com este e-mail nesta empresa.', 409);
-    }
+    // P2002 = unique constraint (corrida entre a checagem acima e o insert).
+    if (err.code === 'P2002') throw new AppError('Ja existe um usuario com este e-mail.', 409);
     throw err;
   }
+}
+
+/**
+ * Busca um membro ATIVO da equipe que o admin pode gerenciar (redefinir
+ * senha / remover). Recusa: a propria conta do admin (usar "Alterar
+ * senha"; remover a si mesmo trancaria a loja) e outros administradores
+ * (acesso total - gerenciados so direto no banco).
+ */
+async function buscarMembroGerenciavel(prisma, tenantId, adminId, usuarioId) {
+  if (usuarioId === adminId) {
+    throw new AppError('Voce nao pode fazer isso com a sua propria conta.', 400);
+  }
+  const usuario = await prisma.usuario.findFirst({
+    where: { id: usuarioId, empresaId: tenantId, ativo: true },
+    select: { id: true, role: true },
+  });
+  if (!usuario) throw new AppError('Usuario nao encontrado.', 404);
+  if (usuario.role === 'admin') {
+    throw new AppError('Nao e possivel alterar outro administrador por aqui.', 400);
+  }
+  return usuario;
+}
+
+/**
+ * "Redefinir senha" (admin) - gera NOVA senha temporaria, devolvida uma unica
+ * vez, e obriga a troca no proximo acesso. A senha antiga para de valer na
+ * hora; sessoes abertas da pessoa passam a receber 403 TROCA_SENHA_OBRIGATORIA
+ * (o frontend leva direto pra tela de troca).
+ */
+async function redefinirSenhaUsuario(prisma, tenantId, adminId, usuarioId) {
+  await buscarMembroGerenciavel(prisma, tenantId, adminId, usuarioId);
+  const senhaTemporaria = gerarSenhaTemporaria();
+  const usuario = await prisma.usuario.update({
+    where: { id: usuarioId },
+    data: { senhaHash: await bcrypt.hash(senhaTemporaria, SALT_ROUNDS), deveTrocarSenha: true },
+    select: SELECT_USUARIO_EQUIPE,
+  });
+  return { ...usuario, senhaTemporaria };
+}
+
+/**
+ * "Remover da equipe" (admin) = DESATIVAR (ver Usuario.ativo no schema): o
+ * historico (vendas, tarefas, chamados) continua com o nome da pessoa, o
+ * login e recusado e QUALQUER sessao aberta cai na proxima requisicao.
+ * `perfilId` e zerado (senao o perfil nunca mais poderia ser excluido - FK
+ * Restrict); se a pessoa for convidada de novo, ganha perfil novo no convite.
+ */
+async function removerUsuario(prisma, tenantId, adminId, usuarioId) {
+  await buscarMembroGerenciavel(prisma, tenantId, adminId, usuarioId);
+  await prisma.usuario.update({ where: { id: usuarioId }, data: { ativo: false, perfilId: null, deveTrocarSenha: false } });
+}
+/**
+ * Troca o perfil de acesso de alguem da equipe (RBAC, 2026-09-24). Vale na
+ * proxima requisicao dessa pessoa (acesso e lido do banco, nao do JWT).
+ * Recusa pra administradores (perfil nao se aplica - acesso sempre total)
+ * e nao aceita "sem perfil" (null = acesso total legado, seria escalada).
+ */
+async function atualizarPerfilUsuario(prisma, tenantId, usuarioId, perfilId) {
+  const usuario = await prisma.usuario.findFirst({ where: { id: usuarioId, empresaId: tenantId, ativo: true }, select: { role: true } });
+  if (!usuario) throw new AppError('Usuario nao encontrado.', 404);
+  if (usuario.role === 'admin') {
+    throw new AppError('Administradores tem acesso total - o perfil nao se aplica a eles.', 400);
+  }
+  const perfilIdValido = await validarPerfilDoTenant(prisma, tenantId, perfilId);
+  return prisma.usuario.update({ where: { id: usuarioId }, data: { perfilId: perfilIdValido }, select: SELECT_USUARIO_EQUIPE });
 }
 
 /**
@@ -613,6 +756,9 @@ module.exports = {
   obterAssinaturas,
   listarUsuarios,
   adicionarUsuario,
+  atualizarPerfilUsuario,
+  redefinirSenhaUsuario,
+  removerUsuario,
   atualizarAssinatura,
   calcularCiclosDoador,
   obterDadosDoador,
