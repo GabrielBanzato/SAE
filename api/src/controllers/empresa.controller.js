@@ -1,4 +1,5 @@
 const empresaService = require('../services/empresa.service');
+const { asaasConfigurado } = require('../services/asaas/asaasClient');
 
 async function obterDados(request, reply) {
   const empresa = await empresaService.obterDados(request.server.prisma, request.tenantId);
@@ -38,7 +39,20 @@ async function atualizarModulos(request, reply) {
 }
 
 /** PUT /empresa/pagamentos - checkout simulado (ModalPagamento, Modulos.jsx): marca um modulo pago e ja o ativa. */
+/**
+ * PUT /empresa/pagamentos - checkout SIMULADO (marca o modulo como pago sem
+ * cobrar nada). Desde a integracao com o Asaas (2026-09-24) so vale em
+ * DESENVOLVIMENTO sem gateway configurado: com ASAAS_API_KEY definida, ou em
+ * producao, responde 410 - senao qualquer admin continuaria liberando
+ * modulo pago de graca, anulando a cobranca real (POST /assinaturas/checkout).
+ * Liberacao gratuita legitima continua existindo so pelo Supra Admin
+ * (PUT /superadmin/empresas/:id/pagamentos).
+ */
 async function confirmarPagamento(request, reply) {
+  if (asaasConfigurado() || process.env.NODE_ENV === 'production') {
+    return reply.code(410).send({ error: 'O checkout simulado foi desativado. Use o pagamento por Pix ou Cartão.' });
+  }
+
   const { modulo, plano_ia: planoIa } = request.body || {};
 
   if (!modulo) {

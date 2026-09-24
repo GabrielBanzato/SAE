@@ -244,6 +244,32 @@ Multiusuário com controle de acesso por perfil (cargo com lista de permissões)
 - **Cada requisição autenticada relê usuário/empresa do banco** (1 SELECT por PK, cacheado por requisição) — é o que permite revogar acesso na hora (remoção, suspensão de empresa, troca de perfil). Se a latência da API subir de forma geral, esse ponto é um dos lugares a olhar, mas o custo medido é o de uma busca por chave primária.
 - **Excluir perfil em uso é bloqueado** (409 + FK `ON DELETE RESTRICT`) de propósito: zerar o perfil daria acesso total à pessoa.
 
+### 2.14 Pagamentos reais — gateway Asaas: como ligar e operar (2026-09-24)
+
+Os módulos pagos da App Store viraram **assinaturas mensais reais no Asaas** (uma por módulo). Migration `20260924230000_pagamentos_asaas` (aditiva). Sem configuração, nada quebra: o checkout real responde 503 ("pagamentos ainda não configurados") e o webhook recusa tudo.
+
+**Passo a passo para ligar (fazer PRIMEIRO no sandbox):**
+1. Criar conta no **sandbox** (sandbox.asaas.com) → Integrações → Chaves de API → gerar chave.
+2. Gerar um token de webhook: `openssl rand -hex 32` (32–255 caracteres, sem espaços).
+3. No Portainer (variáveis da Stack) / `.env` do host: `ASAAS_API_KEY=<chave>`, `ASAAS_WEBHOOK_TOKEN=<token>`, `ASAAS_API_URL` **vazio** (= sandbox). Recriar o container `api`.
+4. No painel do Asaas → Integrações → Webhooks: URL `https://<domínio-da-api>/webhooks/asaas` (a API já é pública pelo túnel Cloudflare), **token de autenticação = o mesmo `ASAAS_WEBHOOK_TOKEN`**, eventos: `PAYMENT_RECEIVED`, `PAYMENT_CONFIRMED`, `PAYMENT_OVERDUE`. Fila ativa.
+5. Testar: assinar um módulo pela App Store, pagar o Pix de teste pelo painel do sandbox, conferir que o modal fecha sozinho e o módulo liga. Log do `api`: linha `Webhook do Asaas` com `motivo: "assinatura ativada"`.
+6. Só então produção: chave da conta real + `ASAAS_API_URL=https://api.asaas.com/v3` + webhook cadastrado de novo na conta real (token novo).
+
+**Troubleshoot rápido:**
+- **Checkout responde 503** → `ASAAS_API_KEY` ausente ou recusada pelo Asaas (401 lá = chave errada/revogada, ou chave de sandbox apontando para produção e vice-versa).
+- **Pagou e o módulo não liberou** → webhook. Log do `api`: `token invalido` = token diferente entre painel e `.env`; `ASAAS_WEBHOOK_TOKEN nao esta configurado` = variável ausente; nenhuma linha = o Asaas não está alcançando a URL (conferir túnel/URL no painel e se a **fila de webhooks está pausada** — o Asaas pausa depois de 15 falhas seguidas; reativar no painel reenvia os pendentes). Reenvio é seguro: eventos são idempotentes (tabela `webhook_eventos_asaas`).
+- **"Valor abaixo do mínimo"** → o Asaas não aceita cobrança menor que R$ 5,00 (configurável em `ASAAS_VALOR_MINIMO`). Hoje CRM e Kanban (R$ 3,90) caem aqui — ajustar o preço no Painel Master > Configurações Globais (≥ R$ 5,89 para ficar ≥ R$ 5,00 com o desconto de 15% de Apoiador).
+- **Consultar assinaturas no banco:** `SELECT empresa_id, modulo, valor, forma_pagamento, status, asaas_subscription_id FROM assinaturas_modulo;` — o `asaas_subscription_id` é o que se procura no painel do Asaas.
+
+**Segurança:**
+- **Dados de cartão nunca passam pelo SAE**: o pagamento por cartão é feito na página hospedada do Asaas (`invoiceUrl`). Não mudar isso para "cartão direto na API" sem avaliar PCI-DSS.
+- O **valor cobrado é sempre calculado no backend** (15% de Apoiador em `api/src/services/assinaturas/precos.js`); o que o navegador manda é ignorado.
+- O **checkout simulado** (`PUT /empresa/pagamentos`) fica desligado (410) com o Asaas configurado ou em produção — reativá-lo seria liberar módulo pago de graça.
+- **Chave e token do Asaas só no `.env`/Portainer**, nunca no repositório (ver 3.1). Se vazarem: gerar nova chave no painel do Asaas e trocar o token do webhook.
+
+**Limitação conhecida:** desligar um módulo na App Store **não cancela** a assinatura no Asaas (a cobrança mensal continua) — por enquanto, cancelar pelo painel do Asaas.
+
 ---
 
 ## 3. Configurações de Ambiente (`.env`)
@@ -282,8 +308,8 @@ Nenhum valor real de produção (senha de banco, `JWT_SECRET`, `TUNNEL_TOKEN`, e
 
 | Arquivo | Variáveis | Observação |
 |---|---|---|
-| `.env` (raiz) | `MYSQL_ROOT_PASSWORD`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_PORT`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `TUNNEL_TOKEN` | Consumido pelo `docker-compose.yml` para interpolar `${...}` nos 4 serviços. |
-| `api/.env` | `NODE_ENV`, `PORT`, `DATABASE_URL`, `SHADOW_DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL`, `WHATSAPP_PROVIDER`, `META_*` | Usado só para **rodar a API fora do Docker** (`npm run dev`/`npm start` local) — em container, quem define essas variáveis é o `environment:` do `docker-compose.yml`. `SHADOW_DATABASE_URL` só é necessária para `prisma migrate dev` (precisa de credenciais com permissão de `CREATE DATABASE` — por isso usa `root`, só em dev). |
+| `.env` (raiz) | `MYSQL_ROOT_PASSWORD`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_PORT`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `TUNNEL_TOKEN`, `ASAAS_API_KEY`, `ASAAS_API_URL`, `ASAAS_WEBHOOK_TOKEN` | Consumido pelo `docker-compose.yml` para interpolar `${...}` nos 4 serviços. |
+| `api/.env` | `NODE_ENV`, `PORT`, `DATABASE_URL`, `SHADOW_DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL`, `WHATSAPP_PROVIDER`, `META_*`, `ASAAS_API_KEY`, `ASAAS_API_URL`, `ASAAS_WEBHOOK_TOKEN` (ver 2.14) | Usado só para **rodar a API fora do Docker** (`npm run dev`/`npm start` local) — em container, quem define essas variáveis é o `environment:` do `docker-compose.yml`. `SHADOW_DATABASE_URL` só é necessária para `prisma migrate dev` (precisa de credenciais com permissão de `CREATE DATABASE` — por isso usa `root`, só em dev). |
 | `web/.env` | `VITE_API_URL` | Só essa. Lida em **build time** (ver 3.3), não runtime do Nginx. |
 
 ---

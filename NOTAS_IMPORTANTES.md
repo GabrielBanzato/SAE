@@ -7326,3 +7326,50 @@ Backup → "Pull and redeploy" → `docker exec sae_api npx prisma migrate deplo
 **Validação** (API + Playwright, MySQL local): **13/13** - com um funcionário convidado (código pessoal 94146) na mesma loja do dono (27501): `/empresa/dados` devolve `27501` pros dois; o funcionário NÃO vê o próprio código; chamado aberto pelo funcionário (mesmo mandando `usuario_codigo: 99999` forjado no corpo) aparece no Supra Admin como Loja `27501` na lista, no chat e na aba Empresas; empresa nova nasce com `codigoLoja` = código do fundador; empresa sem código ganha um de 5 dígitos na 1ª leitura e ele fica estável. UI: cartão "ID da Loja" e campo do formulário mostram `27501` tanto pro dono quanto pro funcionário. Backfill conferido: `codigo_loja` = código do admin fundador em todas as empresas locais. Dados de teste apagados.
 
 **Deploy**: migration aditiva + backfill idempotente (`WHERE codigo_loja IS NULL`) - backup → "Pull and redeploy" → `docker exec sae_api npx prisma migrate deploy`. Depois, conferir no Painel Master > Empresas que a coluna "ID" continua com os mesmos números de antes.
+
+---
+
+## Pagamentos reais via Asaas - assinaturas mensais por módulo, Pix e Cartão (2026-09-24)
+
+**Pedido**: integrar o gateway Asaas - assinatura recorrente mensal (R$ 5,90; Apoiador com 15% de desconto = R$ 5,01), modal com "Pagar com Pix" / "Pagar com Cartão", QR Code Pix em base64, webhook seguro que ativa a assinatura, e short polling no modal pra fechar sozinho quando o pagamento for confirmado.
+
+**Conflitos achados e decididos com o usuário ANTES de codar:**
+1. **Desconto de Apoiador**: o sistema dava **50%** (R$ 5,90 → R$ 2,90), calculado SÓ no frontend (`Modulos.jsx#calcularPrecoDoador`). Decisão: **15%** em todo o sistema, calculado no backend (fonte da verdade da cobrança); a App Store passou a mostrar 15% também.
+2. **"O plano de R$ 5,90"**: no SAE, R$ 5,90 é o preço de UM módulo (PDV). Decisão: **uma assinatura Asaas por módulo pago** (encaixa na App Store existente, substitui o checkout simulado).
+
+**⚠️ Restrição do gateway descoberta pesquisando a doc do Asaas**: valor mínimo por cobrança de **R$ 5,00** (os R$ 10 que aparecem em algumas páginas são por *parcela* de parcelamento Pix/boleto, não se aplicam a assinatura). O R$ 5,01 do pedido passa; **CRM e Kanban (R$ 3,90 cheio / R$ 3,31 Apoiador) NÃO podem ser cobrados** - o backend recusa com mensagem clara (422) antes de chamar o Asaas. Não foi possível abrir a página da Central de Ajuda do Asaas que tem o valor exato (403) - o mínimo ficou configurável (`ASAAS_VALOR_MINIMO`, padrão 5) e qualquer recusa do próprio Asaas também é repassada com a mensagem dele. **Ação de produto pendente**: subir o preço desses módulos no Painel Master pra ≥ R$ 5,89 (vira ≥ R$ 5,00 com os 15%) ou decidir outra coisa pra eles.
+
+### Schema (migration `20260924230000_pagamentos_asaas`, 100% aditiva)
+- `Empresa.asaasCustomerId` (1 customer por empresa, criado no 1º checkout).
+- `AssinaturaModulo` (`assinaturas_modulo`): empresa + módulo (`@@unique`), `planoIa`, `valor` (Decimal, sempre do backend), `formaPagamento` (PIX/CREDIT_CARD), `status` (PENDENTE/ATIVA/ATRASADA/CANCELADA), `asaasSubscriptionId` (unique), `asaasPaymentId`, `invoiceUrl`, `pagoEm`.
+- `WebhookEventoAsaas` (`webhook_eventos_asaas`): id do evento como PK = idempotência.
+- Quem LIBERA o módulo continua sendo `pagamentosAtivos` + `modulosAtivos` - o webhook chama o MESMO `empresaService.confirmarPagamento` do checkout simulado (menu, gate de rotas e Painel Master não mudaram nada).
+
+### Backend
+- `services/asaas/asaasClient.js` - cliente HTTP mínimo da API v3 (fetch nativo, timeout 15s, header `access_token`, sandbox por padrão; erro do Asaas vira AppError 502 com a `description` dele; 401 do Asaas vira 503 = problema de configuração nosso).
+- `services/assinaturas/precos.js` - `calcularValorAssinatura`: preço de tabela (ConfiguracaoGlobal) − 15% se Apoiador, **em centavos inteiros, arredondado pra baixo** (`5.9 * 0.85` em float não é 5.015 exato) + validação do mínimo.
+- `services/assinaturas.service.js`:
+  - `iniciarCheckout` (`POST /assinaturas/checkout`, só admin): valida módulo/plano/forma, calcula o valor (o `valor` do corpo é IGNORADO - testado mandando 0.01), garante o customer (updateMany com `asaasCustomerId: null` evita duplicar em corrida), cria a assinatura MENSAL (1ª cobrança vence hoje), busca a 1ª cobrança e responde: **Pix** → `{ qrCodeBase64, copiaECola, expiraEm }` (`GET /payments/{id}/pixQrCode`); **Cartão** → `invoiceUrl` (**página de pagamento hospedada pelo Asaas** - número do cartão nunca passa pelo SAE, fora do escopo PCI-DSS). Clique repetido com os mesmos parâmetros **reaproveita** a pendente (sem cobrança duplicada); trocar forma/plano/valor **cancela a pendente no Asaas** e cria outra; módulo já ATIVO → 409.
+  - `obterStatus` (`GET /assinaturas/:id/status`, tenant-scoped) - pro polling.
+  - `processarWebhook`: `PAYMENT_RECEIVED`/`PAYMENT_CONFIRMED` → ATIVA + libera o módulo; `PAYMENT_OVERDUE` → ATRASADA; o resto é ignorado. Registro do evento + efeito na **mesma transação** (se o efeito falhar, o registro também não fica e o reenvio do Asaas tenta de novo); evento repetido (P2002) = no-op.
+- `POST /webhooks/asaas` (público): autentica pelo header **`asaas-access-token`** (nome confirmado na doc oficial) vs `ASAAS_WEBHOOK_TOKEN`, comparação em **tempo constante** (hash + `timingSafeEqual`); **fail-closed** (sem token configurado → 503 pra tudo). Responde 200 pra todo evento entendido (inclusive ignorado/repetido) - o Asaas **interrompe a fila depois de 15 falhas seguidas**; 5xx só quando o banco falha de verdade.
+- **Brecha fechada**: `PUT /empresa/pagamentos` (checkout simulado - marcava pago sem cobrar) responde **410** com `ASAAS_API_KEY` configurada ou em produção. Liberação gratuita legítima segue só pelo Supra Admin.
+- `GET /configuracoes/precos` passou a devolver `descontoApoiadorPercentual` e `valorMinimoCobranca` (o frontend exibe com a mesma regra que o backend cobra).
+- Env novas (docker-compose + `.env.example` da raiz e da api): `ASAAS_API_KEY`, `ASAAS_API_URL` (vazio = sandbox), `ASAAS_WEBHOOK_TOKEN`.
+
+### Frontend
+- `components/modulos/ModalPagamento.jsx` reescrito (checkout real): etapas escolha → pix/cartao → sucesso. Pix: `<img src={"data:image/png;base64," + qrCodeBase64}>` (fundo branco fixo - contraste pro leitor no modo escuro) + copia e cola com botão Copiar + validade. Cartão: a nova aba é aberta **dentro do clique** (`window.open('')` antes do `await`) e só recebe o `invoiceUrl` depois - senão o bloqueador de pop-up barra; link de "abrir de novo" como plano B. Sucesso: mensagem, fecha sozinho em 2,5s e chama `onConcluido` (refreshEmpresa → Sidebar/App Store atualizam).
+- `components/modulos/usePollingAssinatura.js` - short polling de 4s só enquanto o modal espera; pausa com a aba em segundo plano e consulta na hora ao voltar (quem paga no app do banco volta e já vê); nunca sobrepõe requisições; para ao confirmar/desmontar; erro de rede pontual ignorado.
+- `Modulos.jsx`: desconto 15% (mesma conta em centavos, percentual vindo da API), texto "15% de desconto", modal novo ligado (`modulo`/`planoIa`/`onConcluido`).
+
+### Validação (sem chave real do Asaas nesta máquina - **mock da API v3** em `localhost:4010` validando `access_token`, gravando o que recebe e devolvendo um PNG real de QR)
+- Backend **28/28**: preço/desconto na API; Pix Apoiador → **Asaas recebeu `value: 5.01`, MONTHLY, PIX** (com `valor: 0.01` forjado no corpo); QR base64 é PNG válido + copia e cola; customer com `externalReference`; reaproveitamento da pendente; troca pra cartão cancela a Pix no Asaas e não cria 2º customer; status PENDENTE; CRM → 422 sem chamar o gateway; webhook sem token/token errado → 401, servidor sem token → 503, status continua PENDENTE; webhook válido → ATIVA + módulo liberado; evento repetido → 200 e gravado 1 vez; assinatura desconhecida/evento irrelevante → 200 ignorado; checkout de módulo ativo → 409; OVERDUE → ATRASADA; `PUT /empresa/pagamentos` → 410; não-admin → 403; outra empresa não lê status; não-Apoiador paga preço cheio (IA WhatsApp 39,90).
+- E2E Playwright (API real apontando pro mock): modal mostra R$ 5,01 riscando R$ 5,90; "Pagar com Pix" renderiza o QR do base64; polling a cada 4s com o modal aguardando; webhook disparado "de fora" → **modal detectou em 3,4s**, mostrou "Pagamento confirmado!", fechou sozinho, switch do PDV ligado e "PDV Rápido" apareceu no menu; Kanban (R$ 3,31) → mensagem de mínimo no próprio modal; Cartão (não-Apoiador, R$ 5,90) → nova aba aberta sem bloqueio de pop-up, exatamente no `invoiceUrl`. 0 erros de página. Tudo apagado ao final; empresa de teste restaurada.
+
+### Pendências / limites conhecidos
+- **Nunca testado contra o Asaas de verdade** (sem chave aqui): o 1º passo em produção é o **sandbox** (ver dossiê 2.14) - conferir a criação de assinatura, o QR real e um webhook real antes de trocar pra produção.
+- CRM/Kanban abaixo do mínimo (ver acima) - a App Store ainda mostra "Toque no switch pra assinar" pra eles; o erro só aparece ao escolher a forma de pagamento.
+- Cancelamento de assinatura pelo cliente (desligar o módulo) **ainda não cancela a cobrança no Asaas** - desligar o switch só esconde o módulo; a cobrança recorrente continua até cancelar no painel do Asaas. Próximo passo natural.
+- `PAYMENT_OVERDUE` só marca ATRASADA - não bloqueia o módulo (mesmo espírito "sinalizar, não cortar" que o Painel Master já usava).
+- Módulos pagos pelo checkout simulado antes desta tarefa continuam liberados sem assinatura no Asaas.
+- O plano "Apoiador" (doação mensal, `Assinatura.jsx`) continua simulado - não entrou no escopo.

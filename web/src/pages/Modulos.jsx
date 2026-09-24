@@ -10,18 +10,17 @@ function formatarMoeda(valor) {
 }
 
 /**
- * Preço de Apoiador (desconto pra empresa com `isDoador === true`, coluna
- * persistida - ver empresa.service.js#obterDados/Empresa.isDoador em
- * schema.prisma, sempre gravada junto com `plano` pra nunca divergir) -
- * metade do
- * preço cheio, arredondado pra baixo mantendo a terminação ",90" (mesma
- * psicologia de preço do resto do catálogo). Ex.: R$ 5,90 -> R$ 2,90;
- * R$ 39,90 -> R$ 19,90. Fórmula única (não preço fixo por módulo) pra
- * qualquer preço novo já sair com desconto consistente, sem precisar
- * lembrar de calcular a mão.
+ * Preço de Apoiador (empresa com `isDoador === true`) - 15% de desconto,
+ * arredondado PRA BAIXO no centavo (a favor do cliente): R$ 5,90 -> R$ 5,01.
+ * Regra de 2026-09-24 (pagamentos reais via Asaas), substituiu os 50% de
+ * antes. Isto so EXIBE: o valor COBRADO e calculado no backend com a mesma
+ * conta (api/src/services/assinaturas/precos.js), e o percentual oficial vem
+ * de GET /configuracoes/precos (`descontoApoiadorPercentual`). Conta em
+ * centavos inteiros - `5.9 * 0.85` em ponto flutuante nao e exatamente 5.015.
  */
-function calcularPrecoDoador(preco) {
-  return Math.floor(preco * 5) / 10;
+function calcularPrecoDoador(preco, percentual = 15) {
+  const centavos = Math.round(preco * 100);
+  return Math.floor((centavos * (100 - percentual)) / 100) / 100;
 }
 
 /**
@@ -33,7 +32,8 @@ function calcularPrecoDoador(preco) {
  * reflete a mudanca na hora, sem precisar de F5.
  *
  * Handoff pagamento -> ativacao: os 4 modulos abaixo (`pdv_touch`,
- * `clientes`, `ia_whatsapp`, `tarefas`) exigem pagamento simulado ANTES de
+ * `clientes`, `ia_whatsapp`, `tarefas`) exigem pagamento (REAL via Asaas desde
+ * 2026-09-24 - assinatura mensal por modulo, ver ModalPagamento.jsx) ANTES de
  * poderem ser ligados (`empresa.pagamentos`, ver empresa.service.js -
  * MODULOS_PAGOS). O Switch de um modulo nao pago abre `ModalPagamento` em
  * vez de chamar `PUT /empresa/modulos` direto - o backend tambem reforca
@@ -386,6 +386,8 @@ export default function Modulos() {
   const modulosAtivos = empresa?.modulos ?? [];
   const pagamentos = empresa?.pagamentos ?? {};
   const isDoador = empresa?.isDoador ?? false;
+  // Percentual oficial do backend (mesma regra que COBRA) - 15 so como fallback.
+  const descontoApoiador = precosCarregados?.descontoApoiadorPercentual ?? 15;
   const carregando = empresa === null || precosCarregados === null;
 
   async function alternarModulo(chave, ligar) {
@@ -415,13 +417,12 @@ export default function Modulos() {
     setPagamentoAberto(dados);
   }
 
-  /** Confirma o checkout simulado - `PUT /empresa/pagamentos` já marca o módulo pago E o ativa na mesma resposta (ver empresa.service.js#confirmarPagamento), então um único `refreshEmpresa()` já traz os dois estados atualizados. */
-  async function confirmarPagamento() {
-    const { chave, planoIa } = pagamentoAberto;
-    await apiFetch('/empresa/pagamentos', {
-      method: 'PUT',
-      body: JSON.stringify({ modulo: chave, plano_ia: planoIa }),
-    });
+  /**
+   * Pagamento confirmado pelo webhook do Asaas (o modal percebe via polling):
+   * o backend ja marcou o modulo como pago E o ativou - um `refreshEmpresa()`
+   * traz os dois estados e a Sidebar/App Store reagem na hora.
+   */
+  async function concluirPagamento() {
     await refreshEmpresa();
     setPagamentoAberto(null);
   }
@@ -436,7 +437,7 @@ export default function Modulos() {
         <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 sm:text-3xl">Módulos</h1>
         <p className="mt-1 text-lg text-slate-500 dark:text-slate-400">
           Ligue e desligue os recursos que a sua equipe usa - o menu lateral se ajusta na hora.
-          {isDoador && ' Como Apoiador, você tem desconto em todos os módulos pagos.'}
+          {isDoador && ` Como Apoiador, você tem ${descontoApoiador}% de desconto em todos os módulos pagos.`}
         </p>
       </div>
 
@@ -488,12 +489,14 @@ export default function Modulos() {
 
       {pagamentoAberto && (
         <ModalPagamento
+          modulo={pagamentoAberto.chave}
+          planoIa={pagamentoAberto.planoIa}
           nome={pagamentoAberto.nome}
           preco={pagamentoAberto.preco}
-          precoComDesconto={calcularPrecoDoador(pagamentoAberto.preco)}
+          precoComDesconto={calcularPrecoDoador(pagamentoAberto.preco, descontoApoiador)}
           isDoador={isDoador}
           onFechar={() => setPagamentoAberto(null)}
-          onConfirmar={confirmarPagamento}
+          onConcluido={concluirPagamento}
         />
       )}
     </div>

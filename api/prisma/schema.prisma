@@ -198,6 +198,10 @@ model Empresa {
   // usuario ja sao unicos globalmente. Nullable so por seguranca de
   // migracao (empresa sem nenhum admin) - o service gera um se faltar.
   codigoLoja      String?      @unique(map: "uq_empresas_codigo_loja") @map("codigo_loja") @db.VarChar(5)
+  // Cliente correspondente no gateway Asaas (2026-09-24) - criado no 1o
+  // checkout real e reaproveitado em todos os seguintes (1 customer por
+  // empresa, N assinaturas - uma por modulo pago, ver AssinaturaModulo).
+  asaasCustomerId String?      @unique(map: "uq_empresas_asaas_customer") @map("asaas_customer_id") @db.VarChar(40)
 
   usuarios        Usuario[]
   produtos        Produto[]
@@ -209,8 +213,67 @@ model Empresa {
   atendimentos    Atendimento[]
   chamadosSuporte ChamadoSuporte[]
   perfis          Perfil[]
+  assinaturas     AssinaturaModulo[]
 
   @@map("empresas")
+}
+
+/// Assinatura RECORRENTE real (gateway Asaas, 2026-09-24) de UM modulo pago
+/// da App Store - substitui o checkout simulado de `PUT /empresa/pagamentos`.
+/// Uma linha por (empresa, modulo): um novo checkout do mesmo modulo reusa/
+/// substitui a linha (e cancela a assinatura antiga no Asaas).
+///
+/// Quem LIBERA o modulo continua sendo `Empresa.pagamentosAtivos` +
+/// `modulosAtivos` (o resto do sistema so olha pra eles) - o webhook de
+/// pagamento confirmado atualiza esta tabela E chama o mesmo
+/// `empresaService.confirmarPagamento` que o checkout simulado chamava.
+///
+/// `status` (String, mesmo motivo de sempre - sem ALTER a cada status novo):
+///   PENDENTE  - assinatura criada, 1o pagamento ainda nao confirmado
+///   ATIVA     - pagamento recebido/confirmado (webhook)
+///   ATRASADA  - cobranca vencida sem pagamento (webhook PAYMENT_OVERDUE)
+///   CANCELADA - substituida por outro checkout ou cancelada
+///
+/// `valor` e SEMPRE calculado no backend (preco do modulo em
+/// ConfiguracaoGlobal - 15% de Apoiador, ver services/assinaturas/precos.js),
+/// nunca vindo do frontend.
+model AssinaturaModulo {
+  id                   Int       @id @default(autoincrement()) @db.UnsignedInt
+  empresaId            Int       @map("empresa_id") @db.UnsignedInt
+  modulo               String    @db.VarChar(30)
+  // So pro modulo ia_whatsapp (whatsapp_web/meta_api); null nos demais.
+  planoIa              String?   @map("plano_ia") @db.VarChar(30)
+  valor                Decimal   @db.Decimal(10, 2)
+  formaPagamento       String    @map("forma_pagamento") @db.VarChar(20) // PIX | CREDIT_CARD (billingType do Asaas)
+  status               String    @default("PENDENTE") @db.VarChar(20)
+  asaasSubscriptionId  String    @unique(map: "uq_assinaturas_asaas_subscription") @map("asaas_subscription_id") @db.VarChar(40)
+  // Cobranca (payment) atual: a pendente durante o checkout, depois a
+  // ultima paga. `invoiceUrl` = pagina de pagamento do Asaas (cartao).
+  asaasPaymentId       String?   @map("asaas_payment_id") @db.VarChar(40)
+  invoiceUrl           String?   @map("invoice_url") @db.VarChar(255)
+  pagoEm               DateTime? @map("pago_em")
+  criadoEm             DateTime  @default(now()) @map("criado_em")
+  atualizadoEm         DateTime  @default(now()) @updatedAt @map("atualizado_em")
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([empresaId, modulo], map: "uq_assinaturas_empresa_modulo")
+  @@index([asaasPaymentId], map: "idx_assinaturas_asaas_payment")
+  @@map("assinaturas_modulo")
+}
+
+/// Eventos de webhook do Asaas JA PROCESSADOS (2026-09-24) - idempotencia:
+/// o Asaas entrega "at least once" (reenvia se nao receber 200), entao o
+/// `id` do evento (evt_...) vira chave primaria. Gravado na MESMA transacao
+/// que aplica o evento: se a aplicacao falhar, o registro tambem nao fica
+/// (e o reenvio do Asaas processa de novo).
+model WebhookEventoAsaas {
+  id          String   @id @db.VarChar(120)
+  evento      String   @db.VarChar(60)
+  paymentId   String?  @map("payment_id") @db.VarChar(40)
+  recebidoEm  DateTime @default(now()) @map("recebido_em")
+
+  @@map("webhook_eventos_asaas")
 }
 
 /// Perfil de acesso (RBAC, 2026-09-24) - um "cargo" criado pelo admin da

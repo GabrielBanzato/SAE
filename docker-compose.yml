@@ -48,6 +48,13 @@ services:
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-8h}
       # Pasta dos audios do Chat de Suporte (2026-09-23) - ver volume abaixo.
       - UPLOADS_DIR=/app/uploads
+      # Pagamentos reais (gateway Asaas, 2026-09-24) - valores SO no .env /
+      # variaveis da Stack no Portainer, nunca aqui. Sem ASAAS_API_KEY o
+      # checkout responde 503; sem ASAAS_WEBHOOK_TOKEN o webhook recusa tudo.
+      # ASAAS_API_URL vazio = SANDBOX; producao: https://api.asaas.com/v3
+      - ASAAS_API_KEY=${ASAAS_API_KEY:-}
+      - ASAAS_API_URL=${ASAAS_API_URL:-}
+      - ASAAS_WEBHOOK_TOKEN=${ASAAS_WEBHOOK_TOKEN:-}
     volumes:
       # Volume NOMEADO (persistente) - sem ele, todo recreate do container
       # (o fluxo normal de deploy) apagaria os audios ja enviados no chat.
