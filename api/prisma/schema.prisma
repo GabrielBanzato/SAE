@@ -252,6 +252,9 @@ model AssinaturaModulo {
   asaasPaymentId       String?   @map("asaas_payment_id") @db.VarChar(40)
   invoiceUrl           String?   @map("invoice_url") @db.VarChar(255)
   pagoEm               DateTime? @map("pago_em")
+  // Cancelamento pelo lojista (desligar o modulo na App Store, 2026-09-24) -
+  // auditoria/suporte ("quando essa loja cancelou?"). null = nunca cancelada.
+  canceladoEm          DateTime? @map("cancelado_em")
   criadoEm             DateTime  @default(now()) @map("criado_em")
   atualizadoEm         DateTime  @default(now()) @updatedAt @map("atualizado_em")
 

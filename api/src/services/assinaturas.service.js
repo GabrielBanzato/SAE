@@ -159,12 +159,77 @@ async function obterStatus(prisma, tenantId, assinaturaId) {
   return assinatura;
 }
 
-/** GET /assinaturas - assinaturas da empresa (tela de gestao/App Store). */
+/** GET /assinaturas - assinaturas da empresa (a App Store usa pra saber quais switches cancelam cobranca). */
 function listar(prisma, tenantId) {
   return prisma.assinaturaModulo.findMany({
     where: { empresaId: tenantId },
-    select: { id: true, modulo: true, planoIa: true, valor: true, formaPagamento: true, status: true, pagoEm: true, atualizadoEm: true },
+    select: {
+      id: true,
+      modulo: true,
+      planoIa: true,
+      valor: true,
+      formaPagamento: true,
+      status: true,
+      pagoEm: true,
+      canceladoEm: true,
+      atualizadoEm: true,
+    },
     orderBy: { modulo: 'asc' },
+  });
+}
+
+// Status em que ainda existe cobranca recorrente viva no Asaas.
+const STATUS_COM_COBRANCA = ['PENDENTE', 'ATIVA', 'ATRASADA'];
+
+/**
+ * DELETE /assinaturas/:modulo - o lojista (admin) desliga um modulo pago na
+ * App Store = CANCELA a assinatura (2026-09-24).
+ *
+ * Seguranca/escopo: a assinatura e buscada por (empresa DO TOKEN, modulo) -
+ * nunca por um id vindo do cliente; nao ha como cancelar a de outra empresa.
+ *
+ * Ordem das operacoes (de proposito):
+ *  1) cancela NO ASAAS primeiro. Se falhar -> erro e NADA muda localmente:
+ *     tirar o acesso de quem continuaria sendo cobrado seria o pior cenario.
+ *     404 do Asaas (assinatura ja removida pelo painel) = ja cancelada, segue.
+ *  2) so entao, numa transacao: status CANCELADA + `canceladoEm` e revoga o
+ *     acesso (remove de `pagamentosAtivos` E de `modulosAtivos`) pelo mesmo
+ *     `empresaService.restringirModulo` que o "Restringir" do Painel Master usa.
+ *
+ * Efeitos no Asaas (doc oficial): param as cobrancas futuras e as
+ * pendentes/vencidas sao excluidas; as ja pagas continuam registradas - SEM
+ * estorno/proporcional automatico (acesso removido na hora, como a tela avisa).
+ *
+ * Modulo pago SEM assinatura no Asaas (checkout simulado antigo ou liberado
+ * pelo Supra Admin) nao tem o que cancelar -> 404; a App Store usa o toggle
+ * comum pra esses (so esconde, sem cobranca envolvida).
+ */
+async function cancelarAssinaturaModulo(prisma, tenantId, modulo) {
+  if (!empresaService.MODULOS_PAGOS.includes(modulo)) {
+    throw new AppError(`modulo deve ser um dos seguintes: ${empresaService.MODULOS_PAGOS.join(', ')}.`, 422);
+  }
+
+  const assinatura = await prisma.assinaturaModulo.findUnique({
+    where: { empresaId_modulo: { empresaId: tenantId, modulo } },
+  });
+  if (!assinatura || !STATUS_COM_COBRANCA.includes(assinatura.status)) {
+    throw new AppError('Este modulo nao tem uma assinatura ativa para cancelar.', 404);
+  }
+
+  try {
+    await asaas.cancelarAssinatura(assinatura.asaasSubscriptionId);
+  } catch (err) {
+    if (err.statusAsaas !== 404) throw err;
+  }
+
+  return prisma.$transaction(async (tx) => {
+    // Condicional no status: dois cliques/abas simultaneos nao "cancelam duas vezes".
+    const alterou = await tx.assinaturaModulo.updateMany({
+      where: { id: assinatura.id, status: { in: STATUS_COM_COBRANCA } },
+      data: { status: 'CANCELADA', canceladoEm: new Date() },
+    });
+    const acesso = await empresaService.restringirModulo(tx, tenantId, { modulo });
+    return { modulo, status: 'CANCELADA', jaEstavaCancelada: alterou.count === 0, ...acesso };
   });
 }
 
@@ -196,6 +261,13 @@ async function processarWebhook(prisma, evento) {
       const assinatura = await tx.assinaturaModulo.findUnique({ where: { asaasSubscriptionId: pagamento.subscription } });
       if (!assinatura) return { processado: false, motivo: 'assinatura desconhecida' };
 
+      // Assinatura CANCELADA pelo lojista: pagamento que chegue depois (ex.:
+      // cartao confirmado segundos antes do DELETE) NAO reativa o modulo -
+      // o cliente pediu pra cancelar. Fica no log pro suporte avaliar estorno.
+      if (assinatura.status === 'CANCELADA') {
+        return { processado: false, motivo: 'pagamento de assinatura CANCELADA - avaliar estorno no painel do Asaas' };
+      }
+
       if (tipo === EVENTO_ATRASO) {
         await tx.assinaturaModulo.update({ where: { id: assinatura.id }, data: { status: 'ATRASADA' } });
         return { processado: true, motivo: 'assinatura marcada como atrasada' };
@@ -218,4 +290,4 @@ async function processarWebhook(prisma, evento) {
   }
 }
 
-module.exports = { iniciarCheckout, obterStatus, listar, processarWebhook, FORMAS };
+module.exports = { iniciarCheckout, obterStatus, listar, cancelarAssinaturaModulo, processarWebhook, FORMAS };

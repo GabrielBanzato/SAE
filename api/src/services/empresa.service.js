@@ -334,10 +334,10 @@ async function confirmarPagamento(prisma, tenantId, { modulo, planoIa }) {
 }
 
 /**
- * "Restringir" (Painel Master - Etapa 2, exclusivo do Supra Admin, sem
- * rota tenant-scoped equivalente - uma empresa nunca restringe a si
- * mesma, so desliga o Switch em Modulos.jsx, que e outra funcao
- * `atualizarModulos`) - revoga o pagamento E desativa o modulo NA MESMA
+ * "Restringir" (Painel Master - Etapa 2) - desde 2026-09-24 tambem chamado
+ * pelo CANCELAMENTO de assinatura do proprio lojista
+ * (assinaturas.service.js#cancelarAssinaturaModulo, depois de cancelar no
+ * Asaas, dentro da mesma transacao) - revoga o pagamento E desativa o modulo NA MESMA
  * escrita (decisao confirmada com o usuario: simetrico ao "Liberar
  * Gratuitamente"/`confirmarPagamento` acima, que tambem ativa os dois
  * juntos). Remove a chave de `pagamentosAtivos` por completo (nao so

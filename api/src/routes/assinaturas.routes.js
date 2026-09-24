@@ -10,4 +10,6 @@ module.exports = async function assinaturasRoutes(fastify) {
   fastify.get('/', assinaturasController.listar);
   fastify.post('/checkout', assinaturasController.checkout);
   fastify.get('/:id/status', assinaturasController.status);
+  // Cancelar = desligar um modulo pago com assinatura (so admin, empresa do token).
+  fastify.delete('/:modulo', assinaturasController.cancelar);
 };

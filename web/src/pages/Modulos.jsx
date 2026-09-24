@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Zap, Users, MessageCircle, Kanban, ScrollText, Lock, Loader2 } from 'lucide-react';
 import { apiFetch } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import ModalPagamento from '../components/modulos/ModalPagamento';
+import ModalCancelarAssinatura from '../components/modulos/ModalCancelarAssinatura';
+import { useToast } from '../context/ToastContext';
 
 function formatarMoeda(valor) {
   return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -150,11 +152,16 @@ function PrecoLinha({ preco, isDoador, compacto }) {
   );
 }
 
-function CardModuloOpcional({ modulo, preco, ligado, pago, isDoador, salvando, onAlternar, onAbrirPagamento }) {
+function CardModuloOpcional({ modulo, preco, ligado, pago, assinatura, isDoador, salvando, onAlternar, onAbrirPagamento, onPedirCancelamento }) {
   const Icon = modulo.icon;
 
   function handleSwitchClick() {
-    if (pago) {
+    // Desligar um modulo com assinatura viva no Asaas = CANCELAR a cobranca
+    // (pede confirmacao). Sem assinatura (pago antes do Asaas / liberado pelo
+    // Supra Admin) o switch so esconde o modulo, como sempre foi.
+    if (ligado && assinatura) {
+      onPedirCancelamento({ chave: modulo.chave, nome: modulo.nome, valor: assinatura.valor });
+    } else if (pago) {
       onAlternar(modulo.chave, !ligado);
     } else {
       onAbrirPagamento({ chave: modulo.chave, nome: modulo.nome, preco });
@@ -178,7 +185,13 @@ function CardModuloOpcional({ modulo, preco, ligado, pago, isDoador, salvando, o
               <Switch
                 ligado={ligado}
                 onClick={handleSwitchClick}
-                label={pago ? `${ligado ? 'Desativar' : 'Ativar'} módulo ${modulo.nome}` : `Assinar módulo ${modulo.nome}`}
+                label={
+                  ligado && assinatura
+                    ? `Cancelar assinatura do módulo ${modulo.nome}`
+                    : pago
+                      ? `${ligado ? 'Desativar' : 'Ativar'} módulo ${modulo.nome}`
+                      : `Assinar módulo ${modulo.nome}`
+                }
               />
             </div>
           )}
@@ -195,8 +208,21 @@ function CardModuloOpcional({ modulo, preco, ligado, pago, isDoador, salvando, o
         >
           {ligado ? 'Ativo - já aparece no seu menu' : pago ? 'Pago - toque no switch pra ativar' : 'Toque no switch pra assinar'}
         </p>
+        <AvisoAssinatura assinatura={ligado ? assinatura : null} />
       </div>
     </div>
+  );
+}
+
+/** Linha "Assinatura mensal ativa/atrasada" - avisa que desligar o switch CANCELA a cobranca. */
+function AvisoAssinatura({ assinatura }) {
+  if (!assinatura) return null;
+  const atrasada = assinatura.status === 'ATRASADA';
+  return (
+    <p className={`mt-1 text-xs ${atrasada ? 'font-semibold text-amber-600 dark:text-amber-400' : 'text-slate-400 dark:text-slate-500'}`}>
+      {atrasada ? 'Pagamento em atraso. ' : 'Assinatura mensal ativa. '}
+      Desligar cancela a cobrança.
+    </p>
   );
 }
 
@@ -208,7 +234,7 @@ function CardModuloOpcional({ modulo, preco, ligado, pago, isDoador, salvando, o
  * não libera o outro (`pagoNestePlano` só é `true` quando o plano
  * selecionado bate com o que consta em `empresa.pagamentos.ia_whatsapp.planoIa`).
  */
-function CardModuloWhatsApp({ precos, ligado, planoPago, isDoador, salvando, onAlternar, onAbrirPagamento }) {
+function CardModuloWhatsApp({ precos, ligado, planoPago, assinatura, isDoador, salvando, onAlternar, onAbrirPagamento, onPedirCancelamento }) {
   const [planoSelecionado, setPlanoSelecionado] = useState(planoPago || PLANOS_IA_WHATSAPP[0].chave);
 
   // Sincroniza a selecao se um pagamento for confirmado por fora (outro
@@ -222,7 +248,11 @@ function CardModuloWhatsApp({ precos, ligado, planoPago, isDoador, salvando, onA
   const pagoNestePlano = planoPago === planoSelecionado;
 
   function handleSwitchClick() {
-    if (pagoNestePlano) {
+    // Mesma regra dos outros cards: desligar com assinatura viva = cancelar a cobranca.
+    if (ligado && assinatura) {
+      const plano = PLANOS_IA_WHATSAPP.find((item) => item.chave === assinatura.planoIa);
+      onPedirCancelamento({ chave: 'ia_whatsapp', nome: `Inbox de IA${plano ? ` - ${plano.nome}` : ''}`, valor: assinatura.valor });
+    } else if (pagoNestePlano) {
       onAlternar('ia_whatsapp', !ligado);
     } else {
       onAbrirPagamento({
@@ -251,7 +281,13 @@ function CardModuloWhatsApp({ precos, ligado, planoPago, isDoador, salvando, onA
               <Switch
                 ligado={ligado}
                 onClick={handleSwitchClick}
-                label={pagoNestePlano ? `${ligado ? 'Desativar' : 'Ativar'} Inbox de IA` : 'Assinar Inbox de IA'}
+                label={
+                  ligado && assinatura
+                    ? 'Cancelar assinatura do Inbox de IA'
+                    : pagoNestePlano
+                      ? `${ligado ? 'Desativar' : 'Ativar'} Inbox de IA`
+                      : 'Assinar Inbox de IA'
+                }
               />
             </div>
           )}
@@ -304,6 +340,7 @@ function CardModuloWhatsApp({ precos, ligado, planoPago, isDoador, salvando, onA
               ? 'Pago - toque no switch pra ativar'
               : 'Toque no switch pra assinar o plano selecionado'}
         </p>
+        <AvisoAssinatura assinatura={ligado ? assinatura : null} />
       </div>
     </div>
   );
@@ -367,6 +404,18 @@ export default function Modulos() {
   // instante antes da 1a resposta, PRECOS_PADRAO cobre esse instante caso
   // algum card renderize antes (ver `precos` computado abaixo).
   const [precosCarregados, setPrecosCarregados] = useState(null);
+  // Assinaturas reais (Asaas) da empresa - decide quais switches, ao
+  // desligar, CANCELAM a cobranca (ver CardModuloOpcional#handleSwitchClick).
+  const [assinaturas, setAssinaturas] = useState([]);
+  const [cancelamentoAberto, setCancelamentoAberto] = useState(null);
+  const { mostrarToast } = useToast();
+
+  // So atualiza estado na resposta (nunca sincrono) - pode rodar no efeito de montagem.
+  const carregarAssinaturas = useCallback(() => {
+    return apiFetch('/assinaturas')
+      .then(setAssinaturas)
+      .catch(() => setAssinaturas([]));
+  }, []);
 
   useEffect(() => {
     let ativo = true;
@@ -377,10 +426,17 @@ export default function Modulos() {
       .catch((err) => {
         if (ativo) setErro(err.message || 'Não foi possível carregar os preços dos módulos.');
       });
+    carregarAssinaturas();
     return () => {
       ativo = false;
     };
-  }, []);
+  }, [carregarAssinaturas]);
+
+  // Assinatura com cobranca VIVA e ja paga (ATIVA/ATRASADA) por modulo. PENDENTE
+  // (checkout aberto e nao pago) nao conta: o modulo nem foi liberado ainda.
+  const assinaturaPorModulo = Object.fromEntries(
+    assinaturas.filter((item) => item.status === 'ATIVA' || item.status === 'ATRASADA').map((item) => [item.modulo, item])
+  );
 
   const precos = precosCarregados ?? PRECOS_PADRAO;
   const modulosAtivos = empresa?.modulos ?? [];
@@ -423,8 +479,20 @@ export default function Modulos() {
    * traz os dois estados e a Sidebar/App Store reagem na hora.
    */
   async function concluirPagamento() {
-    await refreshEmpresa();
+    await Promise.all([refreshEmpresa(), carregarAssinaturas()]);
     setPagamentoAberto(null);
+  }
+
+  /**
+   * Cancelamento confirmado (DELETE /assinaturas/:modulo ja respondeu): o
+   * backend cancelou no Asaas E revogou o acesso - atualiza a sessao (menu
+   * perde o modulo na hora) e a lista de assinaturas.
+   */
+  async function concluirCancelamento() {
+    const { nome } = cancelamentoAberto;
+    await Promise.all([refreshEmpresa(), carregarAssinaturas()]);
+    setCancelamentoAberto(null);
+    mostrarToast(`Assinatura de ${nome} cancelada. O acesso foi removido.`, 'sucesso');
   }
 
   function registrarInteresse(id) {
@@ -461,10 +529,12 @@ export default function Modulos() {
               preco={precos[modulo.chave]}
               ligado={modulosAtivos.includes(modulo.chave)}
               pago={Boolean(pagamentos[modulo.chave])}
+              assinatura={assinaturaPorModulo[modulo.chave]}
               isDoador={isDoador}
               salvando={salvandoChave === modulo.chave}
               onAlternar={alternarModulo}
               onAbrirPagamento={abrirPagamento}
+              onPedirCancelamento={setCancelamentoAberto}
             />
           ))}
 
@@ -472,10 +542,12 @@ export default function Modulos() {
             precos={precos.ia_whatsapp}
             ligado={modulosAtivos.includes('ia_whatsapp')}
             planoPago={pagamentos.ia_whatsapp?.planoIa ?? null}
+            assinatura={assinaturaPorModulo.ia_whatsapp}
             isDoador={isDoador}
             salvando={salvandoChave === 'ia_whatsapp'}
             onAlternar={alternarModulo}
             onAbrirPagamento={abrirPagamento}
+            onPedirCancelamento={setCancelamentoAberto}
           />
 
           <CardModuloMock
@@ -497,6 +569,16 @@ export default function Modulos() {
           isDoador={isDoador}
           onFechar={() => setPagamentoAberto(null)}
           onConcluido={concluirPagamento}
+        />
+      )}
+
+      {cancelamentoAberto && (
+        <ModalCancelarAssinatura
+          modulo={cancelamentoAberto.chave}
+          nome={cancelamentoAberto.nome}
+          valor={cancelamentoAberto.valor}
+          onFechar={() => setCancelamentoAberto(null)}
+          onCancelada={concluirCancelamento}
         />
       )}
     </div>

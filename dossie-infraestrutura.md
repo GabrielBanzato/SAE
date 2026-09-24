@@ -268,7 +268,11 @@ Os módulos pagos da App Store viraram **assinaturas mensais reais no Asaas** (u
 - O **checkout simulado** (`PUT /empresa/pagamentos`) fica desligado (410) com o Asaas configurado ou em produção — reativá-lo seria liberar módulo pago de graça.
 - **Chave e token do Asaas só no `.env`/Portainer**, nunca no repositório (ver 3.1). Se vazarem: gerar nova chave no painel do Asaas e trocar o token do webhook.
 
-**Limitação conhecida:** desligar um módulo na App Store **não cancela** a assinatura no Asaas (a cobrança mensal continua) — por enquanto, cancelar pelo painel do Asaas.
+**Cancelamento (resolvido em 2026-09-24):** desligar, na App Store, um módulo com assinatura ativa **cancela a assinatura no Asaas** (`DELETE /assinaturas/:modulo` → `DELETE /v3/subscriptions/{id}`) e remove o acesso na hora, depois de uma confirmação na tela. Operação:
+- **"Cliente diz que cancelou mas continua sendo cobrado"** → conferir `SELECT status, cancelado_em, asaas_subscription_id FROM assinaturas_modulo WHERE empresa_id = ...;` e a assinatura no painel do Asaas. O backend só marca CANCELADA **depois** que o Asaas confirma o cancelamento — se o Asaas falhou, a tela mostrou erro e nada mudou (acesso mantido).
+- **Log `pagamento de assinatura CANCELADA - avaliar estorno`** → um pagamento chegou depois do cancelamento (ex.: cartão confirmado segundos antes). O módulo **não** é reativado; avaliar estorno manual no painel do Asaas.
+- **Não há estorno proporcional automático** (o Asaas mantém as cobranças já pagas; a tela avisa o cliente antes de confirmar).
+- Módulos pagos antes do Asaas (checkout simulado) ou liberados pelo Supra Admin não têm assinatura — o switch deles só esconde o módulo, sem cobrança envolvida.
 
 ---
 

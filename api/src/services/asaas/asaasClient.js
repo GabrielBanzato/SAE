@@ -54,7 +54,11 @@ async function chamarAsaas(metodo, caminho, corpo) {
     const descricao = dados?.errors?.map((e) => e.description).join(' ') || `HTTP ${resposta.status}`;
     // 401 do Asaas = chave errada/revogada: problema de configuracao nosso, nao do cliente.
     const status = resposta.status === 401 ? 503 : 502;
-    throw new AppError(`Gateway de pagamento recusou a operacao: ${descricao}`, status);
+    const erro = new AppError(`Gateway de pagamento recusou a operacao: ${descricao}`, status);
+    // Status HTTP ORIGINAL do Asaas - quem chama decide casos especiais
+    // (ex.: 404 ao cancelar = assinatura ja removida no painel = ok).
+    erro.statusAsaas = resposta.status;
+    throw erro;
   }
   return dados;
 }
@@ -85,6 +89,11 @@ function criarAssinatura({ customerId, billingType, valor, descricao, externalRe
   });
 }
 
+/**
+ * DELETE /subscriptions/{id} - para de gerar cobrancas e (doc oficial) "exclui
+ * as cobrancas pendentes ou vencidas vinculadas a assinatura"; cobrancas ja
+ * pagas permanecem registradas (nao ha estorno automatico).
+ */
 function cancelarAssinatura(subscriptionId) {
   return chamarAsaas('DELETE', `/subscriptions/${encodeURIComponent(subscriptionId)}`);
 }

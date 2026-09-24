@@ -7373,3 +7373,33 @@ Backup → "Pull and redeploy" → `docker exec sae_api npx prisma migrate deplo
 - `PAYMENT_OVERDUE` só marca ATRASADA - não bloqueia o módulo (mesmo espírito "sinalizar, não cortar" que o Painel Master já usava).
 - Módulos pagos pelo checkout simulado antes desta tarefa continuam liberados sem assinatura no Asaas.
 - O plano "Apoiador" (doação mensal, `Assinatura.jsx`) continua simulado - não entrou no escopo.
+
+---
+
+## Cancelamento de assinatura pelo lojista - fecha o ciclo de vida do Asaas (2026-09-24)
+
+**Pedido**: resolver a pendência "desligar um módulo não cancela a cobrança no Asaas" - rota + serviço que cancelem a assinatura no Asaas (`DELETE /v3/subscriptions/{id}`), marquem CANCELADA e removam o acesso; no frontend, confirmação antes de desligar ("o acesso será removido imediatamente"); segurança de tenant.
+
+**Conferido na doc oficial do Asaas antes de codar** (`reference/remover-assinatura`): o DELETE para as cobranças futuras, **"exclui as cobranças pendentes ou vencidas vinculadas à assinatura"** e **"cobranças já pagas permanecem registradas"** (sem estorno automático). Resposta: `{ deleted, id }`.
+
+### Backend
+- **Rota** `DELETE /assinaturas/:modulo` (plugin `/assinaturas` já é só-admin). O módulo vem da URL, a **empresa vem sempre do token**, e a busca é por `(empresaId, modulo)` - não existe como cancelar a assinatura de outra loja (testado: admin de outra empresa → 404, a assinatura da loja alvo continua ATIVA).
+- **Serviço** `assinaturas.service.js#cancelarAssinaturaModulo`, **ordem deliberada**:
+  1. cancela **no Asaas primeiro** - se falhar, responde erro (502 com a mensagem do gateway) e **nada muda localmente** (tirar o acesso de quem continuaria sendo cobrado seria o pior cenário); **404 do Asaas = já removida pelo painel = segue** (`asaasClient` passou a expor `err.statusAsaas`);
+  2. só então, numa transação: `status = CANCELADA` + `canceladoEm` (updateMany condicional no status - dois cliques não cancelam duas vezes) e revoga o acesso pelo mesmo `empresaService.restringirModulo` do "Restringir" do Painel Master (remove de `pagamentosAtivos` E de `modulosAtivos`).
+  - Só cancela assinatura com cobrança viva (PENDENTE/ATIVA/ATRASADA); sem ela → 404. Módulo inválido → 422.
+- **Corrida tratada**: um cartão confirmado segundos antes do DELETE pode gerar `PAYMENT_CONFIRMED` depois. O webhook agora **ignora pagamento de assinatura CANCELADA** (não reativa o módulo) e registra no log "avaliar estorno no painel do Asaas".
+- Schema: `AssinaturaModulo.canceladoEm` (migration `20260924233000_assinatura_cancelado_em`, aditiva). `GET /assinaturas` devolve o campo.
+- Reassinar depois de cancelar funciona normalmente (nova assinatura no Asaas).
+
+### Frontend
+- `components/modulos/ModalCancelarAssinatura.jsx` (`role="alertdialog"`): "Cancelar assinatura?" com nome/valor e os efeitos em lista - **acesso removido imediatamente** (some do menu de toda a equipe), próximas cobranças canceladas, **sem estorno proporcional**, pode assinar de novo. **Foco inicial em "Manter assinatura"** (Enter sem querer nunca cancela - testado); durante o DELETE não fecha por Esc/clique fora; erro → "nada foi alterado, tente novamente".
+- `Modulos.jsx`: carrega `GET /assinaturas`; switch de módulo **ligado com assinatura ATIVA/ATRASADA** abre a confirmação (rótulo acessível "Cancelar assinatura do módulo X") em vez de só esconder; linha "Assinatura mensal ativa. Desligar cancela a cobrança." (âmbar se ATRASADA). Módulos pagos SEM assinatura no Asaas (checkout simulado antigo / liberado pelo Supra Admin) mantêm o toggle comum. Depois de cancelar: `refreshEmpresa()` + recarrega assinaturas + toast "Assinatura de X cancelada. O acesso foi removido.". Mesma regra no card do Inbox de IA (com plano).
+
+### Validação (mock da API v3 do Asaas, agora com simulação de falha 500 e 404 no DELETE)
+- Backend **18/18**: cancelamento feliz (Asaas recebeu o DELETE da assinatura certa; CANCELADA + `canceladoEm`; acesso removido; resposta já sem o módulo); cancelar de novo → 404; **webhook de pagamento após cancelar → 200 mas NÃO reativa**; reassinar funciona; **Asaas com 500 → 502 e assinatura continua ATIVA com acesso**; **Asaas 404 → tratado como cancelada**; IA WhatsApp com plano; outra empresa → 404 sem afetar; funcionário não-admin → 403; módulo inválido → 422.
+- E2E Playwright: aviso no card; confirmação com foco em "Manter"; **Enter no foco inicial não cancela** (banco segue ATIVA); "Sim, cancelar" → toast, switch vira "Assinar módulo..." desligado, "PDV Rápido" some do menu, banco CANCELADA, DELETE registrado no Asaas; `/pdv` por URL direta → "Módulo indisponível". 0 erros de página. (Um screenshot pegou o switch ainda verde - era a transição CSS; conferido 600 ms depois: trilho na cor de desligado e `aria-checked=false`.)
+
+### Continua em aberto
+- Sem estorno/proporcional automático (decisão de produto; o modal avisa). Estorno, se for o caso, é manual no painel do Asaas.
+- `PAYMENT_OVERDUE` segue só sinalizando (ATRASADA), sem cortar acesso.

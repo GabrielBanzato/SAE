@@ -24,6 +24,22 @@ async function status(request, reply) {
   return reply.send(await assinaturasService.obterStatus(request.server.prisma, request.tenantId, id));
 }
 
+/**
+ * DELETE /assinaturas/:modulo - cancela a assinatura do modulo (Asaas) e
+ * remove o acesso na hora. O modulo vem da URL; a EMPRESA vem sempre do
+ * token (`request.tenantId`) - e a busca e por (empresa, modulo), entao nao
+ * existe como cancelar a assinatura de outra loja.
+ */
+async function cancelar(request, reply) {
+  const resultado = await assinaturasService.cancelarAssinaturaModulo(
+    request.server.prisma,
+    request.tenantId,
+    String(request.params.modulo || '')
+  );
+  request.log.info({ empresaId: request.tenantId, modulo: resultado.modulo }, 'Assinatura de modulo cancelada pelo lojista');
+  return reply.send(resultado);
+}
+
 async function listar(request, reply) {
   return reply.send(await assinaturasService.listar(request.server.prisma, request.tenantId));
 }
@@ -65,4 +81,4 @@ async function webhookAsaas(request, reply) {
   return reply.code(200).send({ recebido: true });
 }
 
-module.exports = { checkout, status, listar, webhookAsaas };
+module.exports = { checkout, status, listar, cancelar, webhookAsaas };
