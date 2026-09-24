@@ -7091,3 +7091,60 @@ docker exec sae_api npx prisma migrate deploy   # aplica 20260923170000 se ainda
 ```
 
 Depois: abrir `/suporte` com Ctrl+F5 e conferir o carimbo "Versão do sistema" no rodapé.
+
+---
+
+## Chat de Suporte com Áudio - Passo 2: chat bidirecional lojista <-> Supra Admin (2026-09-24)
+
+**Contexto**: o deploy do Passo 1 + reestruturação funcionou (usuário confirmou com prints: cartões de "Meus Chamados" com "Atualizado em" já em produção). O que faltava era o chat em si - pedido de novo, detalhado: miniatura + "Ver mais" + controle de status no Supra Admin, chat interno com envio/recebimento de áudio nas duas pontas, e no lojista "Ver mais" abrindo o chat com status, última alteração e tempo aberto.
+
+### Backend
+
+- **`api/src/services/chatChamado.service.js`** (novo) - UM service pras duas pontas; o que muda é só o **escopo** (`tenantId` do token pro lojista, `null` = todos pro Supra Admin) e o **remetente** (`LOJISTA`/`ADMIN`), ambos decididos pela ROTA, nunca pelo corpo. `obterChamado` (com `?apos=<id>` pra polling incremental - só mensagens novas + cabeçalho), `enviarMensagem` (texto ≤ 4000 caracteres ou áudio; grava a mensagem e "toca" `chamado.atualizadoEm` na mesma transação; se o banco falhar depois do arquivo gravado, apaga o arquivo), `lerAudio` (checa o escopo pelo chamado + defesa de path traversal).
+- **`api/src/controllers/chatChamado.controller.js`** (novo) - `criarHandlersChat({ admin })` gera os 3 handlers (obter/enviar/audio) pra cada ponta, sem duplicar lógica.
+- **Rotas novas**: lojista `GET /chamados/:id`, `POST /chamados/:id/mensagens`, `GET /chamados/:id/mensagens/:mensagemId/audio`; Supra Admin as mesmas 3 sob `/superadmin/chamados/...` (protegidas pelo hook de SUPERADMIN já existente). `PUT /superadmin/chamados/:id/status` já existia (aceita os 4 status desde a reestruturação).
+- **Áudio - decisão: base64 dentro do JSON, salvo em disco** (não multer): evita adicionar `@fastify/multipart`. `bodyLimit` de 8 MB **só** na rota de envio (o resto da API continua no 1 MB padrão). Validação: mime na whitelist (`audio/webm`, `ogg`, `mp4`, `mpeg`, `wav` - `;codecs=...` ignorado), ≤ 5 MB decodificado; extensão do arquivo vem do mime (nunca de um nome do cliente); nome = `<timestamp>-<hex aleatório>`. O banco guarda só o caminho relativo (`chamados/<id>/<arquivo>`) e **a API nunca o devolve** (`conteudo: null` pra áudio) - o cliente usa a rota de áudio.
+- **Servir o áudio com autenticação**: `<audio src>` não manda header `Authorization`, então o frontend baixa o áudio via axios (token no interceptor), cria um blob URL e só então alimenta o `<audio controls>`. Resposta com `Cache-Control: private, max-age=86400` (áudio nunca muda). Arquivo sumido do disco → `410` ("Áudio indisponível no servidor") em vez de 500.
+- Listas (`GET /chamados` e `GET /superadmin/chamados`) ganharam `_count.mensagens` e passaram a ordenar por `atualizadoEm desc` (chamado com resposta nova sobe pro topo).
+
+### Infraestrutura (⚠️ obrigatório pro áudio persistir)
+
+- `docker-compose.yml`: serviço `api` ganhou `UPLOADS_DIR=/app/uploads` + **volume nomeado `sae_uploads:/app/uploads`**. Sem ele, todo recreate do container (o fluxo normal de deploy) apagaria os áudios já enviados. O Compose cria o volume sozinho no primeiro `up`.
+- `api/.dockerignore` e `.gitignore` da raiz ignoram `uploads` / `api/uploads/` (áudios de usuário nunca vão pra imagem nem pro git).
+- **Sem migration nova** - a tabela `mensagens_chamado` já veio no Passo 1 (`20260923170000`).
+
+### Frontend
+
+Estrutura em `web/src/components/suporte/`:
+- `chat/useChamadoChat.js` - estado + ações do chat (compartilhado): carga inicial, **polling incremental a cada 5 s** (`?apos=<ultimoId>`), pausa com a aba em segundo plano (`document.hidden`) e reconsulta ao voltar, envio de texto e de áudio (Blob → base64).
+- `chat/useGravadorAudio.js` - **MediaRecorder API**: escolhe o formato suportado (webm/opus no Chrome/Firefox, mp4 no Safari), cronômetro, limite de 3 min (**ao atingir o limite, envia sozinho** o que gravou - não descarta), cancelar, e sempre libera o microfone. Mensagens de erro específicas pra permissão negada. `getUserMedia` só funciona em HTTPS/localhost (produção já é HTTPS via Cloudflare).
+- `chat/ChatChamado.jsx` - interface estilo WhatsApp: balões (meus à direita, coloridos - azul no lojista, roxo no admin), separador de dia (Hoje/Ontem/data), a `descricao` original do chamado como primeiro balão, auto-scroll inteligente (não "arranca" quem subiu pra reler o histórico), textarea que cresce, Enter envia / Shift+Enter quebra linha, botão do microfone que vira "enviar" quando há texto, barra de gravação com cronômetro + descartar.
+- `chat/BalaoMensagem.jsx`, `chat/AudioMensagem.jsx` (download autenticado → blob URL, revogado ao desmontar), `ControleStatusChamado.jsx` (3 botões: Em Análise / Sendo Solucionado / Resolvido; compacto no celular), `tempo.js` (duração legível "2 dias e 4 h", data/hora, rótulo de dia, cronômetro).
+
+Páginas:
+- **Lojista** - `pages/ChamadoChat.jsx`, rota `/suporte/chamado/:id` (dentro do `Layout`, mantém a Sidebar). Cabeçalho: seta ← pra `/suporte`, `#id` + título, badge de status, "Última alteração: <data> (há X)" e "Aberto há X" (ou "Ficou aberto por X" quando resolvido - conta até a última alteração). Relógio do cabeçalho atualiza a cada 30 s. Aviso verde quando o chamado está resolvido ("se o problema voltou, é só mandar uma mensagem").
+- **Meus Chamados** ganhou botão "Ver mais" e contador de mensagens em cada cartão.
+- **Supra Admin** - `pages/superadmin/ChamadosSuporte.jsx` reescrita: filtro por status com contadores, **miniaturas** (título numa linha, descrição cortada em 3 linhas, empresa + quem abriu com ID de 5 dígitos, qtd. de mensagens, "atualizado há"), "Ver mais" e o controle de status direto na miniatura. Uma coluna até `2xl` (com 2 colunas a miniatura ficava estreita demais e o controle de status quebrava linha).
+- `pages/superadmin/ChamadoDetalhe.jsx`, rota `/supra-admin/chamados/:id` (dentro do `SupraAdminLayout` - sidebar roxa mantida, item "Chamados de Suporte" continua marcado), seta ← pra lista, dados do chamado, controle de status no topo e o chat.
+
+### Validação
+
+- Backend (HTTP real contra API local): texto lojista/admin `201` com remetente certo; lojista mandando `remetente: 'ADMIN'` no corpo → gravado como `LOJISTA`; outra empresa → `404` em GET/POST/áudio; lojista na rota do admin → `403`; mime `image/png` → `415`; texto vazio → `400`; áudio base64 → `201` sem expor caminho, e o GET do áudio devolve os mesmos bytes com `audio/webm`; polling `?apos=` devolve só as novas.
+- Playwright com **microfone simulado** (`--use-fake-device-for-media-stream`): lojista entra por "Ver mais", manda texto (Enter), **grava 2 s de áudio real pelo MediaRecorder** → balão com `<audio>` de duração 2,16 s tocável; seta ← volta pra `/suporte`. Admin: miniatura → "Em Análise" atualiza o badge; "Ver mais" abre o chat com o menu lateral marcado; "Resolvido" grava no banco; resposta do admin aparece; seta ← volta pra lista. Desktop (1366 px) e celular (390 px). 0 erros de console. Tudo que o teste criou (chamados, mensagens, arquivos de áudio) apagado ao final; usuário de teste promovido a SUPERADMIN temporariamente e revertido.
+- **Bug achado e corrigido durante a própria validação**: um comentário JSX `{/* */}` solto como primeiro item de um ramo de ternário quebrou a compilação de `ChamadosSuporte.jsx` (tela em branco com "Failed to fetch dynamically imported module"). Detectado pelo teste E2E, não chegou a sair desta sessão.
+
+### Pendências / limitações conhecidas
+
+- **Tempo real é por polling (5 s)**, não WebSocket - suficiente pro volume de suporte atual e sem infra nova. Se virar gargalo, trocar por SSE/WebSocket mantendo `?apos=`.
+- **Apagar uma empresa/chamado apaga as mensagens (cascade), mas não os arquivos de áudio** em `sae_uploads` - ficam órfãos no volume. Irrelevante hoje (ninguém apaga chamado pela UI); se um dia houver exclusão, limpar `uploads/chamados/<id>/` junto.
+- Sem notificação de "mensagem nova" fora da tela do chat (a lista mostra só a contagem e reordena por última movimentação).
+
+### Deploy
+
+```bash
+docker exec sae_mysql mysqldump -uroot -p'<senha_root>' sae > backup_antes_chat.sql
+# Portainer: "Pull and redeploy" (pull_policy: build ja rebuilda api/web e cria o volume sae_uploads)
+docker exec sae_api npx prisma migrate deploy   # so garante a 20260923170000, se ainda nao aplicada
+docker exec sae_api sh -c 'mkdir -p /app/uploads && ls -ld /app/uploads'   # confere o volume montado
+```
+Conferir o carimbo "Versão do sistema" no rodapé de `/suporte` depois do deploy.

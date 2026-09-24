@@ -32,6 +32,7 @@ const Relatorios = lazy(() => import('./pages/Relatorios'));
 const Configuracoes = lazy(() => import('./pages/Configuracoes'));
 const Modulos = lazy(() => import('./pages/Modulos'));
 const Suporte = lazy(() => import('./pages/Suporte'));
+const ChamadoChat = lazy(() => import('./pages/ChamadoChat'));
 const InboxUnificado = lazy(() => import('./pages/InboxUnificado'));
 // Painel Master (Supra Admin) - layout e rotas PROPRIAS, deliberadamente
 // fora da arvore de <Layout /> normal (ver comentario de `ehSuperAdmin`
@@ -40,6 +41,7 @@ const InboxUnificado = lazy(() => import('./pages/InboxUnificado'));
 const SupraAdminLayout = lazy(() => import('./pages/superadmin/SupraAdminLayout'));
 const EmpresasClientes = lazy(() => import('./pages/superadmin/EmpresasClientes'));
 const ChamadosSuporte = lazy(() => import('./pages/superadmin/ChamadosSuporte'));
+const ChamadoDetalhe = lazy(() => import('./pages/superadmin/ChamadoDetalhe'));
 const ConfiguracoesGlobais = lazy(() => import('./pages/superadmin/ConfiguracoesGlobais'));
 
 /**
@@ -134,6 +136,8 @@ function RotasDaAplicacao() {
             <Route path="/configuracoes" element={<Configuracoes />} />
             <Route path="/modulos" element={<Modulos />} />
             <Route path="/suporte" element={<Suporte />} />
+            {/* Chat de um chamado (2026-09-23) - dentro do Layout, mantem a Sidebar. */}
+            <Route path="/suporte/chamado/:id" element={<ChamadoChat />} />
 
             {/* Catch-all: cobre tanto uma URL que nunca existiu quanto uma
                 rota de modulo que existe no app mas nao esta ativa pra esta
@@ -184,6 +188,8 @@ function RotasDaAplicacao() {
               <Route index element={<Navigate to="empresas" replace />} />
               <Route path="empresas" element={<EmpresasClientes />} />
               <Route path="chamados" element={<ChamadosSuporte />} />
+              {/* Chamado aberto + chat (2026-09-23) - dentro do SupraAdminLayout, mantem a sidebar roxa. */}
+              <Route path="chamados/:id" element={<ChamadoDetalhe />} />
               <Route path="configuracoes" element={<ConfiguracoesGlobais />} />
             </Route>
           )}

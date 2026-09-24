@@ -46,6 +46,12 @@ services:
       - PORT=3001
       - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-8h}
+      # Pasta dos audios do Chat de Suporte (2026-09-23) - ver volume abaixo.
+      - UPLOADS_DIR=/app/uploads
+    volumes:
+      # Volume NOMEADO (persistente) - sem ele, todo recreate do container
+      # (o fluxo normal de deploy) apagaria os audios ja enviados no chat.
+      - sae_uploads:/app/uploads
     ports:
       - "3001:3001"
     depends_on:
@@ -82,6 +88,7 @@ services:
 
 volumes:
   sae_mysql_data:
+  sae_uploads:
 
 networks:
   sae_net:

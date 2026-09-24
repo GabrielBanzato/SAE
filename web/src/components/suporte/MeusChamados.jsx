@@ -1,9 +1,7 @@
-import { History, Loader2, RefreshCw } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { History, Loader2, RefreshCw, ArrowRight, MessageSquare } from 'lucide-react';
 import BadgeStatusChamado from './BadgeStatusChamado';
-
-function formatarDataHora(valor) {
-  return valor ? new Date(valor).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '-';
-}
+import { formatarDataHora } from './tempo';
 
 /**
  * "Meus Chamados" do lojista (extraido de pages/Suporte.jsx na
@@ -73,10 +71,26 @@ export default function MeusChamados({ chamados, erro, carregando, onRecarregar 
                 </div>
                 <BadgeStatusChamado status={chamado.status} />
               </div>
-              <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
-                Aberto em {formatarDataHora(chamado.criadoEm)}
-                {chamado.atualizadoEm && <> · Atualizado em {formatarDataHora(chamado.atualizadoEm)}</>}
-              </p>
+              <div className="mt-2 flex flex-wrap items-end justify-between gap-2">
+                <p className="text-xs text-slate-400 dark:text-slate-500">
+                  Aberto em {formatarDataHora(chamado.criadoEm)}
+                  {chamado.atualizadoEm && <> · Atualizado em {formatarDataHora(chamado.atualizadoEm)}</>}
+                  {chamado._count?.mensagens > 0 && (
+                    <>
+                      {' '}
+                      · <MessageSquare size={12} className="inline align-[-1px]" aria-hidden="true" /> {chamado._count.mensagens}
+                    </>
+                  )}
+                </p>
+                {/* Chat de Suporte (2026-09-23) - abre a conversa do chamado em rota propria. */}
+                <Link
+                  to={`/suporte/chamado/${chamado.id}`}
+                  className="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-3.5 py-1.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-blue-700"
+                >
+                  Ver mais
+                  <ArrowRight size={15} aria-hidden="true" />
+                </Link>
+              </div>
             </li>
           ))}
         </ul>

@@ -9,8 +9,13 @@
 async function listarPorEmpresa(prisma, tenantId) {
   return prisma.chamadoSuporte.findMany({
     where: { empresaId: tenantId },
-    include: { usuario: { select: { nome: true, codigoUsuario: true } } },
-    orderBy: { criadoEm: 'desc' },
+    include: {
+      usuario: { select: { nome: true, codigoUsuario: true } },
+      // Qtd. de mensagens do chat (2026-09-23) - mostrada no cartao de Meus Chamados.
+      _count: { select: { mensagens: true } },
+    },
+    // Ultima movimentacao primeiro - um chamado antigo com resposta nova sobe pro topo.
+    orderBy: { atualizadoEm: 'desc' },
   });
 }
 

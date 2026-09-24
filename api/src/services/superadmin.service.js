@@ -196,8 +196,11 @@ async function listarChamados(prisma) {
     include: {
       empresa: { select: { id: true, razaoSocial: true, nomeLoja: true } },
       usuario: { select: { nome: true, codigoUsuario: true } },
+      // Qtd. de mensagens do chat (2026-09-23) - mostrada na miniatura do chamado.
+      _count: { select: { mensagens: true } },
     },
-    orderBy: { criadoEm: 'desc' },
+    // Ultima movimentacao primeiro (resposta nova/troca de status sobe o chamado).
+    orderBy: { atualizadoEm: 'desc' },
   });
 }
 

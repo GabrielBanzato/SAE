@@ -1,1 +1,4 @@
 .env
+
+# Audios do Chat de Suporte (dados de usuario, nunca versionar)
+api/uploads/

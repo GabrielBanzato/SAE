@@ -13,7 +13,7 @@ O SAE roda em produção como uma stack de **4 containers Docker**, definida em 
 ```
 services:
   mysql       # MySQL 8.0 — dado persistente em volume nomeado sae_mysql_data
-  api         # Fastify (Node 20) — porta 3001:3001
+  api         # Fastify (Node 20) — porta 3001:3001 — áudios do chat no volume nomeado sae_uploads (/app/uploads)
   web         # Nginx servindo o build estático do React — porta 8081:80
   cloudflare  # cloudflared — túnel que expõe a stack à internet sem abrir porta no roteador
 ```
@@ -192,7 +192,7 @@ Sempre `SELECT` por `email` antes de qualquer `UPDATE` manual em produção, pra
 
 **Migration nova, 100% aditiva** — `20260923170000_chat_suporte_mensagens_chamado`: cria a tabela `mensagens_chamado` (chat 1:N de `chamados_suporte`, `remetente` `LOJISTA`/`ADMIN`, `tipo_mensagem` `TEXTO`/`AUDIO`) e adiciona `chamados_suporte.atualizado_em` (`NOT NULL DEFAULT CURRENT_TIMESTAMP(3)` — seguro com linhas existentes). Sem backfill; aplicar com `docker exec sae_api npx prisma migrate deploy` depois do rebuild/recreate de `api` e `web` (backup antes, como sempre). Runbook completo em `NOTAS_IMPORTANTES.md`.
 
-**⚠️ Pendência de infraestrutura pro Passo 2 (áudio)**: os áudios do chat vão ser salvos **em disco** pela API (não em base64 no banco — decisão pra não inchar a tabela). Antes desse passo ir pra produção, o serviço `api` do `docker-compose.yml` precisa de um **volume nomeado persistente** montado na pasta de uploads — sem isso, todo `--force-recreate` do container `api` (o fluxo normal de deploy via Portainer) **apaga todos os áudios já enviados**, e as mensagens no banco passam a apontar pra arquivos inexistentes.
+**✅ Resolvido no Passo 2 (ver 2.12) — era uma pendência de infraestrutura pro áudio**: os áudios do chat vão ser salvos **em disco** pela API (não em base64 no banco — decisão pra não inchar a tabela). Antes desse passo ir pra produção, o serviço `api` do `docker-compose.yml` precisa de um **volume nomeado persistente** montado na pasta de uploads — sem isso, todo `--force-recreate` do container `api` (o fluxo normal de deploy via Portainer) **apaga todos os áudios já enviados**, e as mensagens no banco passam a apontar pra arquivos inexistentes.
 
 **⚠️ `prisma migrate dev` recusa rodar no banco local**: acusa que `20260922222219_saas_modular_pricing_supra_admin_catchup` foi modificada depois de aplicada (checksum diferente) e pede `migrate reset` (apaga tudo). **Não rodar o reset.** Gerar migrations novas via `prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url <SHADOW_DATABASE_URL> --script` e aplicar com `migrate deploy` (que não confere checksum de migration antiga). Lição: **nunca editar o `migration.sql` de uma migration que já foi aplicada em algum banco**.
 
@@ -210,6 +210,17 @@ Sempre `SELECT` por `email` antes de qualquer `UPDATE` manual em produção, pra
 - Carimbo de versão do build (`__BUILD_ID__` no `vite.config.js`), visível no rodapé de `/suporte` e no console — prova objetiva de que o deploy chegou ao navegador.
 
 **Se acontecer de novo** (carimbo não mudou após redeploy): via SSH no host, `docker compose build --no-cache api web && docker compose up -d --force-recreate api web`, depois Ctrl+F5 no navegador. Se o carimbo mudou mas a tela não, suspeitar de regra de cache "Cache Everything" no Cloudflare (purge em Caching > Configuration > Purge Everything).
+
+### 2.12 Chat de Suporte (Passo 2): áudios em disco no volume `sae_uploads` (2026-09-24)
+
+O chat lojista ↔ Supra Admin (texto + áudio gravado no navegador) guarda os **arquivos de áudio em disco**, não no banco — a tabela `mensagens_chamado` só tem o caminho relativo. Consequências operacionais:
+
+- **Volume nomeado `sae_uploads` montado em `/app/uploads` do container `api`** (`UPLOADS_DIR` no `environment:`). Criado automaticamente pelo Compose no primeiro `up`. **Nunca remover esse volume nem o mapeamento** — sem ele, todo recreate do `api` apaga os áudios, e as mensagens passam a responder `410 "Áudio indisponível no servidor"`.
+- **Backup**: o `mysqldump` sozinho **não** cobre os áudios. Pra backup completo do suporte, copiar também o volume: `docker run --rm -v sae_sae_uploads:/dados -v "$PWD":/bkp alpine tar czf /bkp/uploads.tgz -C /dados .` (o nome real do volume leva o prefixo do projeto Compose — conferir com `docker volume ls | grep uploads`).
+- **Limite de corpo**: só `POST .../chamados/:id/mensagens` aceita até 8 MB (áudio em base64 no JSON); o resto da API segue no 1 MB padrão do Fastify. Se um proxy na frente (Nginx/Cloudflare) tiver limite menor que ~8 MB, o envio de áudio longo falha antes de chegar na API — hoje o `web` (Nginx) não fica no caminho da API, e o Cloudflare aceita 100 MB no plano gratuito.
+- **Microfone exige HTTPS**: `getUserMedia` só funciona em contexto seguro. Em produção o Cloudflare Tunnel já entrega HTTPS; acessar o sistema por `http://<ip>:8081` direto desativa o botão de gravar (texto continua funcionando).
+- **Tempo real = polling a cada 5 s** (`GET ...?apos=<ultimoId>`, só mensagens novas) — sem WebSocket, nada a configurar no túnel.
+- Excluir empresa/chamado apaga as mensagens (cascade), mas **não** os arquivos — ficam órfãos no volume (sem impacto hoje; não há exclusão de chamado pela UI).
 
 ---
 
