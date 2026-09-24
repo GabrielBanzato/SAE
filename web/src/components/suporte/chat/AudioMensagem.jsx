@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
 import api from '../../../services/api';
+import CustomAudioPlayer from './CustomAudioPlayer';
 
 /**
  * Player de uma mensagem de audio. A rota do audio exige o token JWT, e
@@ -52,5 +53,6 @@ export default function AudioMensagem({ url }) {
     );
   }
 
-  return <audio controls preload="metadata" src={src} className="h-10 w-60 max-w-full sm:w-72" />;
+  // Player customizado (herda a cor do texto do balao) no lugar do `<audio controls>` nativo.
+  return <CustomAudioPlayer src={src} />;
 }

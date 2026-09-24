@@ -220,6 +220,7 @@ O chat lojista ↔ Supra Admin (texto + áudio gravado no navegador) guarda os *
 - **Limite de corpo**: só `POST .../chamados/:id/mensagens` aceita até 8 MB (áudio em base64 no JSON); o resto da API segue no 1 MB padrão do Fastify. Se um proxy na frente (Nginx/Cloudflare) tiver limite menor que ~8 MB, o envio de áudio longo falha antes de chegar na API — hoje o `web` (Nginx) não fica no caminho da API, e o Cloudflare aceita 100 MB no plano gratuito.
 - **Microfone exige HTTPS**: `getUserMedia` só funciona em contexto seguro. Em produção o Cloudflare Tunnel já entrega HTTPS; acessar o sistema por `http://<ip>:8081` direto desativa o botão de gravar (texto continua funcionando).
 - **Tempo real = polling a cada 5 s** (`GET ...?apos=<ultimoId>`, só mensagens novas) — sem WebSocket, nada a configurar no túnel.
+- **Player de áudio é customizado** (`CustomAudioPlayer.jsx`, 2026-09-24), não o `<audio controls>` do navegador. Se um áudio aparecer com tempo total "0:00" ou com o botão girando pra sempre, suspeitar do cálculo de duração de webm do MediaRecorder (ver 4.3) antes de suspeitar do arquivo/servidor — o arquivo em si se confere direto na rota `GET .../mensagens/:id/audio`.
 - Excluir empresa/chamado apaga as mensagens (cascade), mas **não** os arquivos — ficam órfãos no volume (sem impacto hoje; não há exclusão de chamado pela UI).
 
 ---
@@ -294,6 +295,8 @@ Nenhum valor real de produção (senha de banco, `JWT_SECRET`, `TUNNEL_TOKEN`, e
 - **Nginx padrão (`nginx:alpine`) não serve SPA** — sem o `web/nginx.conf` customizado (`try_files $uri $uri/ /index.html;`), qualquer F5 numa rota client-side do React Router (ex.: `/configuracoes`) retorna 404 do Nginx, porque esse arquivo não existe fisicamente no disco.
 - **Windows/NTFS é case-insensitive** — dois arquivos no repositório cujo nome só difere em maiúsculas/minúsculas (`NOTAS_IMPORTANTES.md` vs. `notas_importantes.md`) são o **mesmo arquivo físico** nesta máquina; escrever num sobrescreve o outro silenciosamente. Ver o incidente completo na seção 2.3.
 - **Um painel/lista scrollável dentro de um `flex flex-col` de altura fixa precisa de `min-h-0`, não só `overflow-y-auto`** — um filho `flex-1` tem `min-height: auto` por padrão (o "automatic minimum size" dos flex items), então ele cresce pra caber todo o conteúdo em vez de respeitar o espaço disponível e ativar o próprio scroll. Já causou um bug real na Sidebar (`web/src/components/Sidebar.jsx`) — o último item do menu ficava cortado atrás do rodapé sempre que a lista de links era mais alta que a tela, mesmo com `overflow-y-auto` já presente. Corrigido adicionando `min-h-0` junto com `flex-1`/`h-full` (2026-09-22, ver `NOTAS_IMPORTANTES.md`). Vale a mesma checagem em qualquer painel scrollável novo dentro de um flex container de altura fixa.
+
+- **Áudio webm gravado pelo MediaRecorder (Chrome) chega com `duration === Infinity`** — o arquivo não traz a duração no cabeçalho. Não é arquivo corrompido: o `CustomAudioPlayer.jsx` do chat contorna pulando pra `currentTime = 1e101` no `loadedmetadata` (força o cálculo) e voltando pra 0. Qualquer player novo de áudio gravado no navegador precisa do mesmo truque, senão mostra "0:00" de duração.
 
 ### 4.4 Onde olhar para reconstruir o contexto de uma decisão antiga
 

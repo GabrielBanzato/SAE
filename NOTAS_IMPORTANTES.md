@@ -7148,3 +7148,22 @@ docker exec sae_api npx prisma migrate deploy   # so garante a 20260923170000, s
 docker exec sae_api sh -c 'mkdir -p /app/uploads && ls -ld /app/uploads'   # confere o volume montado
 ```
 Conferir o carimbo "Versão do sistema" no rodapé de `/suporte` depois do deploy.
+
+---
+
+## Player de áudio customizado no chat de suporte (2026-09-24)
+
+**Pedido**: o `<audio controls>` nativo renderiza a caixa branca/cinza do navegador dentro dos balões coloridos/escuros do chat, quebrando o visual. Criar um player próprio (play/pause, barra de progresso, tempo atual/total) que se adapte à cor do balão sem receber cor por props.
+
+**Novo**: `web/src/components/suporte/chat/CustomAudioPlayer.jsx`. Único ponto de uso: `chat/AudioMensagem.jsx` (que continua fazendo o download autenticado do áudio → blob URL e agora entrega o `src` ao player em vez de ao `<audio controls>`). `BalaoMensagem`/`ChatChamado`/páginas não mudaram.
+
+**Decisões**:
+- **Cor via `currentColor`, não `white/30` fixo** (o pedido sugeria `text-white`/`bg-white/30` como exemplo): o balão "do outro lado" é branco no tema claro - um player `white/30` sumiria nele. Com `bg-current/20`, `bg-current/30`, `bg-current` o player herda a cor do texto do balão: branco nos balões azul/roxo, escuro no balão claro, claro no balão escuro. Tailwind v4 gera `color-mix(in oklab, currentcolor 30%, transparent)` (com fallback sólido pra navegador sem `color-mix`) - conferido no CSS do build.
+- `<audio>` continua na árvore (é ele que toca), só com `hidden`.
+- Barra de progresso = barra desenhada + `<input type="range">` invisível por cima: clicar/arrastar/setas do teclado e leitor de tela funcionam sem reimplementar pointer events (`aria-label` + `aria-valuetext` "0:03 de 0:04").
+- **Correção do `duration === Infinity`**: webm gravado pelo MediaRecorder do Chrome não traz a duração no cabeçalho - o tempo total apareceria "0:00"/Infinity. Truque padrão: ao carregar os metadados, pular pra `currentTime = 1e101` (força o navegador a calcular), e no `timeupdate` seguinte voltar pra 0 e registrar a duração real. Botão fica com spinner (desabilitado) até a duração estar resolvida.
+- **Um áudio por vez** (como no WhatsApp): dar play num player dispara o evento `sae:audio-play` e os outros pausam.
+
+**Validação** (Playwright, microfone simulado, áudio webm REAL gravado pelo MediaRecorder): tempo total "0:04" nos 2 balões (Infinity corrigido); `<audio>` nativo invisível; play → tempo avança e o botão vira "Pausar"; play no 2º áudio pausa o 1º (só 1 "Pausar" na tela); seek pra 75% pela barra → "0:03 / 0:04". Screenshots conferidos: balão azul (lojista) e claro (suporte) no tema claro, azul e cinza-escuro no tema escuro, roxo e cinza-escuro no Painel Master. 0 erros de console; chamado/áudios de teste apagados, usuário de teste revertido a LOJISTA. `npm run build` + `oxlint` limpos.
+
+**Deploy**: só frontend - "Pull and redeploy" no Portainer (rebuilda `web`); conferir o carimbo "Versão do sistema" em `/suporte`.
