@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Headset, CheckCircle2, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../services/api';
+import BadgeStatusChamado from '../../components/suporte/BadgeStatusChamado';
 
 function formatarData(valor) {
   return new Date(valor).toLocaleDateString('pt-BR');
@@ -36,7 +37,8 @@ export default function ChamadosSuporte() {
     setErro('');
     setProcessandoId(chamado.id);
     try {
-      const novoStatus = chamado.status === 'ABERTO' ? 'RESOLVIDO' : 'ABERTO';
+      // Qualquer status diferente de RESOLVIDO (inclui EM_ANALISE/SENDO_SOLUCIONADO) -> resolve; RESOLVIDO -> reabre.
+      const novoStatus = chamado.status === 'RESOLVIDO' ? 'ABERTO' : 'RESOLVIDO';
       await apiFetch(`/superadmin/chamados/${chamado.id}/status`, {
         method: 'PUT',
         body: JSON.stringify({ status: novoStatus }),
@@ -98,15 +100,8 @@ export default function ChamadosSuporte() {
                       )}
                     </p>
                   </div>
-                  <span
-                    className={`inline-flex shrink-0 items-center rounded-full px-3 py-1 text-xs font-bold ${
-                      chamado.status === 'ABERTO'
-                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
-                        : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
-                    }`}
-                  >
-                    {chamado.status === 'ABERTO' ? 'Aberto' : 'Resolvido'}
-                  </span>
+                  <BadgeStatusChamado status={chamado.status} />
+
                 </div>
 
                 {chamado.descricao && (
@@ -124,7 +119,7 @@ export default function ChamadosSuporte() {
                   ) : (
                     <CheckCircle2 size={16} aria-hidden="true" />
                   )}
-                  {chamado.status === 'ABERTO' ? 'Marcar como Resolvido' : 'Reabrir Chamado'}
+                  {chamado.status === 'RESOLVIDO' ? 'Reabrir Chamado' : 'Marcar como Resolvido'}
                 </button>
               </div>
             );

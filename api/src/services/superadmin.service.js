@@ -11,7 +11,10 @@ const empresaService = require('./empresa.service');
  * sempre vem explicito do parametro da rota.
  */
 
-const STATUS_CHAMADO_VALIDOS = ['ABERTO', 'RESOLVIDO'];
+// Fluxo de atendimento (Chat de Suporte, 2026-09-23 - EM_ANALISE e
+// SENDO_SOLUCIONADO novos). Espelhado no frontend em
+// web/src/components/suporte/statusChamado.js.
+const STATUS_CHAMADO_VALIDOS = ['ABERTO', 'EM_ANALISE', 'SENDO_SOLUCIONADO', 'RESOLVIDO'];
 
 /**
  * Todas as empresas cadastradas - visao "de cima", sem filtro de tenant.

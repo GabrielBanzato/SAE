@@ -12,6 +12,15 @@ async function create(request, reply) {
     return reply.code(400).send({ error: 'titulo e obrigatorio.' });
   }
 
+  // Limites das colunas (VarChar(150)/VarChar(1000) em schema.prisma) -
+  // sem isso um texto maior estourava no MySQL e virava 500 generico.
+  if (String(titulo).length > 150) {
+    return reply.code(400).send({ error: 'titulo deve ter no maximo 150 caracteres.' });
+  }
+  if (descricao && String(descricao).length > 1000) {
+    return reply.code(400).send({ error: 'descricao deve ter no maximo 1000 caracteres.' });
+  }
+
   // `usuarioId` sempre de `request.userId` (do token) - qualquer campo de
   // "id do usuario" que o corpo da requisicao mande e ignorado de proposito
   // (ver comentario de `chamadosService.criar`).

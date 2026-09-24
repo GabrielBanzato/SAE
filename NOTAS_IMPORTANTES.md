@@ -7046,3 +7046,48 @@ docker compose build api web
 docker compose up -d --force-recreate api web
 docker exec sae_api npx prisma migrate deploy
 ```
+
+---
+
+## Deploy "sem mudança visual" + reestruturação do Suporte (2026-09-23)
+
+**Relato**: depois do commit `465d846` ("CORREÇÃO DE BUGS e REFORMULAÇÃO DO SUPORTE", feito e enviado pelo usuário), o servidor tratou o deploy como idêntico ao anterior - nenhuma mudança visual.
+
+### Causa raiz (não era o código)
+
+O commit estava correto e no `origin/main` (13 arquivos, conferido com `git log --stat`). O problema era o **pipeline de deploy**:
+
+1. **`docker-compose.yml` sem `pull_policy` em `api`/`web`** - os dois serviços usam `build:`, e `docker compose up -d` (o que o Portainer roda num "Pull and redeploy") **só builda se a imagem ainda não existir**. Como `sae-api`/`sae-web` já existiam de deploys anteriores, o Portainer recriava os containers com a **imagem antiga** - o código novo do repositório nunca era compilado. Explica exatamente o "idêntico ao anterior".
+2. **`web/nginx.conf` sem `Cache-Control`** - mesmo com imagem nova, navegador/Cloudflare podiam seguir servindo o `index.html` antigo (que aponta pro bundle antigo).
+
+### Correções de infraestrutura
+
+- `docker-compose.yml`: `pull_policy: build` em `api` e `web` - força rebuild a cada `up`. O cache de camadas do Docker continua valendo (rebuild sem mudança é rápido). Conferido com `docker compose config`.
+- `web/nginx.conf`: `index.html`/rotas SPA com `no-cache, no-store, must-revalidate`; `/assets/` (nomes com hash) com `max-age=31536000, immutable`. Conferido buildando a imagem `web` de verdade e lendo os headers (`Invoke-WebRequest`).
+- **Carimbo de versão do build**: `vite.config.js` define `__BUILD_ID__` (data/hora do `npm run build`), lido por `web/src/utils/versao.js`. Aparece no **rodapé da tela de Suporte** ("Versão do sistema: dd/mm/aaaa, hh:mm") e no console (`[SAE] build <ISO>`). **Depois de todo deploy, conferir se esse carimbo mudou** - se não mudou, o deploy não pegou.
+
+### Reestruturação do Suporte (refeito, otimizado)
+
+`pages/Suporte.jsx` (~290 linhas com formulário + tabela + fetch juntos) virou só composição:
+
+- `components/suporte/FormularioChamado.jsx` - formulário. Nome/E-mail lado a lado no desktop, contador `x/1000` na descrição (`maxLength` = limite da coluna), título montado por função pura (`montarTitulo`, colapsa espaços). Deixou de mandar `usuario_codigo` no corpo (o backend sempre ignorou).
+- `components/suporte/MeusChamados.jsx` - tabela virou **lista de cartões** (sem scroll horizontal no celular, título truncado numa linha, descrição com `line-clamp-2`), contador de chamados, botão de atualizar, e "Atualizado em" (`atualizadoEm`, da migration `20260923170000`).
+- `components/suporte/statusChamado.js` + `BadgeStatusChamado.jsx` - **catálogo único de status** (`ABERTO`, `EM_ANALISE`, `SENDO_SOLUCIONADO`, `RESOLVIDO`), compartilhado com `pages/superadmin/ChamadosSuporte.jsx`. Antes cada tela tinha seu ternário `=== 'ABERTO' ? ... : 'Resolvido'`, que mostraria "Resolvido" pra qualquer status novo. Status desconhecido cai num estilo neutro com o valor cru.
+- **"Seu ID" em destaque** num cartão no topo da página, além do campo do formulário. Enquanto `GET /auth/me` não responde, mostra "…"/"Carregando..." em vez de `-----` (que parecia um valor).
+- Backend: `STATUS_CHAMADO_VALIDOS` passou a aceitar `EM_ANALISE`/`SENDO_SOLUCIONADO` (base pro chat); `chamados.controller.js#create` valida `titulo` ≤ 150 e `descricao` ≤ 1000 (antes estouravam no MySQL e viravam 500 genérico). No Supra Admin, "Marcar como Resolvido" vale pra qualquer status ≠ `RESOLVIDO`.
+
+### Validação
+
+`npm run build` + `oxlint` sem avisos nos arquivos tocados. Playwright contra API + Vite locais, com sessão "antiga" (usuário sem `codigoUsuario` no `localStorage`): ID `27501` no cartão e no campo; chamado enviado aparece na lista; após `PUT .../status` com `EM_ANALISE` → `200` e o badge virou "Em Análise"; `POST /chamados` com descrição de 1001 caracteres → `400`; carimbo de versão no rodapé e no console; 0 erros de console. Chamado de teste apagado ao final.
+
+### Deploy (daqui pra frente)
+
+No Portainer, "Pull and redeploy" da stack já rebuilda `api`/`web` sozinho (por causa do `pull_policy: build`). **Neste primeiro deploy**, por garantia, marcar a opção de re-pull/rebuild se existir, ou via SSH:
+
+```bash
+docker compose build --no-cache api web
+docker compose up -d --force-recreate api web
+docker exec sae_api npx prisma migrate deploy   # aplica 20260923170000 se ainda nao aplicada
+```
+
+Depois: abrir `/suporte` com Ctrl+F5 e conferir o carimbo "Versão do sistema" no rodapé.

@@ -24,6 +24,8 @@ Pontos que importam especificamente para quem opera via Portainer:
 - **A rede `sae_net` é uma bridge definida pelo usuário** (não a bridge padrão do Docker) — isso importa porque só nesse tipo de rede o Compose cria automaticamente resolução DNS interna tanto pelo **nome do serviço** (`mysql`, `api`, `web`, `cloudflare`) quanto pelo **`container_name`** (`sae_mysql`, `sae_api`, `sae_web`, `sae_cloudflare`). Os dois nomes resolvem para o mesmo IP interno.
 - **`web` builda o frontend com a URL da API já embutida** (`VITE_API_URL`, lido de `web/.env` **no momento do build**, não em runtime) — trocar o endereço da API depois de já buildado exige **rebuildar a imagem `web`** no Portainer (não basta reiniciar o container). Ver seção 3.3.
 - **O serviço `cloudflare` não expõe porta nenhuma** (`TUNNEL_TOKEN` autentica um túnel outbound) — se o site parar de responder externamente mas os containers estiverem `Up` no Portainer, o primeiro suspeito é esse container ou a configuração do túnel no painel da Cloudflare (Zero Trust > Networks > Tunnels), não necessariamente `api`/`web`.
+- **`api` e `web` têm `pull_policy: build`** (desde 2026-09-23) — sem isso, `docker compose up` (o "Pull and redeploy" do Portainer) reaproveitava a imagem já existente e **nunca compilava o código novo** do repositório. Não remover. Ver 2.11.
+- **Confirmar todo deploy pelo carimbo de versão**: rodapé da tela `/suporte` ("Versão do sistema: …") e console do navegador (`[SAE] build …`) mostram a data/hora do build do frontend. Se não mudou depois de um redeploy, o deploy não pegou.
 - **`db/init/` está vazio** — não há scripts de inicialização SQL rodando automaticamente no primeiro boot do MySQL. Todo o schema é criado exclusivamente pelo Prisma (ver seção 2).
 
 ---
@@ -195,6 +197,19 @@ Sempre `SELECT` por `email` antes de qualquer `UPDATE` manual em produção, pra
 **⚠️ `prisma migrate dev` recusa rodar no banco local**: acusa que `20260922222219_saas_modular_pricing_supra_admin_catchup` foi modificada depois de aplicada (checksum diferente) e pede `migrate reset` (apaga tudo). **Não rodar o reset.** Gerar migrations novas via `prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url <SHADOW_DATABASE_URL> --script` e aplicar com `migrate deploy` (que não confere checksum de migration antiga). Lição: **nunca editar o `migration.sql` de uma migration que já foi aplicada em algum banco**.
 
 **Comportamento novo do login a saber**: o frontend grava o objeto `usuario` no `localStorage` só no login — antes desta correção, uma sessão aberta antes de um campo novo existir (ex.: `codigoUsuario`) ficava sem ele até novo login ("Seu ID" = `-----` no Suporte). Agora `AuthContext` chama `GET /auth/me` a cada boot e reidrata o usuário. Se "Seu ID" continuar `-----` em produção depois do deploy, o problema é dado, não código: o usuário não tem `codigo_usuario` no banco — rodar `scripts/backfillCodigoUsuario.js`.
+
+### 2.11 Incidente: deploy "idêntico ao anterior" — Portainer reaproveitava a imagem antiga (2026-09-23)
+
+**Sintoma**: commit novo (`465d846`) enviado ao GitHub, redeploy feito no Portainer, e **nenhuma mudança visual** no sistema; o servidor tratou o deploy como idêntico ao anterior.
+
+**Causa raiz**: `api` e `web` no `docker-compose.yml` usam `build:` sem `pull_policy`. Nesse caso, `docker compose up -d` **só builda a imagem se ela ainda não existir** — como `sae-api`/`sae-web` já existiam, o Portainer recriava os containers com a imagem antiga. O código do commit nunca era compilado. Agravante: `web/nginx.conf` não mandava `Cache-Control`, então mesmo uma imagem nova podia ser mascarada por um `index.html` antigo em cache (navegador/Cloudflare).
+
+**Correção**:
+- `pull_policy: build` em `api` e `web` (força rebuild a cada `up`; o cache de camadas continua, então rebuild sem mudança é rápido).
+- `web/nginx.conf`: `index.html`/rotas SPA → `no-cache, no-store, must-revalidate`; `/assets/` (nomes com hash) → `max-age=31536000, immutable`.
+- Carimbo de versão do build (`__BUILD_ID__` no `vite.config.js`), visível no rodapé de `/suporte` e no console — prova objetiva de que o deploy chegou ao navegador.
+
+**Se acontecer de novo** (carimbo não mudou após redeploy): via SSH no host, `docker compose build --no-cache api web && docker compose up -d --force-recreate api web`, depois Ctrl+F5 no navegador. Se o carimbo mudou mas a tela não, suspeitar de regra de cache "Cache Everything" no Cloudflare (purge em Caching > Configuration > Purge Everything).
 
 ---
 
