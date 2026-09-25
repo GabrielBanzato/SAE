@@ -7403,3 +7403,58 @@ Backup → "Pull and redeploy" → `docker exec sae_api npx prisma migrate deplo
 ### Continua em aberto
 - Sem estorno/proporcional automático (decisão de produto; o modal avisa). Estorno, se for o caso, é manual no painel do Asaas.
 - `PAYMENT_OVERDUE` segue só sinalizando (ATRASADA), sem cortar acesso.
+
+---
+
+## Erro P3014/P1010 no `prisma migrate dev` - base sombra (shadow database) sem permissão (2026-09-24)
+
+**Pergunta**: `npx prisma migrate dev` falha com `P3014: Prisma Migrate could not create the shadow database` + `P1010: User was denied access` - o usuário da app (`sae_app`) só tem `GRANT ALL ON sae.*`, sem `CREATE DATABASE`. Como resolver (a) dando o privilégio via root e (b) com `shadowDatabaseUrl` + base sombra dedicada.
+
+**Contexto do projeto (conferido)**: `schema.prisma` JÁ declara `shadowDatabaseUrl = env("SHADOW_DATABASE_URL")`. O erro aparece quando essa variável **não está definida** no `.env` usado (ou aponta pro `sae_app` numa base que ele não pode acessar) - aí o Prisma tenta criar sozinho uma base `prisma_migrate_shadow_db_<uuid>` com o usuário do `DATABASE_URL`. Grants reais do `sae_app` local: `USAGE ON *.*` + `ALL ON sae.*`. O `api/.env` local de dev usa root nas duas URLs (por isso nunca deu o erro aqui).
+
+**Validado de verdade no `sae_mysql` local com um usuário TEMPORÁRIO** (`teste_shadow`, removido no fim - o `sae_app` não foi alterado):
+1. Reprodução: usuário só com `ALL ON sae.*` + shadow URL apontando pra outra base → `P1010 User was denied access on the database`.
+2. **Forma recomendada (menor privilégio)** - root cria a base sombra e dá ao usuário direitos SÓ nela (`CREATE DATABASE sae_shadow ...; GRANT ALL PRIVILEGES ON sae_shadow.* TO 'sae_app'@'%';`) + `SHADOW_DATABASE_URL` com o próprio `sae_app` → `prisma migrate diff --from-migrations` aplicou as 15 migrations na sombra, diff vazio; o usuário continua sem poder criar qualquer outra base (ERROR 1044).
+3. **Forma "dar o privilégio" sem abrir o servidor inteiro** - grant por PADRÃO de nome: ``GRANT ALL PRIVILEGES ON `prisma\_migrate\_shadow\_db\_%`.* TO 'sae_app'@'%';`` → cria/apaga `prisma_migrate_shadow_db_*` (o nome que o Prisma usa) e nega qualquer outro nome. Evitar `GRANT CREATE ... ON *.*` (global: deixaria o usuário da app mexer em qualquer base do servidor).
+- **Pegadinha de shell**: esse GRANT com `\_` falha se passado por `mysql -e "..."` (o cliente interpreta `\_` como comando: `Unknown command '\_'`) - mandar o SQL por stdin (`... | docker exec -i sae_mysql mysql -uroot -p`) ou pelo prompt interativo.
+
+**Avisos registrados na resposta**: `migrate dev` é só pra DESENVOLVIMENTO (produção usa `migrate deploy`, que não usa base sombra - se o P3014 apareceu no servidor, o comando é que está errado); e, localmente, mesmo com a sombra resolvida, `migrate dev` ainda pede reset por causa do checksum alterado da migration `20260922222219` (dossiê 2.10) - o fluxo usado no projeto é `migrate diff` + `migrate deploy`.
+
+---
+
+## Seguimento: "npx: command not found" no servidor + GRANT da base sombra aplicado em PRODUÇÃO (2026-09-24)
+
+O usuário seguiu a Forma 1 **no servidor de produção** (`root@system`): o GRANT ``prisma\_migrate\_shadow\_db\_%`` foi aplicado com sucesso ao `sae_app`, mas os comandos do Prisma falharam:
+- `npx prisma migrate deploy/dev` direto no host → `Command 'npx' not found`: **o host não tem Node.js** - Node/Prisma só existem DENTRO do container `sae_api`. Sempre `docker exec -it sae_api npx prisma ...`.
+- `docker exec sae_api` sem comando → "requires at least 2 arguments".
+- Em produção o comando é `migrate deploy` (não usa base sombra) - `migrate dev` nunca deve rodar no servidor; logo o GRANT da sombra era **desnecessário em produção** e foi recomendado revogá-lo (privilégio mínimo pro usuário da app):
+  ``REVOKE ALL PRIVILEGES ON `prisma\_migrate\_shadow\_db\_%`.* FROM 'sae_app'@'%';``
+- Passos passados ao usuário: sair do MySQL, `mysqldump` de backup, `docker exec -it sae_api npx prisma migrate status`, depois `docker exec -it sae_api npx prisma migrate deploy`, conferir o status de novo e recriar/reiniciar `api` se necessário.
+
+---
+
+## Backup em produção falhou com "ERROR 1045 (using password: NO)" - comando de backup corrigido (2026-09-24)
+
+O comando que eu (Claude) passei na entrada anterior - `docker exec sae_mysql mysqldump -uroot -p sae > backup.sql` - **estava errado**: sem `-i`, o `docker exec` não conecta o teclado ao container, o prompt de senha lê vazio e o MySQL recusa (`using password: NO`) antes do usuário conseguir digitar. Adicionar `-it` também não serve: o `-t` mistura o prompt e caracteres de controle DENTRO do arquivo de backup.
+
+**Comando correto (validado no `sae_mysql` local: exit 0, 19 tabelas, termina em `-- Dump completed`, aviso de senha vai pro stderr e o arquivo fica limpo):**
+```bash
+docker exec sae_mysql sh -c 'exec mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction --routines --triggers sae' > backup_$(date +%F_%H%M).sql
+```
+Usa a `MYSQL_ROOT_PASSWORD` que a imagem oficial já tem no ambiente do container (aspas simples: expande lá dentro, não no host; senha não é digitada nem vai pro histórico). `--single-transaction` = dump consistente de InnoDB sem travar as tabelas com a API no ar. Fallback se o root foi trocado depois da criação do container: dump dentro do container com `-it` pra `/tmp` + `docker cp`. Registrado no dossiê (4.1).
+
+Nota de teste: validar isso a partir do Windows exigiu contornar o PowerShell 5.1 (aspas aninhadas perdidas na chamada nativa; BOM UTF-8 injetado no pipe pro `sh`) - o script foi copiado pro container com `docker cp` e executado lá. Isso é um problema só do ambiente de teste no Windows; o bash do servidor Linux passa o comando acima sem alteração.
+
+---
+
+## Deploy das 5 migrations pendentes em produção + NODE_ENV que nunca foi definido (2026-09-24)
+
+`migrate status` em produção (após o backup corrigido funcionar): 15 migrations na imagem, **5 pendentes** - `20260924160000_rbac_perfis_de_acesso`, `20260924190000_usuario_ativo_troca_senha`, `20260924210000_empresa_codigo_loja`, `20260924230000_pagamentos_asaas`, `20260924233000_assinatura_cancelado_em`. Todas aditivas (a do código da loja com backfill). Sem aviso sobre a `20260922222219`. **Urgência**: a imagem nova da API já estava rodando antes das migrations - o hook global de acesso (plugins/permissoes.js) lê `usuarios.ativo`/`deve_trocar_senha`/`perfil_id` em TODA requisição autenticada, então produção estava respondendo 500 até o `migrate deploy`. **Lição de processo**: com `pull_policy: build`, todo redeploy sobe código novo na hora - migration nova tem que ser aplicada IMEDIATAMENTE depois (ou o código precisa tolerar coluna ausente). Vale automatizar `prisma migrate deploy` no start do container (pendência registrada).
+
+**Achado (erro meu na entrega do Asaas)**: `docker-compose.yml` nunca definiu `NODE_ENV` para a `api`. A guarda que desliga o checkout SIMULADO (`PUT /empresa/pagamentos` → 410) vale com `ASAAS_API_KEY` definida OU `NODE_ENV === 'production'` - sem nenhuma das duas, o endpoint que libera módulo pago sem cobrar continuava aberto em produção (a UI não o chama mais, mas um admin poderia chamar a API direto). Corrigido: `NODE_ENV=production` no `environment:` da `api` (único uso de `NODE_ENV` no código é essa guarda - sem efeito colateral). Entra no próximo "Pull and redeploy".
+
+## `migrate deploy` bloqueado por P3009 - migration do chat registrada como FALHA em produção (2026-09-24)
+
+`docker exec -it sae_api npx prisma migrate deploy` respondeu **P3009**: `20260923170000_chat_suporte_mensagens_chamado` "started at 2026-09-24 19:41:35 UTC failed". O `migrate status` não a lista como pendente porque ela JÁ tem linha em `_prisma_migrations` - com `finished_at` nulo (tentativa anterior de deploy que quebrou no meio). Enquanto existir migration falha, o Prisma **não aplica nenhuma outra** → as 5 do RBAC/Asaas continuam pendentes e a API nova segue sem as colunas que lê.
+
+**MySQL não tem DDL transacional**: a migration tem 3 comandos (`ADD COLUMN atualizado_em`, `CREATE TABLE mensagens_chamado`, `ADD CONSTRAINT ..._fkey`) e o que rodou antes do erro FICOU no banco. Por isso não dá pra simplesmente "rodar de novo" nem marcar como aplicada às cegas. Procedimento: (1) ler `logs` da linha falha em `_prisma_migrations` + conferir quais dos 3 objetos existem; (2) corrigir a causa / completar ou desfazer o parcial à mão; (3) `prisma migrate resolve --applied <nome>` (se o banco ficou igual ao fim da migration) ou `--rolled-back <nome>` (se voltou ao estado de antes, aí o deploy roda ela de novo); (4) `migrate deploy`. Suspeita principal antes de ver o log: a FK (`chamado_id INT UNSIGNED` → `chamados_suporte.id`) falhar por tipo/engine divergente em produção. Diagnóstico enviado ao usuário; aguardando o resultado.
